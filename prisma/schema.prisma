@@ -98,6 +98,7 @@ model User {
   addedMembers    WorkspaceMembership[] @relation("MembershipAdder")
   outgoingMails   OutgoingMail[]        @relation("MailRecipient")
   requestedMails  OutgoingMail[]        @relation("MailRequester")
+  labelingEvents  LabelingActivity[]
 }
 
 // One row per signed-in browser. Signing a user out everywhere deletes their rows.
@@ -159,16 +160,21 @@ model RateLimit {
 // An independently managed classification exercise: its own records,
 // taxonomies, members, roles and AI learning.
 model Workspace {
-  id          String          @id @default(cuid())
-  name        String
-  description String?
-  status      WorkspaceStatus @default(active)
-  archivedAt  DateTime?
+  id                   String          @id @default(cuid())
+  name                 String
+  description          String?
+  status               WorkspaceStatus @default(active)
+  archivedAt           DateTime?
   // Whether new AI jobs may start (lib/ai-connections.ts); needs a connection.
-  aiEnabled   Boolean         @default(false)
-  createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  aiEnabled            Boolean         @default(false)
+  createdById          String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  // IANA zone for progress reporting days and weeks; null: REPORTING_TIMEZONE (default UTC).
+  reportingTimezone    String?
+  // Labeling activity (LabelingActivity) is recorded from this moment on;
+  // earlier work has no history. Existing workspaces: when the table was added.
+  activityTrackedSince DateTime        @default(now())
 
   createdBy      User?                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   memberships    WorkspaceMembership[]
@@ -183,6 +189,7 @@ model Workspace {
   invitations    WorkspaceInvitation[]
   memberImports  MemberImport[]
   outgoingMails  OutgoingMail[]
+  labelingEvents LabelingActivity[]
 }
 
 // A person's role in one workspace. The supervisor tree links memberships of
@@ -240,6 +247,7 @@ model Taxonomy {
   aiLabelingJobs AILabelingJob[]
   aiLearningJobs AILearningJob[]        @relation("LearningJobs")
   aiSyncJobs     AITaxonomySyncJob[]
+  labelingEvents LabelingActivity[]
 
   @@unique([workspaceId, key])
   @@unique([workspaceId, id])
@@ -354,15 +362,16 @@ model Sentence {
   lastEditedAt DateTime?
   createdAt    DateTime       @default(now())
 
-  workspace     Workspace              @relation(fields: [workspaceId], references: [id])
-  import        SentenceImport         @relation(fields: [workspaceId, importId], references: [workspaceId, id], onDelete: Cascade)
-  lastEditor    User?                  @relation("LastEditor", fields: [lastEditorId], references: [id])
-  annotations   SentenceAnnotation[]
-  comments      Comment[]
-  assignments   SentenceAssignment[]
-  aiSuggestions SentenceAISuggestion[]
-  labelingJobs  AILabelingJobInput[]
-  learningJobs  AILearningJobInput[]
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id])
+  import         SentenceImport         @relation(fields: [workspaceId, importId], references: [workspaceId, id], onDelete: Cascade)
+  lastEditor     User?                  @relation("LastEditor", fields: [lastEditorId], references: [id])
+  annotations    SentenceAnnotation[]
+  comments       Comment[]
+  assignments    SentenceAssignment[]
+  aiSuggestions  SentenceAISuggestion[]
+  labelingJobs   AILabelingJobInput[]
+  learningJobs   AILearningJobInput[]
+  labelingEvents LabelingActivity[]
 
   @@unique([workspaceId, recordKey])
   @@unique([workspaceId, id])
@@ -370,6 +379,12 @@ model Sentence {
   @@index([workspaceId, status])
   @@index([workspaceId, field1])
   @@index([importId, importOrder])
+  // Queue text search (ILIKE '%q%'): trigram indexes, pg_trgm (migration 20261022120000).
+  @@index([field1(ops: raw("gin_trgm_ops"))], map: "Sentence_field1_trgm_idx", type: Gin)
+  @@index([field2(ops: raw("gin_trgm_ops"))], map: "Sentence_field2_trgm_idx", type: Gin)
+  @@index([field3(ops: raw("gin_trgm_ops"))], map: "Sentence_field3_trgm_idx", type: Gin)
+  @@index([field4(ops: raw("gin_trgm_ops"))], map: "Sentence_field4_trgm_idx", type: Gin)
+  @@index([field5(ops: raw("gin_trgm_ops"))], map: "Sentence_field5_trgm_idx", type: Gin)
 }
 
 model SentenceAnnotation {
@@ -601,6 +616,34 @@ model Comment {
   sentence Sentence @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id])
   author   User     @relation(fields: [authorId], references: [id])
 
+  @@index([sentenceId])
+}
+
+// Append-only history of human labeling for progress reporting
+// (lib/labeling-activity.ts, lib/server/progress.ts): one row per record per
+// successful label save, written in the save's transaction, so a rolled-back
+// save leaves none. A bulk save writes one row per record. Replaying the same
+// operation adds nothing (unique operationId + record). No record text and no
+// codes: the labels themselves stay in SentenceAnnotation.
+// Deleting the record or the taxonomy deletes its rows; deleting the actor's
+// account keeps them without an actor.
+model LabelingActivity {
+  id          String   @id @default(cuid())
+  workspaceId String
+  sentenceId  String
+  taxonomyId  String
+  actorId     String?
+  operationId String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  sentence  Sentence  @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  taxonomy  Taxonomy  @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, operationId, sentenceId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, actorId, createdAt])
   @@index([sentenceId])
 }
 

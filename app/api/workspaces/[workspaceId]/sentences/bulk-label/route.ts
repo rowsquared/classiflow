@@ -7,6 +7,7 @@ import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
 import { audit } from '@/lib/audit'
+import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
@@ -23,7 +24,8 @@ const bulkLabelSchema = z.object({
     .optional(),
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),
-  labelingStartedAt: z.string().optional() // ISO timestamp when bulk panel opened
+  labelingStartedAt: z.string().optional(), // ISO timestamp when bulk panel opened
+  operationId: operationIdField // retries of the same save record activity once
 })
 
 class MissingRecordError extends Error {}
@@ -48,7 +50,7 @@ export const POST = workspaceRoute([], async (req, { user }) => {
       )
     }
 
-    const { taxonomyKey, annotations = [], flagged, comment, labelingStartedAt } = validation.data
+    const { taxonomyKey, annotations = [], flagged, comment, labelingStartedAt, operationId } = validation.data
     const sentenceIds = Array.from(new Set(validation.data.sentenceIds))
 
     // All-or-nothing: one record outside the caller's scope rejects the request.
@@ -131,6 +133,14 @@ export const POST = workspaceRoute([], async (req, { user }) => {
               labelingStartedAt: startTime
             }))
           )
+        })
+
+        await recordLabelingActivity(tx, {
+          workspaceId: scopeWorkspaceId(),
+          sentenceIds,
+          taxonomyId: taxonomy.id,
+          actorId: user.id,
+          operationId: operationIdOrNew(operationId)
         })
 
         // Learning counter unit: label rows of changed paths (see single endpoint).

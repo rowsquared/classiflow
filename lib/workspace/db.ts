@@ -41,6 +41,7 @@ const WORKSPACE_MODELS = new Set([
   'AITaxonomySyncJob',
   'AIConnectionVersion',
   'Comment',
+  'LabelingActivity',
   'WorkspaceMembership',
   'WorkspaceInvitation',
   'MemberImport',

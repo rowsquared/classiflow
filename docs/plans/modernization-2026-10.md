@@ -63,7 +63,12 @@ Still open from this plan:
   route parameters are typed instead of an index signature.
 - M01: remove hand-written `useMemo`/`useCallback` where the compiler covers
   them (optional).
-- M06, M07, the rest of M08 (above), the open points under M09, and the "Carried over
+- ~~M07~~ done 22 October 2026 with the progress backend
+  ([progress dashboard](progress-dashboard.md), "Implementation status"):
+  `pg_trgm` indexes for the queue search (through `app_search_sentences()`,
+  because row security keeps them from the runtime role's ILIKE) and one
+  grouped query for the team metrics instead of ~8 per member.
+- M06, the rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
 - Watch: Prisma 7.10's query interpreter runs the sub-queries of one
   operation (relation `include`s) in parallel on an interactive
@@ -376,6 +381,9 @@ libraries only where new work would otherwise hand-roll them again:
   regressions fail CI.
 
 ### M07 Search and query tuning (P2, M)
+
+**Done** (22 October 2026); results and the row-security finding are in the
+[progress dashboard plan](progress-dashboard.md) "Implementation status".
 
 PostgreSQL 18 itself is part of M00 (no upgrade needed on a fresh start).
 

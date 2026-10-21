@@ -86,3 +86,30 @@ export async function denyUnlessSentencesVisible(user: CurrentUser, sentenceIds:
   })
   return forbidden('You do not have access to one or more of these records')
 }
+
+export type MemberRef = { id: string; userId: string }
+
+/**
+ * The membership and every membership below it in the supervisor tree, with
+ * their user ids, in ONE query (a recursive CTE), whatever the team's size.
+ * Same tree and depth limit as getTeamMembershipIds(); cycle-safe.
+ */
+export async function teamMembers(workspaceId: string, rootMembershipId: string): Promise<MemberRef[]> {
+  return db().$queryRaw<MemberRef[]>`
+    WITH RECURSIVE tree(id, depth) AS (
+      SELECT id, 0 FROM "WorkspaceMembership" WHERE "workspaceId" = ${workspaceId} AND id = ${rootMembershipId}
+      UNION
+      SELECT m.id, tree.depth + 1
+        FROM "WorkspaceMembership" m JOIN tree ON m."supervisorMembershipId" = tree.id
+       WHERE m."workspaceId" = ${workspaceId} AND tree.depth < ${MAX_TEAM_DEPTH}
+    )
+    SELECT DISTINCT m.id, m."userId" FROM tree JOIN "WorkspaceMembership" m ON m.id = tree.id`
+}
+
+/** Memberships (with user ids) whose assigned records `user` may see; null means all (admin). One query at most. */
+export async function visibleMembers(user: CurrentUser): Promise<MemberRef[] | null> {
+  if (user.role === 'admin') return null
+  if (!user.membershipId) return []
+  if (user.role === 'supervisor') return teamMembers(user.workspaceId, user.membershipId)
+  return [{ id: user.membershipId, userId: user.id }]
+}

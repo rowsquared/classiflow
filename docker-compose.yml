@@ -51,6 +51,8 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
       SIGN_IN_RATE_LIMIT: ${SIGN_IN_RATE_LIMIT:-10}
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      # Progress reports: days and weeks in this IANA zone unless a workspace sets its own.
+      REPORTING_TIMEZONE: ${REPORTING_TIMEZONE:-UTC}
 
       # Default Admin User
       DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}

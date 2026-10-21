@@ -1,9 +1,141 @@
 # Progress dashboard: implementation plan
 
-**Status:** proposed, 21 October 2026. Planning only; no dashboard changes implemented.
+**Status:** D0–D2 implemented 22 October 2026 (backend only; see below). D3 (UI) and D4 open.
 **Priority:** follow-up feature after the existing modernization and feature plans.
 **Reviewed baseline:** `fae270f` plus the in-progress working tree on 21 October.
 The deployed older UI was described by the maintainer, not profiled in this review.
+
+## Implementation status (22 October 2026)
+
+Built on `staging` `addc0a7` (workspaces, Better Auth, Prisma 7, `lib/server/*`).
+**D0–D2 are done; the Progress page itself is unchanged** and still reads the
+old `stats`, `timeline` and `team` endpoints until D3 replaces its UI.
+
+**D0, decisions recorded** (defaults chosen overnight; change them here if needed):
+
+- Metric definitions are the table in "Metric contract" below, implemented
+  as written. Remaining now = total − complete (pending + skipped +
+  escalated, each also returned). A person filter narrows workload by current
+  assignment and activity by author; both stay inside the viewer's current
+  record visibility. Team = the selected member's **current** subtree.
+  Team + person = intersection (an empty one is a valid, zero result).
+- **Reporting time zone:** `Workspace.reportingTimezone` (IANA name, set by
+  workspace admins with `PUT /api/workspaces/[id]`), else the deployment's
+  `REPORTING_TIMEZONE`, else UTC. Inclusive local dates become
+  `[local midnight, local midnight after the end)`; weeks start on Monday and
+  edge weeks are clipped; DST days are calendar days (`lib/reporting-dates.ts`,
+  unit tested with Berlin, New York, Kolkata and Santiago's skipped midnight).
+  Defaults: the last 7 days; at most 731 days; at most 366 buckets (daily
+  timelines longer than that must use weeks).
+- **Coverage:** `Workspace.activityTrackedSince` (default: creation; existing
+  workspaces: when the migration ran). Every report returns it as
+  `activityCoverageStart`; nothing before it is invented.
+- **Retention and deletion:** activity rows go with their record (import
+  deletion) or taxonomy (hard delete), are kept with a null actor when an
+  account is deleted, and are otherwise kept for as long as the workspace.
+  Workspaces are only archived, never deleted.
+- **Selectors:** `personId` and `teamId` are user ids. One outside the
+  caller's scope (or unknown in this workspace) is a **403**, never a wider
+  result; labellers may only select themselves and no team.
+
+**D1 activity source:** `LabelingActivity` (migration
+`20261022120000_progress_activity`): workspace, record, taxonomy, actor,
+operation id, time; no record text or codes. Written in the same transaction
+by the single and bulk label saves (`lib/labeling-activity.ts`), one row per
+record per save; flag-, comment-, skip-only saves and AI suggestions write
+none. An optional `operationId` (UUID) in the save body makes a replayed
+request record nothing new (unique `(workspaceId, operationId, recordId)`);
+the browser does not send one yet (D3: generate one per save attempt). Row
+security like every workspace table; a trigger makes the table append-only
+(the only update allowed is the actor's `ON DELETE SET NULL`).
+
+**D2 reporting:** `lib/server/progress.ts` `getProgressOverview`,
+`getProgressActivity`, `getProgressPeople`, served by
+`GET /api/workspaces/[id]/progress/overview`, `/activity`
+(`granularity=day|week`) and `/people` (`q`, `sort` = name, role, assigned,
+complete, remaining, labeled, lastSeen; `dir`; `page`; `pageSize` 25, at most
+100; supervisors and admins). Types in `lib/contracts/progress.ts`. Each call
+is a fixed number of SQL statements (4–5, people at most 6, including the
+transaction's own), whatever the team size: the supervisor subtree is one
+recursive query (`teamMembers()` in `lib/access.ts`), the figures one grouped
+query. People rows include suspended members (`status`) and their history.
+`tests/integration/progress-reports.test.ts` covers attribution, rollback,
+replay, append-only and deletion, AI-only records, admin/supervisor/labeller
+scopes, shared assignments, reassignment, selector denial, two workspaces,
+time zones and bucket filling, paging and the query count (4 vs 40 members).
+
+**M07 (from the modernization plan), done in the same change:** the old team
+handler's per-member queries (392 statements for 53 members) are one grouped
+query with the same response; `tests/bench` checks that both give identical
+figures on the seeded data. Queue text search uses `pg_trgm` GIN indexes on
+`field1`–`field5`. Finding: **row security keeps those indexes from the
+runtime role** (ILIKE is not leakproof, so it may not run before the policy's
+condition), so terms of 3+ characters are looked up through
+`app_search_sentences()`, a narrow owner-run function limited to the current
+transaction's workspace that returns ids (up to 5,000; more falls back to the
+plain filter, where a scan is the right plan anyway).
+
+**Indexes:** the event table's `(workspaceId, createdAt)`,
+`(workspaceId, actorId, createdAt)` and `(sentenceId)`, plus the trigram
+indexes. `EXPLAIN (ANALYZE, BUFFERS)` at 50,000 records as the runtime role:
+a 7-day activity count uses `(workspaceId, createdAt)` (bitmap scan, 2,216
+rows); the 2-year count for a whole-workspace supervisor scans the 66,666
+events and hash-joins 60,000 assignments (~110 ms with EXPLAIN overhead);
+workload counts hash-join assignments to records (~60 ms). No further index
+helped those plans, so none was added. Note for raw SQL: compare
+`timestamp` columns with `timestamp` parameters; `now()` (timestamptz) makes
+the comparison non-leakproof, and under row security the planner then ignores
+the index and estimates one row.
+
+**Benchmark** (`scripts/bench/seed-progress.ts`, `npm run bench:progress`,
+DEVELOPMENT.md "Benchmarks"). Setup: this container (4 vCPU, 15 GB, local
+PostgreSQL 16, not a staging-like host), application as the runtime role, 10
+runs after 2 warm-ups, **other builds and test suites running at the same
+time**, so treat the numbers as a before/after comparison, not as the D4
+budget check. Data: one workspace, 53 members (head supervisor, 3
+supervisors, 48 labellers of whom 12 suspended), two taxonomies (3 and 2
+levels), every fifth record shared by two labellers, 70% labeled over 180
+days (2.9 annotations per record), 1.33 activity events per record, 30%
+with AI suggestions. p50 ms (statements), admin unless noted:
+
+| Call | 10k | 20k | 50k |
+| --- | ---: | ---: | ---: |
+| old stats, 7 days | 85 (18) | 106 | 137 |
+| old stats, 7 days, supervisor | 166 (25) | 148 | 238 |
+| old stats, 2 years | 274 | 671 | 1,076 |
+| old timeline, weekly, 2 years | 540 (3) | 1,002 | 2,626 |
+| old team, 7 days | 983 (392) | 1,534 | 3,999 |
+| old team, 7 days, supervisor | 766 (388) | 1,258 | 3,238 |
+| old team, 2 years | 1,089 (424) | 1,883 | 4,879 |
+| team, grouped, 7 days | 22 (3) | 30 | 74 |
+| team, grouped, 7 days, supervisor | 18 (4) | 36 | 73 |
+| team, grouped, 2 years | 48 | 94 | 257 |
+| overview, 7 days | 5 (4) | 8 | 16 |
+| overview, 7 days, supervisor | 16 (5) | 25 | 64 |
+| overview, 2 years, supervisor | 26 | 44 | 115 |
+| activity, daily, 7 days | 3 (4) | 3 | 10 |
+| activity, weekly, 2 years, supervisor | 34 (5) | 57 | 158 |
+| people, 7 days, supervisor | 20 (5) | 34 | 73 |
+| people by labeled, 2 years, supervisor | 48 | 70 | 192 |
+| queue list, q=a1b2 (12 matches) | 30 | 14 | 13 (before: 96) |
+| queue list, q=engineer (10% match) | 54 | 49 | 102 (before: 115) |
+
+Worst p95 of any new report at 50k: 271 ms (people by labeled, 2 years,
+supervisor), inside the 750 ms query budget. Responses: overview ~350 bytes,
+2-year weekly timeline ~8.7 KB, a people page ~5.2 KB. The old stats endpoint
+(lastEditedAt-based, AI agreement, median time) is not replaced: D3 drops the
+cards it feeds, as "First-release experience" says.
+
+**Left:**
+
+- **D3** (after the frontend lane lands TanStack Query and nuqs): the new
+  page on these endpoints, `operationId` per save attempt in the labeling
+  page and bulk panel, time zone setting in the workspace settings UI. Then
+  remove `getProgressStats`/`getProgressTimeline` and their routes.
+- **D4:** benchmark on a staging-like host with the agreed concurrent load
+  (10 viewers plus labeling writes), browser journeys, release.
+- Platform admins without a membership can label; their activity counts in
+  workspace totals but they have no people row.
 
 ## Outcome and place in the roadmap
 

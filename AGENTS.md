@@ -56,7 +56,7 @@ Browser: React client components
 | Individual labeling | `app/queue/[sentenceId]/page.tsx`, `components/TaxonomyBrowser.tsx`; hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/taxonomies/[key]/page.tsx` |
 | Administration | `app/admin/taxonomy/`, `sentences/`, `team/`, `export/`, `ai-jobs/`; `/admin` redirects to `/admin/taxonomy` |
-| Progress | `app/progress/`, `app/api/progress/{stats,timeline,team}/`; counts, timelines, team metrics |
+| Progress | `app/w/[workspaceId]/progress/`, `lib/server/progress.ts`, `app/api/workspaces/[workspaceId]/progress/`: the page still uses `stats`, `timeline`, `team`; the dashboard reports `overview`, `activity`, `people` (fixed query count, `lib/reporting-dates.ts` for days/weeks in the reporting time zone) wait for their UI (plan D3) |
 | Record APIs | `app/api/sentences/`; queue queries, stats, imports, assignment, bulk labels, individual records/annotations/comments/flags |
 | Other data APIs | `app/api/taxonomies/`, `app/api/imports/`, `app/api/users/`, `app/api/export/` |
 | AI APIs | `ai-labeling/` starts labeling and learning, `taxonomies/[key]/sync-ai` queues a sync, `ai-jobs/` provides combined history, active jobs, cancellation, `ai-settings/` the workspace connection; `/api/ai-endpoints` approved services (platform); UI in `app/w/[workspaceId]/admin/ai/` and `app/workspaces/AIEndpointsPanel.tsx` |
@@ -109,6 +109,11 @@ Read `prisma/schema.prisma` before changing data behavior.
   and `labeller`; users can have a supervisor and subordinate labellers. Queue,
   detail, stats, and progress queries apply role/team scoping in their handlers.
   Keep those views consistent when changing visibility or assignment rules.
+- **Labeling activity** (`LabelingActivity`, `lib/labeling-activity.ts`) is the
+  append-only history the progress reports count: one row per record per
+  successful human label save, written in the single and bulk save
+  transactions (optional `operationId` dedups replays). Write it from any new
+  path that saves human labels; never from AI suggestions or flag/comment saves.
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's
   `newAnnotationsSinceLastLearning` counter.
@@ -241,6 +246,7 @@ lockfile together. Do not introduce a different package manager.
 | Format | `npm run format` (Prettier; CI runs `npm run format:check`) |
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
 | Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
+| Benchmarks | `npm run bench:progress` on a database seeded by `scripts/bench/seed-progress.ts` (DEVELOPMENT.md "Benchmarks") |
 | Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright; see `tests/e2e/README.md`) |
 | Production build | `npm run build` (Prisma generation + Next build) |
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database and `npx prisma generate`; commit generated SQL. The history starts at one baseline (`20261021120000_init`, fresh start) |

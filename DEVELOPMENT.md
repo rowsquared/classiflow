@@ -59,6 +59,22 @@ Open http://localhost:3000 and sign in with `DEFAULT_ADMIN_USERNAME` (or `DEFAUL
 | `npx prisma migrate dev --name <change>` | Create a migration after editing `prisma/schema.prisma`; then `npx prisma generate` (Prisma 7 no longer regenerates the client by itself) |
 | `npx prisma studio` | Browse the database in the browser |
 
+### Benchmarks
+
+The progress reports and the queue search have a repeatable benchmark on
+seeded data (docs/plans/progress-dashboard.md records the results):
+
+```bash
+createdb classiflow_bench_test     # once; _bench or _test, the seed empties every table
+export TEST_DATABASE_URL=postgresql://classiflow:classiflow_password@localhost:5434/classiflow_bench_test
+DATABASE_URL=$TEST_DATABASE_URL npx prisma migrate deploy
+DATABASE_URL=$TEST_DATABASE_URL node scripts/bench/seed-progress.ts --records 50000
+npm run bench:progress             # p50/p95, SQL statements and response size per call
+```
+
+Run it on a quiet machine; numbers from a busy laptop are only good for comparisons
+within one run.
+
 To wipe the dev database: `docker compose -f docker-compose.dev.yml down -v`, then `npm run db:up` and rerun the migrations.
 
 ## Optional: AI suggestions

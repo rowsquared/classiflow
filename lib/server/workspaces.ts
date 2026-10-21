@@ -93,7 +93,10 @@ export async function createWorkspace(input: {
   })
 }
 
-export async function updateWorkspace(workspaceId: string, data: { name?: string; description?: string | null }) {
+export async function updateWorkspace(
+  workspaceId: string,
+  data: { name?: string; description?: string | null; reportingTimezone?: string | null }
+) {
   await prisma.workspace.update({ where: { id: workspaceId }, data })
 }
 

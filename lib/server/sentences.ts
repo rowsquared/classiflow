@@ -51,17 +51,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   const and: Prisma.SentenceWhereInput[] = []
 
   // Search across all field columns
-  if (q) {
-    and.push({
-      OR: [
-        { field1: { contains: q, mode: 'insensitive' } },
-        { field2: { contains: q, mode: 'insensitive' } },
-        { field3: { contains: q, mode: 'insensitive' } },
-        { field4: { contains: q, mode: 'insensitive' } },
-        { field5: { contains: q, mode: 'insensitive' } }
-      ]
-    })
-  }
+  if (q) and.push(await textSearchFilter(q))
 
   // Status filters: comma-separated and/or repeated (?status=a,b&status=c)
   if (statusParam) {
@@ -250,6 +240,34 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   }
 
   return and.length > 0 ? { AND: and } : {}
+}
+
+/** Above this many matches a search term is not selective: scan instead of listing ids. */
+const SEARCH_ID_LIMIT = 5000
+
+/**
+ * `q` in any field column, case-insensitive (ILIKE '%q%'). Row security keeps
+ * the trigram indexes from the runtime role's own ILIKE (not leakproof), so a
+ * term of three or more characters is first looked up through
+ * app_search_sentences() (prisma/migrations/20261022120000_progress_activity),
+ * which uses them within this workspace and returns matching ids. Short or
+ * very common terms fall back to the plain filter, a table scan either way.
+ */
+async function textSearchFilter(q: string): Promise<Prisma.SentenceWhereInput> {
+  if (q.length >= 3) {
+    const matches = await db().$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM app_search_sentences(${q}, ${SEARCH_ID_LIMIT + 1}::int)`
+    if (matches.length <= SEARCH_ID_LIMIT) return { id: { in: matches.map(m => m.id) } }
+  }
+  return {
+    OR: [
+      { field1: { contains: q, mode: 'insensitive' } },
+      { field2: { contains: q, mode: 'insensitive' } },
+      { field3: { contains: q, mode: 'insensitive' } },
+      { field4: { contains: q, mode: 'insensitive' } },
+      { field5: { contains: q, mode: 'insensitive' } }
+    ]
+  }
 }
 
 /** One page of the queue, with label names and, for unlabelled records, AI suggestions. */

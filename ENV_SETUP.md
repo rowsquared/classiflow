@@ -82,6 +82,12 @@ AI features stay disabled.
 `AI_LABELING_API_KEY` is no longer read: a deployment-wide token would give
 every workspace the same Taxomind access. Enter tokens per workspace instead.
 
+## Progress reports
+
+| Variable | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `REPORTING_TIMEZONE` | no | `UTC` | no | IANA time zone (e.g. `Europe/Berlin`) whose calendar days and Monday weeks the progress reports use, for workspaces that set none of their own (`PUT /api/workspaces/[id]` `reportingTimezone`). An invalid name falls back to UTC |
+
 ## Runtime and build
 
 | Variable | Required | Default | Secret | Purpose |
@@ -113,4 +119,5 @@ tokens, cookies and record text are redacted if passed by mistake.
 | --- | --- | --- |
 | `NEW_PASSWORD` | `scripts/reset-admin-password.ts` | Temporary password to set (DEPLOYMENT.md "Admin User") |
 | `APP_DB_USER`, `APP_DB_PASSWORD` | `scripts/restore-check.ts` | Runtime role to set up and check on a restored database (DEPLOYMENT.md "Backups") |
-| `TEST_DATABASE_URL` | `npm run test:integration` | Disposable database whose name ends in `_test` |
+| `TEST_DATABASE_URL` | `npm run test:integration`, `npm run bench:progress` | Disposable database whose name ends in `_test` (the benchmark reads a database seeded by `scripts/bench/seed-progress.ts`) |
+| `BENCH_ITERATIONS`, `BENCH_FILTER`, `BENCH_OUT`, `BENCH_LEGACY` | `npm run bench:progress` | Runs per call (15), only calls whose name contains the text, write the table to a file, module with older report functions to compare (DEVELOPMENT.md "Benchmarks") |

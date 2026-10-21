@@ -108,6 +108,14 @@ Isolation is enforced three times:
    and write; without it, workspace tables are empty and unwritable. Covered
    by `tests/integration/db-runtime-role.test.ts`.
 
+Two narrow database functions run as the schema owner, outside row security,
+and are granted to the runtime role alone: `app_recoverable_ai_jobs()` returns
+the ids and workspaces of AI jobs to recover, and `app_search_sentences()`
+(queue text search through the trigram indexes, which row security would
+otherwise keep from the runtime role) returns ids of records **of the current
+transaction's workspace only**, nothing outside a workspace transaction. The
+caller loads the records through row security and the record scope as usual.
+
 Archived workspaces are read-only: writes get 409, AI jobs were cancelled
 (also at the AI service) when the workspace was archived, and a late AI result
 is not stored.
@@ -149,7 +157,8 @@ one record outside the caller's scope (including a record of another
 workspace, also for admins) rejects the whole request with 403 and changes
 nothing.
 
-The supervisor tree is walked breadth-first with a cycle guard and a depth limit
+The supervisor tree is walked breadth-first (the progress reports use a
+recursive query with the same rules) with a cycle guard and a depth limit
 of 25. The member API refuses supervisor links that would create a cycle,
 self-supervision, or a labeller as supervisor. Changes that could remove the
 last admin of a workspace (or the last platform admin) are serialised and
@@ -175,7 +184,7 @@ admin) with a valid session who does not have to reset their password.
 | `/api/workspaces` | GET | signed in; lists only workspaces the caller may enter |
 | `/api/workspaces` | POST | platform admin (creates the workspace and its first admin) |
 | `/api/workspaces/[workspaceId]` | GET | member |
-| `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
+| `/api/workspaces/[workspaceId]` | PUT (rename, reporting time zone, archive, reopen) | workspace admin |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
 | `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
@@ -198,6 +207,8 @@ admin) with a valid session who does not have to reset their password.
 | `/export` | GET | admin; re-checked before every page of the stream |
 | `/progress/stats`, `/timeline` | GET | member; limited to own work (labeller) or team (supervisor) |
 | `/progress/team` | GET | admin, supervisor (own team) |
+| `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
+| `/progress/people` | GET | admin, supervisor (own subtree); same selector rule |
 | `/ai-labeling/*`, `/ai-jobs/*`, `/ai-settings`, `/ai-settings/connection`, `/audit` | all | admin (credentials write-only) |
 
 ## Known gaps

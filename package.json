@@ -9,6 +9,7 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
+    "bench:progress": "vitest run --config vitest.bench.config.ts",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",

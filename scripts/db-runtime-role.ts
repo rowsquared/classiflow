@@ -65,7 +65,9 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
       // and lease columns only; see the migrations).
       `GRANT EXECUTE ON FUNCTION "${schema}".app_recoverable_ai_jobs(timestamp) TO ${role}`,
       `GRANT EXECUTE ON FUNCTION "${schema}".app_admit_ai_jobs(integer, integer, text, timestamp) TO ${role}`,
-      `GRANT EXECUTE ON FUNCTION "${schema}".app_release_ai_leases(text) TO ${role}`
+      `GRANT EXECUTE ON FUNCTION "${schema}".app_release_ai_leases(text) TO ${role}`,
+      // Queue text search through the trigram indexes, inside the current workspace only.
+      `GRANT EXECUTE ON FUNCTION "${schema}".app_search_sentences(text, integer) TO ${role}`
     ].filter((sql): sql is string => sql !== null)
     await prisma.$transaction(statements.map(sql => prisma.$executeRawUnsafe(sql)))
     console.log(`✓ Database role "${user}" has row access to the application tables only`)

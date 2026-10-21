@@ -6,6 +6,7 @@ import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
 import { Prisma } from '@/lib/generated/prisma/client'
+import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const annotationSchema = z.object({
@@ -21,7 +22,8 @@ const annotationSchema = z.object({
   status: z.enum(['pending', 'submitted', 'skipped', 'escalated']),
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),
-  labelingStartedAt: z.string().optional() // ISO timestamp when labeling started
+  labelingStartedAt: z.string().optional(), // ISO timestamp when labeling started
+  operationId: operationIdField // retries of the same save record activity once
 })
 
 class RequestError extends Error {}
@@ -48,7 +50,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
     }
-    const { annotations, status, flagged, comment, labelingStartedAt } = parsed.data
+    const { annotations, status, flagged, comment, labelingStartedAt, operationId } = parsed.data
 
     const taxonomyKeys = new Set(annotations.map(a => a.taxonomyKey))
     if (taxonomyKeys.size > 1) {
@@ -121,6 +123,13 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
           }))
         })
         wroteLabels = true
+        await recordLabelingActivity(tx, {
+          workspaceId: scopeWorkspaceId(),
+          sentenceIds: [sentenceId],
+          taxonomyId: taxonomy.id,
+          actorId: userId,
+          operationId: operationIdOrNew(operationId)
+        })
 
         // Learning counter unit: label rows of a changed path. Re-saving the same
         // path does not count again.
