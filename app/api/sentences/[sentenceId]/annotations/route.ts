@@ -3,19 +3,31 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
-import { Prisma, type SentenceAnnotation } from '@prisma/client'
+import { sameLabels, validateLabelPath } from '@/lib/label-path'
+import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
+import { Prisma } from '@prisma/client'
+
+// Codes are strings: a number would already have lost its leading zeros.
 const annotationSchema = z.object({
   annotations: z.array(z.object({
-    level: z.number(),
-    nodeCode: z.union([z.string(), z.number()]),
-    taxonomyKey: z.string()
-  })),
+    level: z.number().int().min(1).max(5),
+    nodeCode: z.string().min(1).max(100),
+    taxonomyKey: z.string().min(1)
+  })).max(5),
   status: z.enum(['pending', 'submitted', 'skipped', 'escalated']),
   flagged: z.boolean().optional(),
-  comment: z.string().optional(),
+  comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional() // ISO timestamp when labeling started
 })
 
+class RequestError extends Error {}
+
+/**
+ * Saves one record: replaces the human labels of ONE taxonomy (others are kept),
+ * optionally adds a comment and sets the flag, then recomputes the status with
+ * the shared rules in lib/annotation-status.ts. An empty `annotations` array is
+ * a flag/comment/skip-only save.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
@@ -34,31 +46,37 @@ export async function POST(
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
     if (denied) return denied
 
-    const body = await req.json()
+    const parsed = annotationSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
+    }
+    const { annotations, status, flagged, comment, labelingStartedAt } = parsed.data
 
-    const {
-      annotations: rawAnnotations,
-      status,
-      flagged,
-      comment,
-      labelingStartedAt
-    } = annotationSchema.parse(body)
+    const taxonomyKeys = new Set(annotations.map(a => a.taxonomyKey))
+    if (taxonomyKeys.size > 1) {
+      return NextResponse.json({ error: 'All labels in one save must belong to the same taxonomy' }, { status: 400 })
+    }
 
-    const annotations = rawAnnotations.map(ann => ({
-      ...ann,
-      nodeCode: String(ann.nodeCode)
-    }))
+    let startTime: Date | null = null
+    if (labelingStartedAt) {
+      startTime = new Date(labelingStartedAt)
+      if (Number.isNaN(startTime.getTime())) {
+        return NextResponse.json({ error: 'labelingStartedAt is not a valid date' }, { status: 400 })
+      }
+    }
 
-    // Get taxonomy ID from the first annotation (all annotations should be for the same taxonomy)
-    let taxonomy = null
-    if (annotations.length > 0 && annotations[0].taxonomyKey) {
+    let taxonomy: { id: string; maxDepth: number } | null = null
+    if (annotations.length > 0) {
       taxonomy = await prisma.taxonomy.findUnique({
         where: { key: annotations[0].taxonomyKey },
-        select: { id: true }
+        select: { id: true, maxDepth: true }
       })
-
       if (!taxonomy) {
         return NextResponse.json({ error: 'Taxonomy not found' }, { status: 404 })
+      }
+      const pathError = await validateLabelPath(prisma, taxonomy, annotations)
+      if (pathError) {
+        return NextResponse.json({ error: pathError }, { status: 400 })
       }
     }
 
@@ -67,138 +85,96 @@ export async function POST(
       where: { isActive: true },
       select: { id: true, key: true }
     })
+    const activeIds = activeTaxonomies.map(t => t.id)
 
-    let allAnnotations: SentenceAnnotation[] = []
-    let finalStatus: 'pending' | 'submitted' | 'skipped' | 'escalated' = status
+    const result = await prisma.$transaction(async (tx) => {
+      await lockSentences(tx, [sentenceId])
 
-    await prisma.$transaction(async (tx) => {
-      // Delete existing annotations for THIS taxonomy only
+      const current = await tx.sentence.findUnique({
+        where: { id: sentenceId },
+        select: { status: true }
+      })
+      if (!current) throw new RequestError('Sentence not found')
+
+      let wroteLabels = false
       if (taxonomy) {
-        await tx.sentenceAnnotation.deleteMany({
-          where: { 
-            sentenceId: sentenceId,
-            taxonomyId: taxonomy.id
-          }
+        const existing = await tx.sentenceAnnotation.findMany({
+          where: { sentenceId, taxonomyId: taxonomy.id, source: 'user' },
+          select: { level: true, nodeCode: true }
         })
-      }
+        const changed = !sameLabels(existing, annotations)
 
-      // Create new annotations (only if we have a taxonomy)
-      if (taxonomy) {
-        const startTime = labelingStartedAt ? new Date(labelingStartedAt) : null
-        
-        for (const annotation of annotations) {
-          // Unknown codes are now level-specific (-9, -99, ...)
-          await tx.sentenceAnnotation.create({
-            data: {
-              sentenceId: sentenceId,
-              taxonomyId: taxonomy.id,
-              level: annotation.level,
-              nodeCode: annotation.nodeCode, // '-99' for unknown
-              source: 'user',
-              labelingStartedAt: startTime,
-              createdById: userId
-            }
+        // Replace this taxonomy's labels only; other taxonomies are kept.
+        await tx.sentenceAnnotation.deleteMany({
+          where: { sentenceId, taxonomyId: taxonomy.id }
+        })
+        await tx.sentenceAnnotation.createMany({
+          data: annotations.map(annotation => ({
+            sentenceId,
+            taxonomyId: taxonomy.id,
+            level: annotation.level,
+            nodeCode: annotation.nodeCode, // level-specific unknown code (-9, -99, ...) for unknown
+            source: 'user' as const,
+            labelingStartedAt: startTime,
+            createdById: userId
+          }))
+        })
+        wroteLabels = true
+
+        // Learning counter unit: label rows of a changed path. Re-saving the same
+        // path does not count again.
+        if (changed) {
+          await tx.taxonomy.update({
+            where: { id: taxonomy.id },
+            data: { newAnnotationsSinceLastLearning: { increment: annotations.length } }
           })
         }
       }
 
-      // Add comment if provided
       if (comment && comment.trim()) {
         await tx.comment.create({
           data: {
             body: comment.trim(),
-            sentenceId: sentenceId,
+            sentenceId,
             authorId: userId
           }
         })
       }
 
-      // Get current sentence to check status
-      const currentSentence = await tx.sentence.findUnique({
-        where: { id: sentenceId },
-        select: { status: true }
+      const done = (await completedTaxonomies(tx, [sentenceId], activeIds)).get(sentenceId)!
+      const finalStatus = decideStatus({
+        requested: status,
+        current: current.status,
+        wroteLabels,
+        complete: isComplete(done, activeIds)
       })
-      
-      // Get all annotations for this sentence (after creating new ones)
-      allAnnotations = await tx.sentenceAnnotation.findMany({
-        where: { sentenceId: sentenceId }
-      })
-      
-      // Check if each active taxonomy has at least one annotation
-      // If annotations exist, they must be complete (leaf or unknown) because
-      // the frontend submit button only enables in those cases
-      const allTaxonomiesCompleted = activeTaxonomies.every(activeTax => {
-        const taxAnnotations = allAnnotations.filter(a => a.taxonomyId === activeTax.id)
-        return taxAnnotations.length > 0
-      })
-      
-      // Determine final status
-      // Skip always sets to skipped
-      if (status === 'skipped') {
-        finalStatus = 'skipped'
-      } else if (allTaxonomiesCompleted) {
-        // All taxonomies completed - always set to submitted
-        finalStatus = 'submitted'
-      } else {
-        // Not all taxonomies completed - keep as pending
-        finalStatus = 'pending'
-      }
-      
-      // Update sentence status and flag
-      const updateData: Prisma.SentenceUncheckedUpdateInput = {
-        status: finalStatus
-      }
-      
+
+      const updateData: Prisma.SentenceUncheckedUpdateInput = { status: finalStatus }
       if (flagged !== undefined) {
         updateData.flagged = flagged
       }
-      
-      // Only update lastEditedAt if status changed or annotations were added
-      const statusChanged = currentSentence?.status !== finalStatus
-      const hasAnnotations = annotations.length > 0
-      
-      if (statusChanged || hasAnnotations || flagged !== undefined || comment) {
+      if (current.status !== finalStatus || wroteLabels || flagged !== undefined || comment) {
         updateData.lastEditedAt = new Date()
         updateData.lastEditorId = userId
       }
-      
-      await tx.sentence.update({
-        where: { id: sentenceId },
-        data: updateData
-      })
+      await tx.sentence.update({ where: { id: sentenceId }, data: updateData })
+
+      return { finalStatus, done }
     })
 
-    // Return updated status and completion info to avoid reload
-    // Calculate completed taxonomies from annotations we already have
-    const completedTaxonomies = activeTaxonomies
-      .filter(activeTax => {
-        const taxAnnotations = allAnnotations.filter(
-          a => a.taxonomyId === activeTax.id
-        )
-        return taxAnnotations.length > 0
-      })
-      .map(t => t.key)
+    const completedKeys = activeTaxonomies.filter(t => result.done.has(t.id)).map(t => t.key)
 
-    if (taxonomy && annotations.length > 0) {
-      await prisma.taxonomy.update({
-        where: { id: taxonomy.id },
-        data: {
-          newAnnotationsSinceLastLearning: {
-            increment: annotations.length
-          }
-        }
-      })
-    }
-
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      status: finalStatus, // Use the status we calculated in the transaction
-      completedTaxonomies,
-      allCompleted: completedTaxonomies.length === activeTaxonomies.length
+      status: result.finalStatus,
+      completedTaxonomies: completedKeys,
+      allCompleted: activeTaxonomies.length > 0 && completedKeys.length === activeTaxonomies.length
     })
   } catch (error) {
+    if (error instanceof RequestError) {
+      return NextResponse.json({ error: error.message }, { status: 404 })
+    }
     console.error('Annotation submission error:', error)
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to save labels' }, { status: 500 })
   }
 }

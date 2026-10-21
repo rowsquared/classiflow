@@ -207,7 +207,7 @@ model SentenceAnnotation {
   taxonomy  Taxonomy @relation(fields: [taxonomyId], references: [id])
   createdBy User?    @relation(fields: [createdById], references: [id])
 
-  @@index([sentenceId, taxonomyId, level])
+  @@unique([sentenceId, taxonomyId, level])
   @@index([nodeCode])
   @@index([createdById, createdAt])
 }

@@ -1,182 +1,167 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
-import { z } from 'zod'
-import { isUnknownNodeCode } from '@/lib/constants'
-import type { CaughtError } from '@/lib/utils'
-import { Prisma } from '@prisma/client'
+import { sameLabels, validateLabelPath } from '@/lib/label-path'
+import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
 
+// Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(10000),
   taxonomyKey: z.string().min(1),
   annotations: z.array(z.object({
     level: z.number().int().min(1).max(5),
-    nodeCode: z.union([z.string(), z.number()])
-  })).optional(),
+    nodeCode: z.string().min(1).max(100)
+  })).max(5).optional(),
   flagged: z.boolean().optional(),
-  comment: z.string().optional(),
+  comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional() // ISO timestamp when bulk panel opened
 })
 
+class MissingRecordError extends Error {}
+
+/**
+ * Applies one label path (for one taxonomy) and/or a flag/comment to many
+ * records at once. Same rules as the single-record endpoint: the path is
+ * validated, each record's status is recomputed (submitted only when every
+ * active taxonomy has human labels), and a flag/comment-only request leaves
+ * statuses alone. All-or-nothing.
+ */
 export async function POST(req: NextRequest) {
   try {
     const { user, error: authError } = await requireSession()
     if (authError) return authError
 
-    const body = await req.json()
-    
-    // Validate request body
-    const validation = bulkLabelSchema.safeParse(body)
+    const validation = bulkLabelSchema.safeParse(await req.json())
     if (!validation.success) {
-      return NextResponse.json({ 
-        ok: false, 
+      return NextResponse.json({
+        ok: false,
         error: 'Invalid request data'
       }, { status: 400 })
     }
-    
-    const { sentenceIds, taxonomyKey, annotations, flagged, comment, labelingStartedAt } = validation.data
+
+    const { taxonomyKey, annotations = [], flagged, comment, labelingStartedAt } = validation.data
+    const sentenceIds = Array.from(new Set(validation.data.sentenceIds))
 
     // All-or-nothing: one record outside the caller's scope rejects the request.
     const denied = await denyUnlessSentencesVisible(user, sentenceIds)
     if (denied) return denied
-    const normalizedAnnotations = annotations?.map(ann => ({
-      ...ann,
-      nodeCode: String(ann.nodeCode)
-    }))
-    
-    // Verify taxonomy exists
+
     const taxonomy = await prisma.taxonomy.findUnique({
-      where: { key: taxonomyKey }
+      where: { key: taxonomyKey },
+      select: { id: true, maxDepth: true }
     })
-    
     if (!taxonomy) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: `Taxonomy '${taxonomyKey}' not found` 
+      return NextResponse.json({
+        ok: false,
+        error: `Taxonomy '${taxonomyKey}' not found`
       }, { status: 404 })
     }
-    
-    // Verify all node codes exist (if annotations provided)
-    // Note: -99 is the special code for "unknown" and won't exist in taxonomyNode
-    if (normalizedAnnotations && normalizedAnnotations.length > 0) {
-      const nodeCodes = normalizedAnnotations.map(a => a.nodeCode).filter(c => !isUnknownNodeCode(c))
-      
-      if (nodeCodes.length > 0) {
-        const nodes = await prisma.taxonomyNode.findMany({
-          where: {
-            taxonomyId: taxonomy.id,
-            code: { in: nodeCodes }
-          }
-        })
-        
-        if (nodes.length !== nodeCodes.length) {
-          const foundCodes = nodes.map(n => n.code)
-          const missingCodes = nodeCodes.filter(c => !foundCodes.includes(c))
-          return NextResponse.json({ 
-            ok: false, 
-            error: `Invalid node codes: ${missingCodes.join(', ')}` 
-          }, { status: 400 })
-        }
+
+    if (annotations.length > 0) {
+      const pathError = await validateLabelPath(prisma, taxonomy, annotations)
+      if (pathError) {
+        return NextResponse.json({ ok: false, error: pathError }, { status: 400 })
       }
     }
-    
-    const userId = user.id
-    
-    // Parse start time
+
     const startTime = labelingStartedAt ? new Date(labelingStartedAt) : null
-    
-    // Perform bulk labeling in transaction
-    await prisma.$transaction(async (tx) => {
-      // For each sentence
-      for (const sentenceId of sentenceIds) {
-        // Delete existing annotations for this taxonomy (if annotations provided)
-        if (normalizedAnnotations && normalizedAnnotations.length > 0) {
-          await tx.sentenceAnnotation.deleteMany({
-            where: {
-              sentenceId,
-              taxonomyId: taxonomy.id
-            }
-          })
-          
-          // Create new annotations (including -99 for unknown)
-          await tx.sentenceAnnotation.createMany({
-            data: normalizedAnnotations.map(ann => {
-              const baseData: Prisma.SentenceAnnotationCreateManyInput = {
-                sentenceId,
-                taxonomyId: taxonomy.id,
-                level: ann.level,
-                nodeCode: ann.nodeCode, // '-99' for unknown
-                source: 'user' as const
-              }
-              
-              if (userId) {
-                baseData.createdById = userId
-              }
-              
-              if (startTime) {
-                baseData.labelingStartedAt = startTime
-              }
-              
-              return baseData
-            })
+    if (startTime && Number.isNaN(startTime.getTime())) {
+      return NextResponse.json({ ok: false, error: 'labelingStartedAt is not a valid date' }, { status: 400 })
+    }
+
+    const activeIds = (await prisma.taxonomy.findMany({
+      where: { isActive: true },
+      select: { id: true }
+    })).map(t => t.id)
+
+    const wroteLabels = annotations.length > 0
+    const trimmedComment = comment?.trim()
+
+    const labeled = await prisma.$transaction(async (tx) => {
+      await lockSentences(tx, sentenceIds)
+
+      const current = await tx.sentence.findMany({
+        where: { id: { in: sentenceIds } },
+        select: { id: true, status: true }
+      })
+      if (current.length !== sentenceIds.length) {
+        throw new MissingRecordError()
+      }
+
+      if (wroteLabels) {
+        const existing = await tx.sentenceAnnotation.findMany({
+          where: { sentenceId: { in: sentenceIds }, taxonomyId: taxonomy.id, source: 'user' },
+          select: { sentenceId: true, level: true, nodeCode: true }
+        })
+        const existingBySentence = new Map<string, Array<{ level: number; nodeCode: string }>>()
+        existing.forEach(a => {
+          if (!existingBySentence.has(a.sentenceId)) existingBySentence.set(a.sentenceId, [])
+          existingBySentence.get(a.sentenceId)!.push(a)
+        })
+        const changedCount = sentenceIds.filter(id => !sameLabels(existingBySentence.get(id) ?? [], annotations)).length
+
+        await tx.sentenceAnnotation.deleteMany({
+          where: { sentenceId: { in: sentenceIds }, taxonomyId: taxonomy.id }
+        })
+        await tx.sentenceAnnotation.createMany({
+          data: sentenceIds.flatMap(sentenceId => annotations.map(ann => ({
+            sentenceId,
+            taxonomyId: taxonomy.id,
+            level: ann.level,
+            nodeCode: ann.nodeCode, // level-specific unknown code for unknown
+            source: 'user' as const,
+            createdById: user.id,
+            labelingStartedAt: startTime
+          })))
+        })
+
+        // Learning counter unit: label rows of changed paths (see single endpoint).
+        if (changedCount > 0) {
+          await tx.taxonomy.update({
+            where: { id: taxonomy.id },
+            data: { newAnnotationsSinceLastLearning: { increment: changedCount * annotations.length } }
           })
         }
-        
-        // Add comment if provided
-        if (comment && userId) {
-          await tx.comment.create({
-            data: {
-              body: comment,
-              sentenceId,
-              authorId: userId
-            }
-          })
-        }
-        
-        // Update sentence status and flag
+      }
+
+      if (trimmedComment) {
+        await tx.comment.createMany({
+          data: sentenceIds.map(sentenceId => ({ body: trimmedComment, sentenceId, authorId: user.id }))
+        })
+      }
+
+      const done = await completedTaxonomies(tx, sentenceIds, activeIds)
+      const now = new Date()
+      for (const { id, status } of current) {
         const updateData: Prisma.SentenceUncheckedUpdateInput = {
-          status: 'submitted',
-          lastEditorId: userId,
-          lastEditedAt: new Date()
+          status: decideStatus({ current: status, wroteLabels, complete: isComplete(done.get(id), activeIds) }),
+          lastEditorId: user.id,
+          lastEditedAt: now
         }
-        
         if (flagged !== undefined) {
           updateData.flagged = flagged
         }
-        
-        await tx.sentence.update({
-          where: { id: sentenceId },
-          data: updateData
-        })
+        await tx.sentence.update({ where: { id }, data: updateData })
       }
-    })
-    
-    if (normalizedAnnotations && normalizedAnnotations.length > 0) {
-      await prisma.taxonomy.update({
-        where: { id: taxonomy.id },
-        data: {
-          newAnnotationsSinceLastLearning: {
-            increment: normalizedAnnotations.length * sentenceIds.length
-          }
-        }
-      })
-    }
+      return current.length
+    }, { timeout: 60_000 })
 
     return NextResponse.json({
       ok: true,
-      labeled: sentenceIds.length,
-      message: `Successfully labeled ${sentenceIds.length} sentence(s)`
+      labeled,
+      message: `Successfully labeled ${labeled} sentence(s)`
     })
-    
-  } catch (caught) {
-    
-    const error = caught as CaughtError
+  } catch (error) {
+    if (error instanceof MissingRecordError) {
+      return NextResponse.json({ ok: false, error: 'One or more records do not exist' }, { status: 404 })
+    }
     console.error('Bulk label error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: error?.message || String(error) 
+    return NextResponse.json({
+      ok: false,
+      error: 'Bulk labelling failed'
     }, { status: 500 })
   }
 }
-

@@ -311,6 +311,40 @@ flag/comment-only requests do not complete records; invalid codes/paths are
 rejected; another taxonomy's labels survive; simultaneous writes have a defined
 outcome; labels, status, counters, and actor metadata stay consistent on failure.
 
+**Status (21 Oct 2026): done.** Decision: one human label set per taxonomy,
+saving replaces it (double annotation recorded in [ideas](../ideas.md); README
+claims corrected).
+
+- [x] `lib/label-path.ts`: one validator for both endpoints: string codes only
+      (numbers rejected), levels 1..N exactly once, within taxonomy depth, root
+      and parent-child links, ends in a leaf (legacy null `isLeaf` resolved from
+      children) or the level-specific unknown, which must be last. Mixed
+      taxonomies in one save are rejected.
+- [x] `lib/annotation-status.ts`: one status rule. Complete = every active
+      taxonomy has `source='user'` labels (AI suggestions never count; zero active
+      taxonomies = not complete). Skip/escalate are explicit. Flag/comment-only
+      saves never complete a record or take it out of skipped/escalated. Bulk no
+      longer sets `submitted` unconditionally.
+- [x] Concurrency: each save locks its records (`SELECT … FOR UPDATE`, id order
+      for bulk) so concurrent saves serialise and the last wins as a whole.
+      Stale-browser detection (optimistic versions) is not implemented: last
+      writer wins, by design for now.
+- [x] Unique `(sentenceId, taxonomyId, level)` constraint. The migration copies
+      any duplicates to `classiflow_backup."SentenceAnnotationDuplicate20261021"`
+      before keeping the newest row per key (verified on seeded duplicates).
+      Check that table after deploying; drop it once reviewed.
+- [x] Learning counter updated inside the label transaction; unit = label rows
+      of a *changed* path (identical re-saves no longer count).
+- [x] Tests: `lib/label-path.test.ts`, `lib/annotation-status.test.ts`,
+      `tests/integration/labeling.test.ts` (11 cases; 8 fail on the old routes).
+
+- [x] Read-only `scripts/label-integrity-report.sql` lists labels saved before
+      validation existed that break the rules (missing codes, gaps, broken
+      parents, non-leaf endings, submitted-but-incomplete) and the backup table.
+
+Not done: running that report on production and deciding on any repair (needs
+production access; do not auto-relabel).
+
 ## W06 Import, export, and taxonomy lifecycle
 
 **Priority:** P1. **Dependencies:** W01/W04; domain invariants W05.

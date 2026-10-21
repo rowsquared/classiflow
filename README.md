@@ -11,7 +11,7 @@ AI labeling and learning are handled by the separate Taxomind service (https://g
 ## Why classiflow
 
 - Faster classifications with AI-assisted suggestions reviewed by humans
-- Higher quality with review and double-annotation workflows
+- Higher quality with flags, comment threads and supervisor review (independent double annotation is [planned](docs/ideas.md))
 - Simple process management with assignments and progress tracking
 - Open-source and self-hosted so you stay in control
 
@@ -22,7 +22,7 @@ AI labeling and learning are handled by the separate Taxomind service (https://g
 - Optional AI suggestions and learning via Taxomind
 - Role-based access for admins, supervisors, and labellers
 - Progress analytics and team performance dashboards
-- Flexible workflows with assignments and sign-offs
+- Flexible workflows with assignments, skip and flag states
 
 ## Getting started
 

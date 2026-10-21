@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useMemo, useState } from 'react'
 
-type Node = { code: number; label: string; level: number; parentCode: number | null; isLeaf: boolean }
+type Node = { code: string; label: string; level: number; parentCode: string | null; isLeaf: boolean }
 
 export default function TaxonomyBrowser({ params }: { params: Promise<{ key: string }> }) {
   const [key, setKey] = useState<string>('')
