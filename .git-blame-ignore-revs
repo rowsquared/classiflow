@@ -1,0 +1,5 @@
+# Formatting-only commits; `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+# (GitHub applies this file automatically).
+
+# style: format the code with Prettier
+804c5d960e0dba388fdea82a8109872432368d3c
