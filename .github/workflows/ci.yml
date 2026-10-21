@@ -109,6 +109,8 @@ jobs:
         run: npm test
       - name: Lint
         run: npm run lint
+      - name: Formatting
+        run: npm run format:check
 
   integration:
     # Route handlers against a real PostgreSQL: access control, labelling rules,

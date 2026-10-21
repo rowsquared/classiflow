@@ -1,0 +1,11 @@
+# Generated
+lib/generated/
+lib/contracts/taxomind.openapi.*
+next-env.d.ts
+package-lock.json
+prisma/migrations/
+
+# Prose and config wrapped by hand
+*.md
+*.yml
+*.yaml
