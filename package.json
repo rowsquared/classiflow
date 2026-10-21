@@ -24,10 +24,10 @@
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "csv-parse": "^6.1.0",
+    "csv-parse": "7.0.3",
     "lucide-react": "^0.546.0",
     "next": "^15.5.6",
-    "next-auth": "5.0.0-beta.29",
+    "next-auth": "5.0.0-beta.32",
     "next-themes": "^0.4.6",
     "postcss": "^8.5.6",
     "prisma": "6.17.1",
@@ -49,6 +49,6 @@
     "eslint-config-next": "^15.5.6",
     "tailwind-merge": "^3.3.1",
     "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "4.1.12"
   }
 }
