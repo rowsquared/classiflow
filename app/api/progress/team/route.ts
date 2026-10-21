@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
 import { getVisibleUserIds } from '@/lib/access'
+import { computeAgreement } from '@/lib/metrics'
 
 /**
  * GET /api/progress/team?startDate=...&endDate=...
@@ -134,7 +135,7 @@ export async function GET(req: NextRequest) {
         ? Math.round(labelingTimes[0].median_seconds) 
         : null
 
-      // AI agreement for this user in period
+      // AI agreement for this user in period (lib/metrics.ts)
       const userAnnotations = await prisma.sentenceAnnotation.findMany({
         where: {
           createdById: member.id,
@@ -144,43 +145,13 @@ export async function GET(req: NextRequest) {
           },
           source: 'user'
         },
-        select: {
-          sentenceId: true,
-          level: true,
-          nodeCode: true
-        }
+        select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
       })
-
-      const aiAnnotations = await prisma.sentenceAnnotation.findMany({
-        where: {
-          sentenceId: { in: userAnnotations.map(a => a.sentenceId) },
-          source: 'ai'
-        },
-        select: {
-          sentenceId: true,
-          level: true,
-          nodeCode: true
-        }
+      const suggestions = userAnnotations.length === 0 ? [] : await prisma.sentenceAISuggestion.findMany({
+        where: { sentenceId: { in: Array.from(new Set(userAnnotations.map(a => a.sentenceId))) } },
+        select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
       })
-
-      let aiAgreementMatches = 0
-      let aiAgreementTotal = 0
-
-      for (const userAnn of userAnnotations) {
-        const correspondingAi = aiAnnotations.find(
-          ai => ai.sentenceId === userAnn.sentenceId && ai.level === userAnn.level
-        )
-        if (correspondingAi) {
-          aiAgreementTotal++
-          if (correspondingAi.nodeCode === userAnn.nodeCode) {
-            aiAgreementMatches++
-          }
-        }
-      }
-
-      const aiAgreementRate = aiAgreementTotal > 0
-        ? Math.round((aiAgreementMatches / aiAgreementTotal) * 100)
-        : null
+      const { rate: aiAgreementRate, total: aiAgreementTotal } = computeAgreement(userAnnotations, suggestions)
 
       return {
         id: member.id,

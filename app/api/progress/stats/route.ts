@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { requireSession } from '@/lib/api-auth'
 import { getVisibleUserIds } from '@/lib/access'
+import { computeAgreement } from '@/lib/metrics'
 import { UNKNOWN_NODE_CODE_SET } from '@/lib/constants'
 
 /**
@@ -108,109 +109,35 @@ export async function GET(req: NextRequest) {
       ? Math.ceil(remainingSentences / velocityCurrent)
       : null
 
-    // 3. AI AGREEMENT RATE
-    // Get annotations where both AI and user exist for the same sentence/level
+    // Human labels made in the period by the visible users (unknown-rate section)
     const annotationWhere: Prisma.SentenceAnnotationWhereInput = {
-      createdAt: {
-        gte: start,
-        lte: end
-      }
-    }
-    
-    if (visibleUserIds.length > 0) {
-      annotationWhere.createdById = { in: visibleUserIds }
+      createdAt: { gte: start, lte: end },
+      source: 'user',
+      ...(visibleUserIds.length > 0 ? { createdById: { in: visibleUserIds } } : {})
     }
 
-    const userAnnotations = await prisma.sentenceAnnotation.findMany({
-      where: {
-        ...annotationWhere,
-        source: 'user'
-      },
-      select: {
-        sentenceId: true,
-        level: true,
-        nodeCode: true
-      }
-    })
-
-    const aiAnnotations = await prisma.sentenceAnnotation.findMany({
-      where: {
-        sentenceId: { in: userAnnotations.map(a => a.sentenceId) },
-        source: 'ai'
-      },
-      select: {
-        sentenceId: true,
-        level: true,
-        nodeCode: true
-      }
-    })
-
-    let aiAgreementMatches = 0
-    let aiAgreementTotal = 0
-
-    for (const userAnn of userAnnotations) {
-      const correspondingAi = aiAnnotations.find(
-        ai => ai.sentenceId === userAnn.sentenceId && ai.level === userAnn.level
-      )
-      if (correspondingAi) {
-        aiAgreementTotal++
-        if (correspondingAi.nodeCode === userAnn.nodeCode) {
-          aiAgreementMatches++
-        }
-      }
-    }
-
-    const aiAgreementRate = aiAgreementTotal > 0
-      ? Math.round((aiAgreementMatches / aiAgreementTotal) * 100)
-      : null
-
-    // Same for previous period
-    const userAnnotationsPrev = await prisma.sentenceAnnotation.findMany({
-      where: {
-        createdAt: {
-          gte: prevStart,
-          lte: prevEnd
+    // 3. AI AGREEMENT RATE (lib/metrics.ts): human labels made in the period
+    // vs the AI suggestion for the same record, taxonomy and level.
+    const agreementFor = async (from: Date, to: Date) => {
+      const humanLabels = await prisma.sentenceAnnotation.findMany({
+        where: {
+          createdAt: { gte: from, lte: to },
+          source: 'user',
+          ...(visibleUserIds.length > 0 ? { createdById: { in: visibleUserIds } } : {})
         },
-        ...(visibleUserIds.length > 0 ? { createdById: { in: visibleUserIds } } : {}),
-        source: 'user'
-      },
-      select: {
-        sentenceId: true,
-        level: true,
-        nodeCode: true
-      }
-    })
-
-    const aiAnnotationsPrev = await prisma.sentenceAnnotation.findMany({
-      where: {
-        sentenceId: { in: userAnnotationsPrev.map(a => a.sentenceId) },
-        source: 'ai'
-      },
-      select: {
-        sentenceId: true,
-        level: true,
-        nodeCode: true
-      }
-    })
-
-    let aiAgreementMatchesPrev = 0
-    let aiAgreementTotalPrev = 0
-
-    for (const userAnn of userAnnotationsPrev) {
-      const correspondingAi = aiAnnotationsPrev.find(
-        ai => ai.sentenceId === userAnn.sentenceId && ai.level === userAnn.level
-      )
-      if (correspondingAi) {
-        aiAgreementTotalPrev++
-        if (correspondingAi.nodeCode === userAnn.nodeCode) {
-          aiAgreementMatchesPrev++
-        }
-      }
+        select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
+      })
+      const suggestions = humanLabels.length === 0 ? [] : await prisma.sentenceAISuggestion.findMany({
+        where: { sentenceId: { in: Array.from(new Set(humanLabels.map(a => a.sentenceId))) } },
+        select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
+      })
+      return computeAgreement(humanLabels, suggestions)
     }
-
-    const aiAgreementRatePrev = aiAgreementTotalPrev > 0
-      ? Math.round((aiAgreementMatchesPrev / aiAgreementTotalPrev) * 100)
-      : null
+    const agreement = await agreementFor(start, end)
+    const agreementPrev = await agreementFor(prevStart, prevEnd)
+    const aiAgreementRate = agreement.rate
+    const aiAgreementTotal = agreement.total
+    const aiAgreementRatePrev = agreementPrev.rate
 
     // 4. MEDIAN LABELING TIME (excluding outliers > 30 min)
     const labelingTimes = visibleUserIds.length > 0

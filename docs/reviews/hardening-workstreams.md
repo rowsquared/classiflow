@@ -523,6 +523,25 @@ Health constructs a separate Prisma client and disconnects after each probe.
 date-boundary fixtures; queue/count/detail visibility agrees; performance changes
 show before/after results at agreed sizes without stale data or scope leakage.
 
+**Status (21 Oct 2026): correctness fixed; tuning open.**
+
+- [x] AI agreement (progress stats and team) now compares human labels with
+      `SentenceAISuggestion` on record + taxonomy + level (`lib/metrics.ts`,
+      map lookup instead of repeated array scans). Previously it read legacy
+      `SentenceAnnotation(source='ai')` rows that current monitors never write,
+      so it was effectively always empty. Definition: current suggestion vs
+      current label (no suggestion history). Integration test added.
+- [x] Unknown-rate metric counts human labels only.
+- [x] Queue, stats, detail, assignments and progress share one visibility rule
+      (W01); progress date params validated.
+- [x] New/replaced taxonomies get `isLeaf` at import (W06), removing the
+      per-node child-count fallback for them.
+- [x] Health probe uses the shared Prisma client, no per-probe disconnect, and
+      no longer returns the error message.
+- [ ] Team metrics still query per member; queue loads full comment bodies;
+      export is built in memory. Needs representative data and agreed budgets
+      before tuning (`EXPLAIN ANALYZE` on an isolated copy).
+
 ## W09 UI state and accessibility
 
 **Priority:** P2. **Dependencies:** stable API contracts from W01/W05/W08.
