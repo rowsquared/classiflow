@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatDateTime } from '@/lib/utils'
+import Modal from '@/components/Modal'
 
 export type SentenceImport = {
   id: string
@@ -258,7 +259,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
       </div>
 
       {deleteModalOpen && selectedImport && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+        <Modal label="Delete import" onClose={() => { setDeleteModalOpen(false); setConfirmText(''); setSelectedImport(null) }} className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8">
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Import</h3>
             <p className="text-sm text-gray-600 mb-4">
@@ -301,7 +302,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )

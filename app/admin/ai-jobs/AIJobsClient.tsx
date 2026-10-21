@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatRelativeTime } from '@/lib/utils'
 import { CheckCircle2, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react'
+import Modal from '@/components/Modal'
 
 export type AIJob = {
   id: string
@@ -348,10 +349,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
       {/* Job Detail Modal */}
       {showDetailModal && selectedJob && (
-        <div
-          className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
-          onClick={() => setShowDetailModal(false)}
-        >
+        <Modal label="Job details" onClose={() => setShowDetailModal(false)} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50" closeOnOverlayClick>
           <div
             className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -454,7 +452,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
               )}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

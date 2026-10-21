@@ -8,6 +8,7 @@ import PaginationControls from '@/components/queue/PaginationControls'
 import BulkLabelPanel from '@/components/queue/BulkLabelPanel'
 import AssignmentModal from '@/components/queue/AssignmentModal'
 import { ToastContainer, type Toast } from '@/components/Toast'
+import { createLatestRequest, isAbortError } from '@/lib/latest-request'
 
 export type Sentence = {
   id: string
@@ -147,6 +148,8 @@ export default function QueuePageClient({
     })
   }, [])
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'submitted' | 'skipped'>('pending')
+  // What the user types, and the debounced value that queries the server.
+  const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [bulkLabelOpen, setBulkLabelOpen] = useState(false)
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
@@ -156,6 +159,10 @@ export default function QueuePageClient({
   const [stats, setStats] = useState<Stats>(initialStats)
   const [taxonomies] = useState<Taxonomy[]>(initialTaxonomies)
   const [loading, setLoading] = useState(false)
+  // Set when the last queue request failed; the previous results stay visible.
+  const [queueError, setQueueError] = useState<string | null>(null)
+  const queueRequest = useRef(createLatestRequest())
+  const statsRequest = useRef(createLatestRequest())
   const [canAssign] = useState(initialCanAssign)
   const [users] = useState<QueueUser[]>(initialUsers)
   const skipInitialQueueFetch = useRef(initialQueue !== null)
@@ -191,6 +198,7 @@ export default function QueuePageClient({
 
   // Fetch stats with current filters applied
   const fetchStats = useCallback(async () => {
+    const request = statsRequest.current.start()
     try {
       const params = new URLSearchParams()
       
@@ -226,13 +234,13 @@ export default function QueuePageClient({
         if (value) params.set(key, value)
       })
       
-      const res = await fetch(`/api/sentences/stats?${params}`)
+      const res = await fetch(`/api/sentences/stats?${params}`, { signal: request.signal })
       if (!res.ok) {
         // Silently ignore transient failures — stats will refresh on next cycle
         return
       }
       const data = await res.json()
-      if (data.ok) {
+      if (data.ok && request.isCurrent()) {
         setStats(data.stats)
       }
     } catch {
@@ -251,6 +259,7 @@ export default function QueuePageClient({
 
   // Fetch sentences
   const fetchQueue = useCallback(async () => {
+    const request = queueRequest.current.start()
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -300,20 +309,23 @@ export default function QueuePageClient({
       params.set('sort', 'createdAt')
       params.set('order', 'asc')
 
-      const res = await fetch(`/api/sentences?${params}`)
+      const res = await fetch(`/api/sentences?${params}`, { signal: request.signal })
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`)
       }
       const data = await res.json()
+      if (!request.isCurrent()) return
       setQueue(data)
+      setQueueError(null)
     } catch (error) {
+      // A newer request replaced this one: its outcome no longer matters.
+      if (isAbortError(error) || !request.isCurrent()) return
       console.error('Failed to fetch queue:', error)
-      setQueue({
-        sentences: [],
-        pagination: { page: 1, limit: pageSize, total: 0, pages: 0 }
-      })
+      // Keep the last good results on screen and say they could not be refreshed,
+      // instead of showing an empty queue that looks like "no records".
+      setQueueError('Could not load records. The list below may be out of date.')
     } finally {
-      setLoading(false)
+      if (request.isCurrent()) setLoading(false)
     }
   }, [searchQuery, activeTab, filters, page, pageSize])
 
@@ -326,12 +338,41 @@ export default function QueuePageClient({
   }, [fetchQueue])
 
   // Auto-refresh polling (every 30 seconds)
+  // Skipped while the tab is hidden; refreshes as soon as it is visible again.
   useEffect(() => {
     const interval = setInterval(() => {
-      setLastRefresh(Date.now())
+      if (document.visibilityState === 'visible') setLastRefresh(Date.now())
     }, 30000)
-    
-    return () => clearInterval(interval)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setLastRefresh(Date.now())
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
+  // Debounce typing: one request when the user pauses, not one per keystroke.
+  useEffect(() => {
+    if (searchInput === searchQuery) return
+    const timeout = setTimeout(() => {
+      setSearchQuery(searchInput)
+      setPage(1)
+      setSelectedIds(new Set())
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [searchInput, searchQuery])
+
+  // Abandon in-flight requests when leaving the page.
+  useEffect(() => {
+    const queue = queueRequest.current
+    const stats = statsRequest.current
+    return () => {
+      queue.cancel()
+      stats.cancel()
+    }
   }, [])
 
   // Handle tab change
@@ -351,6 +392,7 @@ export default function QueuePageClient({
   // Handle filter reset
   const handleResetFilters = () => {
     setFilters(DEFAULT_FILTERS)
+    setSearchInput('')
     setSearchQuery('')
     setPage(1)
     setSelectedIds(new Set())
@@ -358,9 +400,7 @@ export default function QueuePageClient({
 
   // Handle search
   const handleSearch = (query: string) => {
-    setSearchQuery(query)
-    setPage(1)
-    setSelectedIds(new Set())
+    setSearchInput(query)
   }
 
   // Handle selection
@@ -513,7 +553,7 @@ export default function QueuePageClient({
         <div className="relative flex-1 flex flex-col overflow-hidden bg-white">
           {/* Toolbar */}
           <QueueToolbar
-            searchQuery={searchQuery}
+            searchQuery={searchInput}
             onSearchChange={handleSearch}
             stats={stats}
             onToggleFilters={toggleFilterPanel}
@@ -546,6 +586,18 @@ export default function QueuePageClient({
 
           {/* Table */}
           <div className={`flex-1 overflow-auto ${someSelected ? 'pb-20' : ''}`}>
+            {queueError && (
+              <div role="alert" className="m-4 flex items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <span>{queueError}</span>
+                <button
+                  type="button"
+                  onClick={() => fetchQueue()}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {loading ? (
               <div className="p-12 text-center text-gray-600">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -566,6 +618,7 @@ export default function QueuePageClient({
                   type="checkbox"
                   checked={allSelected}
                   onChange={(e) => handleSelectAll(e.target.checked)}
+                  aria-label="Select all records on this page"
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
                 />
                       </th>

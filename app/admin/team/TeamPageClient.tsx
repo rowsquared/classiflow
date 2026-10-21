@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import PageHeader from '@/components/PageHeader'
+import Modal from '@/components/Modal'
 
 export type User = {
   id: string
@@ -296,7 +297,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
 
       {/* Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <Modal label="Create new user" onClose={() => setShowCreateModal(false)} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Create New User</h2>
             
@@ -399,12 +400,12 @@ export default function TeamPageClient({ initialUsers }: Props) {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <Modal label="Edit user" onClose={() => { setShowEditModal(false); setSelectedUser(null) }} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Edit User</h2>
             
@@ -516,7 +517,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

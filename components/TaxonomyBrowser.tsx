@@ -671,6 +671,7 @@ export default function TaxonomyBrowser({
                           handleChipDelete(label)
                         }}
                         className={`ml-2 rounded-full w-4 h-4 flex items-center justify-center ${colors.chipDelete}`}
+                        aria-label={`Remove label ${label.nodeCode}`}
                       >
                         ×
                       </button>
@@ -699,6 +700,7 @@ export default function TaxonomyBrowser({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={`Search ${taxonomy?.key || 'taxonomy'}`}
+            aria-label={`Search ${taxonomy?.key || 'taxonomy'}`}
             className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
           />
           {searchQuery && (
@@ -706,6 +708,7 @@ export default function TaxonomyBrowser({
               onClick={() => setSearchQuery('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 w-5 h-5 flex items-center justify-center"
               title="Clear search"
+              aria-label="Clear search"
             >
               ×
             </button>
@@ -790,8 +793,18 @@ export default function TaxonomyBrowser({
               const nodeContent = (
                 <div
                   key={node.code}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSelected}
                   onClick={() => handleNodeClick(node)}
-                  className={`px-4 py-3 cursor-pointer transition-colors border-b border-gray-100 ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleNodeClick(node)
+                    }
+                  }}
+                  className={`px-4 py-3 cursor-pointer transition-colors border-b border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
                     isSelected 
                       ? colors.selectedBg
                       : colors.hoverBg

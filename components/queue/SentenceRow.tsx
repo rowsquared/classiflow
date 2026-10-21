@@ -219,6 +219,7 @@ export default function SentenceRow({
           type="checkbox"
           checked={selected}
           onChange={(e) => onSelect(e.target.checked)}
+          aria-label={`Select record: ${sentence.field1}`}
           className="w-4 h-4 rounded border-gray-300 text-[#008080] focus:ring-2 focus:ring-[#008080] focus:ring-offset-0 cursor-pointer"
         />
       </td>

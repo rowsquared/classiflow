@@ -56,6 +56,7 @@ export function ToastItem({ toast, onClose }: ToastProps) {
       <div className="flex-1 text-sm">{toast.message}</div>
       <button
         onClick={() => onClose(toast.id)}
+        aria-label="Dismiss notification"
         className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
       >
         <X className="w-4 h-4" />
@@ -73,7 +74,7 @@ export function ToastContainer({ toasts, onClose }: ToastContainerProps) {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2" role="status" aria-live="polite">
       {toasts.map(toast => (
         <ToastItem key={toast.id} toast={toast} onClose={onClose} />
       ))}

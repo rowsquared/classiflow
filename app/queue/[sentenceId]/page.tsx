@@ -6,6 +6,7 @@ import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '@/components
 import ResizablePanel from '@/components/ResizablePanel'
 import { formatFieldName } from '@/lib/utils'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
+import Modal from '@/components/Modal'
 
 type Sentence = {
   id: string
@@ -556,6 +557,12 @@ export default function LabelingPage() {
   useEffect(() => {
     handleKeyPressRef.current = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.target instanceof HTMLElement) {
+        // Shortcuts are for the labeling screen, not for an open dialog.
+        if (e.target.closest('[role="dialog"]')) return
+        // Enter on a focused control activates that control, not Submit.
+        if (e.key === 'Enter' && e.target.closest('button, a, select, [role="button"]')) return
+      }
       
       switch (e.key.toLowerCase()) {
         case 'c':
@@ -924,13 +931,14 @@ export default function LabelingPage() {
 
       {/* Comment Dialog */}
       {showCommentDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <Modal label="Comments" onClose={() => setShowCommentDialog(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-[32rem] max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900">Comments</h3>
               <button
                 onClick={() => setShowCommentDialog(false)}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close comments"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1059,7 +1067,7 @@ export default function LabelingPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )

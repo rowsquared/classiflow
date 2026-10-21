@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Modal from '@/components/Modal'
 
 type User = {
   id: string
@@ -170,7 +171,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <Modal label="Manage assignments" onClose={onClose} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -182,6 +183,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Close"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -296,6 +298,6 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }

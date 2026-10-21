@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '../TaxonomyBrowser'
 import ResizablePanel from '../ResizablePanel'
+import { useDialog } from '../Modal'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
 
 interface BulkLabelPanelProps {
@@ -11,6 +12,7 @@ interface BulkLabelPanelProps {
 }
 
 export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: BulkLabelPanelProps) {
+  const dialog = useDialog(onClose, 'Bulk label')
   const [taxonomies, setTaxonomies] = useState<Taxonomy[]>([])
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([])
@@ -229,7 +231,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
 
   if (taxonomies.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div {...dialog} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 focus:outline-none">
         <div className="bg-white p-6 rounded-lg">
           <div className="text-gray-900">Loading taxonomies...</div>
         </div>
@@ -246,7 +248,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       />
 
       {/* Slide-in Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 flex" style={{ width: '100vw', pointerEvents: 'none' }}>
+      <div {...dialog} className="fixed inset-y-0 right-0 z-50 flex focus:outline-none" style={{ width: '100vw', pointerEvents: 'none' }}>
         <div className="flex-1" style={{ pointerEvents: 'none' }} />
         <ResizablePanel
           defaultWidth={50}

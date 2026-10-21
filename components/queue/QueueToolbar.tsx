@@ -46,6 +46,7 @@ export default function QueueToolbar({
             <input
               type="text"
               placeholder="Search sentences..."
+              aria-label="Search records"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
