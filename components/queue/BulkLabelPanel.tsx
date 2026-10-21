@@ -1,4 +1,5 @@
 "use client"
+import { workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect } from 'react'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '../TaxonomyBrowser'
 import ResizablePanel from '../ResizablePanel'
@@ -37,7 +38,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   useEffect(() => {
     const loadTaxonomies = async () => {
       try {
-        const res = await fetch('/api/taxonomies/active')
+        const res = await fetch(workspaceApi('/taxonomies/active'))
         if (!res.ok) throw new Error('Failed to fetch taxonomies')
         const data = await res.json()
         if (data.ok && data.taxonomies.length > 0) {
@@ -110,7 +111,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
     // Save flag state immediately for all sentences
     try {
       const responses = await Promise.all(sentenceIds.map(id =>
-        fetch(`/api/sentences/${id}/annotations`, {
+        fetch(workspaceApi(`/sentences/${id}/annotations`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -145,7 +146,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       // Update all sentences to skipped status
       // Note: flags and comments are already saved immediately when clicked/entered
       for (const id of sentenceIds) {
-        await fetch(`/api/sentences/${id}/annotations`, {
+        await fetch(workspaceApi(`/sentences/${id}/annotations`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -199,7 +200,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
         payload.annotations = annotations
       }
       
-      const res = await fetch('/api/sentences/bulk-label', {
+      const res = await fetch(workspaceApi('/sentences/bulk-label'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -418,7 +419,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
                     try {
                       // Save comment to all selected sentences immediately
                       const responses = await Promise.all(sentenceIds.map(id =>
-                        fetch(`/api/sentences/${id}/comments`, {
+                        fetch(workspaceApi(`/sentences/${id}/comments`), {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ body: comment.trim() })

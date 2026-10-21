@@ -5,6 +5,100 @@ implemented. **Reviewed baseline:** classiflow `fae270f`; SurveyHub `4bfe9bc`.
 The modernization work is concurrent: recheck its landed code before starting
 implementation. This document does not change that workstream's files.
 
+## Implementation status (handover, 21 October 2026)
+
+Work in progress on branch `feat/workspace-isolation` (not merged; `staging`
+is green without it). Built on the landed modernization (Next 16, Prisma 7,
+Better Auth, `lib/server/*`).
+
+**Done (server side, typechecks):**
+
+- **P1 schema:** `prisma/schema.prisma` and the baseline migration
+  `20261021120000_init` (still a fresh start, so folded into it): `Workspace`,
+  `WorkspaceMembership` (role, status, same-workspace supervisor tree, unique
+  `(workspaceId, userId)`), global `User.role` is now the platform role
+  (`admin | user`, also Better Auth's admin-plugin role), `workspaceId` on every
+  workspace table, composite `(workspaceId, id)` foreign keys (synonym → node
+  also by taxonomy), `Sentence.recordKey` unique per workspace (CSV `id`, or a
+  generated UUID), taxonomy keys unique per workspace, assignments reference
+  memberships, `AuditLog.workspaceId` (null = platform event).
+- **Row security:** policies on all workspace tables and `AuditLog`,
+  `app_current_workspace()` from the transaction-local `app.workspace_id`,
+  `app_recoverable_ai_jobs()` (SECURITY DEFINER, ids only, granted to the
+  runtime role by `scripts/db-runtime-role.ts`). Policies are enabled, not
+  forced: the schema owner (migrations, recovery function) is exempt; the
+  runtime role is bound.
+- **Scoped access, three layers:** `lib/workspace/db.ts` — `withWorkspace()`
+  opens a transaction, sets `app.workspace_id`, takes a share lock on an active
+  workspace for writes, exposes `db()` via AsyncLocalStorage and runs
+  `afterCommit()` callbacks; a Prisma query extension adds `workspaceId` to
+  every query and create on workspace models (so superuser dev/test databases
+  behave like production); plus composite FKs and RLS.
+- **P2 authorization:** `lib/api-auth.ts` — `requireSession()` (identity +
+  platform role), `requirePlatformAdmin()`, `requireWorkspace(id, ...roles)`
+  (404 for inaccessible workspaces, platform admins act as admin with
+  authority `platform`), `reloadWorkspaceUser()`, and `workspaceRoute(roles,
+  handler, { transaction, timeoutMs })` which runs a handler in its workspace
+  transaction and refuses writes on archived workspaces (409).
+  `lib/access.ts` works on memberships; admins no longer skip record checks.
+  `lib/user-rules.ts`: workspace supervisor validation, advisory-locked
+  last-admin checks for workspaces and the platform.
+- **P3 routes:** all data APIs moved to `/api/workspaces/[workspaceId]/…`
+  (sentences, taxonomies, imports, export, progress, ai-labeling, ai-jobs,
+  audit, users = members). The API keeps speaking user ids; memberships are
+  internal. Export streams in short re-authorised transactions per page and
+  exports `recordKey` as `id`. AI jobs launch after commit; the monitor runs
+  every step in the job's workspace and sends `sourceSlug =
+  AI_SOURCE_SLUG--<workspaceId>` (`aiSourceSlug()`, AI_SOURCE_SLUG now
+  required with AI). Taxonomy AI sync uses short transactions around the HTTP
+  call. Taxonomy creation is serialised per workspace (advisory lock, limit
+  of three per workspace).
+- **Control plane:** `/api/workspaces` (accessible list; platform admins
+  create with a first admin), `/api/workspaces/[id]` (rename, archive/reopen —
+  archival takes an exclusive lock and cancels active AI jobs),
+  `/api/users[/id]` = platform account administration (platform role,
+  temporary password, ban, delete with FK-based 409). Workspace admins may
+  reset password/name only for accounts that belong to their workspace alone
+  and never signed in; adding an existing account is platform-admin only
+  until invitations exist (user-management U7b).
+
+- **P5 pages (first cut):** pages under `app/w/[workspaceId]/` with a
+  workspace layout (access check per request, 404 otherwise, archived
+  banner, `WorkspaceProvider`, sidebar with workspace name/role and "Switch
+  workspace"); `/` sends single-workspace users to their queue, others to
+  `/workspaces` (chooser; platform admins create workspaces there). Server
+  pages load through `lib/server/*` inside `withWorkspace()`. Client calls use
+  `workspaceApi()` / `workspaceHref()` / `useWorkspacePaths()`
+  (`lib/workspace/urls.ts`); roles in the UI come from the workspace, not the
+  session. App code typechecks.
+
+- **Tests:** the integration suites run on explicit workspaces
+  (`createWorkspace()`/`selectWorkspace()`, `createUser()` adds a membership,
+  `params()` adds the workspace, `inWorkspace()` for direct inserts). New:
+  `workspace-isolation.test.ts` (same taxonomy key in two workspaces, 404 for
+  non-members, foreign record ids refused, mixed bulk requests refused,
+  per-workspace roles, platform admins, archived = read-only) and a row
+  security test against the real runtime role in `db-runtime-role.test.ts`.
+  67 integration, 42 unit and 10 browser tests pass locally; typecheck,
+  lint (0 errors) and the production build pass.
+
+**Not done yet (next steps, in order):**
+
+1. ~~e2e~~ done: the seed creates workspace `e2e-workspace`; all 10
+   journeys pass against a production build.
+2. **Run the integration app client as the runtime role** (today only the
+   dedicated RLS test does), so every suite exercises row security.
+3. **UI polish:** Team page shows member status and suspended members
+   (API returns `status`), platform-only actions (adding existing accounts,
+   password reset for shared accounts) are not surfaced yet; a platform
+   accounts page (`/api/users`) has no UI yet.
+4. **Docs:** AGENTS.md, docs/security.md (access matrix by workspace role),
+   ENV_SETUP (AI_SOURCE_SLUG required with AI), DEPLOYMENT (runtime role
+   mandatory in production, RLS), user-management plan rework (see below).
+5. Later packages: P4 invitations (with user management U7), P6 per-workspace
+   AI connections and job input tables, P7 lifecycle polish. External AI
+   cancellation on archive is not sent yet.
+
 ## Recommendation and agreed requirements
 
 Add **Workspaces** to one classiflow deployment. A workspace is an independently

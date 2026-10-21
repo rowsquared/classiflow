@@ -42,7 +42,7 @@ describe('least-privilege runtime database role', () => {
 
   it('reads, writes and locks application rows', async () => {
     const user = await app.user.create({
-      data: { username: 'rt', email: 'rt@test.local', name: 'rt', role: 'labeller' },
+      data: { username: 'rt', email: 'rt@test.local', name: 'rt', role: 'user' },
     })
     await app.user.update({ where: { id: user.id }, data: { name: 'renamed' } })
     // Annotation saves lock records with SELECT ... FOR UPDATE.
@@ -56,6 +56,38 @@ describe('least-privilege runtime database role', () => {
     await expect(app.$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN intruder int')).rejects.toThrow(PERMISSION_DENIED)
     await expect(app.$executeRawUnsafe('DROP TABLE "Comment"')).rejects.toThrow(PERMISSION_DENIED)
     await expect(app.$executeRawUnsafe('TRUNCATE TABLE "User" CASCADE')).rejects.toThrow(PERMISSION_DENIED)
+  })
+
+  it('sees workspace rows only inside a transaction opened for that workspace', async () => {
+    // Two workspaces with one record each, written as the owner.
+    const [w1, w2] = await Promise.all(['RLS 1', 'RLS 2'].map(name => prisma.workspace.create({ data: { name } })))
+    for (const w of [w1, w2]) {
+      const imp = await prisma.sentenceImport.create({ data: { workspaceId: w.id, fileName: 'x.csv', totalRows: 1 } })
+      await prisma.sentence.create({
+        data: { workspaceId: w.id, recordKey: '1', importId: imp.id, importOrder: 1, field1: 'x', fieldMapping: {} },
+      })
+    }
+    const count = () => app.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM "Sentence"`
+
+    // No workspace context: nothing is visible, and nothing can be written.
+    expect((await count())[0]?.n).toBe(0n)
+    await expect(app.$executeRaw`
+      INSERT INTO "SentenceImport" (id, "workspaceId", "fileName", "totalRows") VALUES ('x', ${w1.id}, 'x', 0)`
+    ).rejects.toThrow(/row-level security/)
+
+    // Inside w1's transaction: w1's record only, and no write into w2.
+    await app.$transaction(async tx => {
+      await tx.$executeRaw`SELECT set_config('app.workspace_id', ${w1.id}, true)`
+      const rows = await tx.$queryRaw<Array<{ workspaceId: string }>>`SELECT "workspaceId" FROM "Sentence"`
+      expect(rows).toEqual([{ workspaceId: w1.id }])
+    })
+    await expect(app.$transaction(async tx => {
+      await tx.$executeRaw`SELECT set_config('app.workspace_id', ${w1.id}, true)`
+      await tx.$executeRaw`UPDATE "Sentence" SET "workspaceId" = ${w2.id}`
+    })).rejects.toThrow(/row-level security/)
+
+    // The setting is transaction-local: a reused connection forgets it.
+    expect((await count())[0]?.n).toBe(0n)
   })
 
   it('cannot read or rewrite the migration history', async () => {

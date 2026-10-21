@@ -2,7 +2,6 @@ import '../styles/globals.css'
 import type { ReactNode } from 'react'
 import Script from 'next/script'
 import { headers } from 'next/headers'
-import Sidebar from '@/components/Sidebar'
 import { Inter } from 'next/font/google'
 
 const inter = Inter({
@@ -53,12 +52,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             `,
           }}
         />
-        <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-auto bg-white">
-            {children}
-          </main>
-        </div>
+        {/* Workspace pages add the sidebar (app/w/[workspaceId]/layout.tsx). */}
+        {children}
       </body>
     </html>
   )

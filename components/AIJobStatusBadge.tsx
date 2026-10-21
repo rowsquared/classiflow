@@ -1,7 +1,8 @@
 'use client'
+import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useSession } from '@/lib/auth-client'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { Loader2, CheckCircle2, XCircle, Clock, X } from 'lucide-react'
 import Link from 'next/link'
 
@@ -24,13 +25,15 @@ type AIJob = {
 }
 
 export default function AIJobStatusBadge() {
-  const { data: session } = useSession()
+  const workspace = useWorkspaceInfo()
+  const { href } = useWorkspacePaths()
   const [jobs, setJobs] = useState<AIJob[]>([])
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const isAdmin = session?.user && session.user.role === 'admin'
+  // Admins of the current workspace only; nothing outside a workspace.
+  const isAdmin = workspace?.role === 'admin'
 
   // Poll for jobs (active + recently finished)
   useEffect(() => {
@@ -38,7 +41,7 @@ export default function AIJobStatusBadge() {
 
     const fetchJobs = async () => {
       try {
-        const res = await fetch('/api/ai-jobs/active')
+        const res = await fetch(workspaceApi('/ai-jobs/active'))
         if (res.ok) {
           const data = await res.json()
           if (data.ok && data.jobs) {
@@ -153,7 +156,7 @@ export default function AIJobStatusBadge() {
   const handleCancelJob = async (job: AIJob) => {
     if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') return
     try {
-      const res = await fetch(`/api/ai-jobs/${job.id}/cancel`, {
+      const res = await fetch(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: job.type })
@@ -163,7 +166,7 @@ export default function AIJobStatusBadge() {
         throw new Error(data.error || 'Failed to cancel job')
       }
       // Refresh immediately
-      const activeRes = await fetch('/api/ai-jobs/active')
+      const activeRes = await fetch(workspaceApi('/ai-jobs/active'))
       if (activeRes.ok) {
         const activeData = await activeRes.json()
         if (activeData.ok) setJobs(activeData.jobs || [])
@@ -196,7 +199,7 @@ export default function AIJobStatusBadge() {
                 {activeCount > 0 ? 'Active AI Jobs' : 'Recent AI Jobs'}
               </h3>
               <Link
-                href="/admin/ai-jobs"
+                href={href('/admin/ai-jobs')}
                 className="text-sm text-indigo-600 hover:text-indigo-700"
                 onClick={() => setShowDropdown(false)}
               >

@@ -46,7 +46,7 @@ labelling; AI features stay disabled. They are set together or not at all.
 | --- | --- | --- | --- | --- |
 | `AI_LABELING_API_URL` | for AI | unset | no | Taxomind base URL, including any path prefix such as `/api` |
 | `AI_LABELING_API_KEY` | for AI | unset | yes | Bearer token for Taxomind |
-| `AI_SOURCE_SLUG` | no | empty: Taxomind infers it from the request host | no | Scopes taxonomy keys per deployment, e.g. `classiflow-app-rowsquared` for `https://classiflow.app.rowsquared.org` |
+| `AI_SOURCE_SLUG` | yes, with AI | none | no | Deployment namespace for Taxomind, e.g. `classiflow-app-rowsquared`. Each workspace uses `<AI_SOURCE_SLUG>--<workspaceId>`, so workspaces never share a model; staging and production need different values |
 | `AI_LABELING_BATCH_SIZE` | no | 1000 / 100 | no | Records per labelling job |
 | `AI_LEARNING_BATCH_SIZE` | no | 100 / 100 | no | Records per learning job |
 | `AI_LEARNING_MIN_NEW_ANNOTATIONS` | no | 500 / 500 | no | New human labels needed before learning can start |

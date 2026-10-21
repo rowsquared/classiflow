@@ -1,4 +1,5 @@
 'use client'
+import { workspaceApi } from '@/lib/workspace/urls'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Modal from '@/components/Modal'
@@ -29,8 +30,8 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     try {
       // Fetch users and current assignments in parallel
       const [usersRes, assignRes] = await Promise.all([
-        fetch('/api/users'),
-        fetch(`/api/sentences/assign?sentenceIds=${sentenceIds.join(',')}`)
+        fetch(workspaceApi('/users')),
+        fetch(workspaceApi(`/sentences/assign?sentenceIds=${sentenceIds.join(',')}`))
       ])
 
       if (usersRes.ok) {
@@ -103,7 +104,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       // Add new assignments
       if (toAdd.length > 0) {
         promises.push(
-          fetch('/api/sentences/assign', {
+          fetch(workspaceApi('/sentences/assign'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toAdd })
@@ -114,7 +115,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       // Remove assignments
       if (toRemove.length > 0) {
         promises.push(
-          fetch('/api/sentences/assign', {
+          fetch(workspaceApi('/sentences/assign'), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toRemove })

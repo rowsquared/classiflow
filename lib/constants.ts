@@ -27,4 +27,15 @@ export const AI_JOB_POLL_INTERVAL_MS = parseInt(process.env.AI_JOB_POLL_INTERVAL
 export const AI_JOB_POLL_TIMEOUT_MS = parseInt(process.env.AI_JOB_POLL_TIMEOUT_MS || '18000000', 10)
 export const AI_SOURCE_SLUG = process.env.AI_SOURCE_SLUG || ''
 
+/**
+ * The AI service namespace of one workspace: the deployment's AI_SOURCE_SLUG
+ * plus the workspace's immutable id, so two workspaces never share a model
+ * even when their taxonomy keys are equal. Sent on every sync, labeling and
+ * learning request; AI_SOURCE_SLUG is required when AI is enabled.
+ */
+export function aiSourceSlug(workspaceId: string): string {
+  if (!AI_SOURCE_SLUG) throw new Error('AI_SOURCE_SLUG must be set when the AI service is configured')
+  return `${AI_SOURCE_SLUG}--${workspaceId}`
+}
+
 

@@ -3,7 +3,8 @@ import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createSentences, createTaxonomy, createUser, resetDatabase } from './helpers'
+import { db } from '@/lib/workspace/db'
+import { wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, resetDatabase } from './helpers'
 
 // The monitor against a stub Taxomind on a local port. Poll fast; the module
 // reads these at load time, so lib/ai-job-monitor is imported after the stub
@@ -12,6 +13,7 @@ vi.hoisted(() => {
   process.env.AI_JOB_POLL_INTERVAL_MS = '20'
   process.env.AI_JOB_POLL_TIMEOUT_MS = '10000'
   process.env.AI_LABELING_API_KEY = 'stub-key'
+  process.env.AI_SOURCE_SLUG = 'stub-deployment'
 })
 
 type StubJob = { path: string; body: Record<string, unknown>; polls: number }
@@ -65,6 +67,9 @@ let taxonomy: Taxonomy
 
 beforeEach(async () => {
   await resetDatabase()
+  await createWorkspace()
+  await createWorkspace()
+  await createWorkspace()
   started.length = 0
   authHeaders = []
   admin = await createUser('admin')
@@ -74,15 +79,16 @@ beforeEach(async () => {
 const ACTIVE = ['pending', 'processing']
 
 async function labelingJob(sentenceIds: string[], extra: Record<string, unknown> = {}) {
-  return prisma.aILabelingJob.create({
+  return inWorkspace(() => db().aILabelingJob.create({
     data: {
+      workspaceId: wsId(),
       createdById: admin.id,
       taxonomyId: taxonomy.id,
       totalSentences: sentenceIds.length,
       filterCriteria: { sentenceIds },
       ...extra,
     },
-  })
+  }))
 }
 
 /** Waits until the job leaves pending/processing (or the predicate holds). */
@@ -109,7 +115,7 @@ describe('AI job monitor against a stub service', () => {
       ])())
     const job = await labelingJob([a.id, b.id])
 
-    monitor.launchJob(job.id)
+    monitor.launchJob(job.id, wsId())
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -132,7 +138,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = () => ({ body: { status: 'failed', error: 'model not trained' } })
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id)
+    monitor.launchJob(job.id, wsId())
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
@@ -147,9 +153,9 @@ describe('AI job monitor against a stub service', () => {
       : { body: { status: 'processing' } })
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id)
+    monitor.launchJob(job.id, wsId())
     await settle(job.id, status => status === 'processing')
-    await prisma.aILabelingJob.update({ where: { id: job.id }, data: { status: 'cancelled' } })
+    await inWorkspace(() => db().aILabelingJob.update({ where: { id: job.id }, data: { status: 'cancelled' } }))
     cancelled = true
     await new Promise(r => setTimeout(r, 200))
 
@@ -164,7 +170,7 @@ describe('AI job monitor against a stub service', () => {
       : completedWith([{ sentence_id: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])())
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id)
+    monitor.launchJob(job.id, wsId())
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -179,7 +185,7 @@ describe('AI job monitor against a stub service', () => {
       leaseExpiresAt: new Date(Date.now() + 60_000),
     })
 
-    monitor.launchJob(job.id)
+    monitor.launchJob(job.id, wsId())
     await new Promise(r => setTimeout(r, 200))
 
     expect(started).toHaveLength(0)
@@ -209,15 +215,15 @@ describe('AI job monitor against a stub service', () => {
 
   it('runs a learning job and records the taxonomy\'s last learning', async () => {
     const [a] = await createSentences(1)
-    await prisma.sentenceAnnotation.create({
-      data: { sentenceId: a.id, taxonomyId: taxonomy.id, level: 1, nodeCode: '02', source: 'user', createdById: admin.id },
-    })
+    await inWorkspace(() => db().sentenceAnnotation.create({
+      data: { workspaceId: wsId(), sentenceId: a.id, taxonomyId: taxonomy.id, level: 1, nodeCode: '02', source: 'user', createdById: admin.id },
+    }))
     statusReply = () => ({ body: { status: 'completed' } })
-    const job = await prisma.aILearningJob.create({
-      data: { createdById: admin.id, taxonomyId: taxonomy.id, totalSentences: 1, filterCriteria: { sentenceIds: [a.id] } },
-    })
+    const job = await inWorkspace(() => db().aILearningJob.create({
+      data: { workspaceId: wsId(), createdById: admin.id, taxonomyId: taxonomy.id, totalSentences: 1, filterCriteria: { sentenceIds: [a.id] } },
+    }))
 
-    monitor.launchLearningJob(job.id)
+    monitor.launchLearningJob(job.id, wsId())
     for (let i = 0; i < 250; i++) {
       if ((await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })).status === 'completed') break
       await new Promise(r => setTimeout(r, 20))

@@ -1,4 +1,5 @@
 "use client"
+import { workspaceApi } from '@/lib/workspace/urls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { UNKNOWN_NODE_CODES } from '@/lib/constants'
@@ -105,7 +106,7 @@ export default function FilterPanel({
     const fetchImports = async () => {
       try {
         setLoadingImports(true)
-        const res = await fetch('/api/imports')
+        const res = await fetch(workspaceApi('/imports'))
         const data = await res.json()
         if (data.ok && data.imports) {
           setImports(data.imports)
@@ -174,8 +175,8 @@ export default function FilterPanel({
         if (query) params.set('q', query)
         const queryString = params.toString()
         const url = queryString
-          ? `/api/taxonomies/${localFilters.taxonomyKey}/nodes?${queryString}`
-          : `/api/taxonomies/${localFilters.taxonomyKey}/nodes`
+          ? workspaceApi(`/taxonomies/${localFilters.taxonomyKey}/nodes?${queryString}`)
+          : workspaceApi(`/taxonomies/${localFilters.taxonomyKey}/nodes`)
         const res = await fetch(url, {
           signal: controller.signal
         })
@@ -224,8 +225,8 @@ export default function FilterPanel({
         if (query) params.set('q', query)
         const queryString = params.toString()
         const url = queryString
-          ? `/api/taxonomies/${localFilters.aiTaxonomyKey}/nodes?${queryString}`
-          : `/api/taxonomies/${localFilters.aiTaxonomyKey}/nodes`
+          ? workspaceApi(`/taxonomies/${localFilters.aiTaxonomyKey}/nodes?${queryString}`)
+          : workspaceApi(`/taxonomies/${localFilters.aiTaxonomyKey}/nodes`)
         const res = await fetch(url, {
           signal: controller.signal
         })

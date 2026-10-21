@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { db } from '@/lib/workspace/db'
+import { wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
-import * as annotationsRoute from '@/app/api/sentences/[sentenceId]/annotations/route'
-import * as bulkRoute from '@/app/api/sentences/bulk-label/route'
+import * as annotationsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route'
+import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
 
 // Each test gets two active taxonomies (A, B) and a labeller assigned to fresh records.
 let labeller: User
@@ -12,6 +13,9 @@ let taxA: Taxonomy, taxB: Taxonomy
 
 beforeEach(async () => {
   await resetDatabase()
+  await createWorkspace()
+  await createWorkspace()
+  await createWorkspace()
   labeller = await createUser('labeller')
   taxA = await createTaxonomy('A')
   taxB = await createTaxonomy('B')
@@ -26,7 +30,7 @@ const save = (sentenceId: string, body: { annotations: Array<Label & { taxonomyK
   )
 const pathA = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode, taxonomyKey: 'A' }))
 const pathB = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode, taxonomyKey: 'B' }))
-const bulk = (body: Record<string, unknown>) => bulkRoute.POST(request('/api/sentences/bulk-label', { method: 'POST', body }))
+const bulk = (body: Record<string, unknown>) => bulkRoute.POST(request('/api/sentences/bulk-label', { method: 'POST', body }), params())
 const statusOf = async (id: string) => (await prisma.sentence.findUniqueOrThrow({ where: { id } })).status
 const labelsOf = async (id: string, taxonomyId: string) =>
   (await prisma.sentenceAnnotation.findMany({ where: { sentenceId: id, taxonomyId }, orderBy: { level: 'asc' } }))
@@ -63,9 +67,9 @@ describe('single-record saves', () => {
 
   it('AI suggestions do not count towards completion', async () => {
     const [r] = await createSentences(1, [labeller.id])
-    await prisma.sentenceAISuggestion.create({
-      data: { sentenceId: r.id, taxonomyId: taxB.id, level: 1, nodeCode: '02', confidenceScore: 0.9 },
-    })
+    await inWorkspace(() => db().sentenceAISuggestion.create({
+      data: { workspaceId: wsId(), sentenceId: r.id, taxonomyId: taxB.id, level: 1, nodeCode: '02', confidenceScore: 0.9 },
+    }))
     await save(r.id, { annotations: pathA('02'), status: 'submitted' })
     expect(await statusOf(r.id)).toBe('pending')
   })
@@ -81,7 +85,7 @@ describe('single-record saves', () => {
   })
 
   it('with no active taxonomy nothing completes', async () => {
-    await prisma.taxonomy.updateMany({ data: { isActive: false } })
+    await inWorkspace(() => db().taxonomy.updateMany({ data: { isActive: false } }))
     const [r] = await createSentences(1, [labeller.id])
     await save(r.id, { annotations: pathA('02'), status: 'submitted' })
     expect(await statusOf(r.id)).toBe('pending')

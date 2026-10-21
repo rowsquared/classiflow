@@ -1,13 +1,13 @@
 import 'server-only'
-import { prisma } from '@/lib/prisma'
+import { db } from '@/lib/workspace/db'
 
-// Taxonomy data for the admin page (app/admin/taxonomy), the queue page and
-// /api/taxonomies. Taxonomies are visible to every signed-in user.
+// Taxonomy data for the admin page, the queue page and
+// /api/workspaces/[workspaceId]/taxonomies. Every member of the workspace sees them.
 
 /** Every taxonomy with node counts per level and its AI sync/learning state. */
-export async function listTaxonomiesWithStats() {
-  const taxonomies = await prisma.taxonomy.findMany({
-    where: {},
+export async function listTaxonomiesWithStats(workspaceId: string) {
+  const taxonomies = await db().taxonomy.findMany({
+    where: { workspaceId },
     include: {
       _count: {
         select: { 
@@ -25,14 +25,14 @@ export async function listTaxonomiesWithStats() {
   const taxonomiesWithStats = await Promise.all(
     taxonomies.map(async (taxonomy) => {
       // Get actual max level from nodes
-      const maxLevelNode = await prisma.taxonomyNode.findFirst({
+      const maxLevelNode = await db().taxonomyNode.findFirst({
         where: { taxonomyId: taxonomy.id },
         orderBy: { level: 'desc' },
         select: { level: true }
       })
 
       // Get node count per level
-      const nodeCounts = await prisma.taxonomyNode.groupBy({
+      const nodeCounts = await db().taxonomyNode.groupBy({
         by: ['level'],
         where: { taxonomyId: taxonomy.id },
         _count: true,
@@ -66,9 +66,9 @@ export async function listTaxonomiesWithStats() {
 }
 
 /** What the labelling screens need to know about each taxonomy. */
-export async function listActiveTaxonomies() {
-  const taxonomies = await prisma.taxonomy.findMany({
-    where: {},
+export async function listActiveTaxonomies(workspaceId: string) {
+  const taxonomies = await db().taxonomy.findMany({
+    where: { workspaceId },
     select: {
       id: true,
       key: true,

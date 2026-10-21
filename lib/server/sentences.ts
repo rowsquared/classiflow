@@ -1,5 +1,5 @@
 import 'server-only'
-import { prisma } from '@/lib/prisma'
+import { db } from '@/lib/workspace/db'
 import type { CurrentUser } from '@/lib/api-auth'
 import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@/lib/generated/prisma/client'
@@ -99,7 +99,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       and.push({
         assignments: {
           some: {
-            userId: assignedToUserId
+            membership: { userId: assignedToUserId }
           }
         }
       })
@@ -285,7 +285,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 
   // Fetch sentences + total count in parallel
   const [sentences, total] = await Promise.all([
-    prisma.sentence.findMany({
+    db().sentence.findMany({
       where,
       orderBy,
       skip: (page - 1) * limit,
@@ -317,13 +317,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
         },
         assignments: {
           select: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                name: true
-              }
-            }
+            membership: { select: { user: { select: { id: true, username: true, name: true } } } }
           }
         },
         _count: {
@@ -331,7 +325,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
         }
       }
     }),
-    prisma.sentence.count({ where })
+    db().sentence.count({ where })
   ])
   
   // Build sets for annotation nodes
@@ -345,7 +339,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   })
   
   const annotationNodesPromise = annotationTaxonomyIds.size > 0 && annotationNodeCodes.size > 0
-    ? prisma.taxonomyNode.findMany({
+    ? db().taxonomyNode.findMany({
         where: {
           taxonomyId: { in: Array.from(annotationTaxonomyIds) },
           code: { in: Array.from(annotationNodeCodes) }
@@ -366,7 +360,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     }
     
     const sentenceIds = sentencesWithoutAnnotations.map(s => s.id)
-    const aiSuggestions = await prisma.sentenceAISuggestion.findMany({
+    const aiSuggestions = await db().sentenceAISuggestion.findMany({
       where: {
         sentenceId: { in: sentenceIds }
       },
@@ -388,7 +382,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     const aiTaxonomyIds = new Set(aiSuggestions.map(s => s.taxonomyId))
     const aiNodeCodes = new Set(aiSuggestions.map(s => s.nodeCode))
     
-    const aiNodes = await prisma.taxonomyNode.findMany({
+    const aiNodes = await db().taxonomyNode.findMany({
       where: {
         taxonomyId: { in: Array.from(aiTaxonomyIds) },
         code: { in: Array.from(aiNodeCodes) }
@@ -430,15 +424,19 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   )
   
   // Attach labels to annotations; sentences without annotations show their AI suggestions instead
-  const sentencesWithLabels = sentences.map(s => {
+  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
+    // The API reports assignees as users, not memberships.
+    const assignees = assignments.map(a => ({ user: a.membership.user }))
     if (s.annotations.length === 0 && aiSuggestionsBySentence[s.id]) {
       return {
         ...s,
+        assignments: assignees,
         annotations: aiSuggestionsBySentence[s.id]
       }
     }
     return {
       ...s,
+      assignments: assignees,
       annotations: s.annotations.map(a => ({
         ...a,
         nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null
@@ -461,11 +459,11 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 export async function getQueueStats(user: CurrentUser, searchParams: URLSearchParams) {
   const where = await queueWhere(user, searchParams)
   const [total, pending, submitted, skipped, flagged] = await Promise.all([
-    prisma.sentence.count({ where }),
-    prisma.sentence.count({ where: { AND: [where, { status: 'pending' }] } }),
-    prisma.sentence.count({ where: { AND: [where, { status: 'submitted' }] } }),
-    prisma.sentence.count({ where: { AND: [where, { status: 'skipped' }] } }),
-    prisma.sentence.count({ where: { AND: [where, { flagged: true }] } })
+    db().sentence.count({ where }),
+    db().sentence.count({ where: { AND: [where, { status: 'pending' }] } }),
+    db().sentence.count({ where: { AND: [where, { status: 'submitted' }] } }),
+    db().sentence.count({ where: { AND: [where, { status: 'skipped' }] } }),
+    db().sentence.count({ where: { AND: [where, { flagged: true }] } })
   ])
 
   return {

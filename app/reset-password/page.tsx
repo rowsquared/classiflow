@@ -44,7 +44,7 @@ export default function ResetPasswordPage() {
       }
 
       // This browser's session stays signed in; the server ended all others.
-      router.push('/queue')
+      router.push('/')
       router.refresh()
     } catch (error) {
       console.error('Password reset error:', error)

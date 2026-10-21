@@ -1,6 +1,9 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { ADMIN, RECORDS } from './fixtures'
+import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures'
+
+const api = (path: string) => `/api/workspaces/${WORKSPACE_ID}${path}`
+const pagePath = (path: string) => `/w/${WORKSPACE_ID}${path}`
 
 // The tests share one seeded database and run in this order: the labelling
 // journey changes a record, which the export journey then reads.
@@ -27,7 +30,7 @@ test.beforeEach(({ page }) => {
 test.afterEach(() => {
   expect(cspReports).toEqual([])
 })
-const isQueueRequest = (url: string) => new URL(url).pathname === '/api/sentences'
+const isQueueRequest = (url: string) => new URL(url).pathname === api('/sentences')
 
 test('sign-in refuses a wrong password and admits the right one', async ({ page }) => {
   await signIn(page, 'not-the-password')
@@ -82,7 +85,7 @@ test.describe('queue', () => {
 
   test('a failed refresh says so and keeps the last results; Retry recovers', async ({ page }) => {
     const queueUrl = (url: URL) => isQueueRequest(url.toString())
-    const statsUrl = (url: URL) => url.pathname === '/api/sentences/stats'
+    const statsUrl = (url: URL) => url.pathname === api('/sentences/stats')
     await page.route(queueUrl, route => route.fulfill({ status: 500, body: '{}' }))
     await page.route(statsUrl, route => route.fulfill({ status: 500, body: '{}' }))
 
@@ -130,18 +133,18 @@ test('a record can be labelled with the keyboard and submitted', async ({ page }
   await page.keyboard.press('Enter')
 
   // Enter on a label chooses it; it must not also submit the record.
-  const before = await (await page.request.get(`/api/sentences/${recordId}`)).json()
+  const before = await (await page.request.get(api(`/sentences/${recordId}`))).json()
   expect(JSON.stringify(before)).toContain('"status":"pending"')
 
   await page.getByRole('button', { name: /^Submit/ }).click()
-  await expect.poll(async () => JSON.stringify(await (await page.request.get(`/api/sentences/${recordId}`)).json()))
+  await expect.poll(async () => JSON.stringify(await (await page.request.get(api(`/sentences/${recordId}`))).json()))
     .toContain('"status":"submitted"')
 })
 
 test('the export contains the human label with its leading zero', async ({ page }) => {
   await signIn(page)
   await expect(page).toHaveURL(/\/queue$/)
-  await page.goto('/admin/export')
+  await page.goto(pagePath('/admin/export'))
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Export CSV' }).click(),
@@ -179,7 +182,7 @@ test('a comment can be added from the labelling page without triggering shortcut
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 
-  const record = JSON.stringify(await (await page.request.get(`/api/sentences/${recordId}`)).json())
+  const record = JSON.stringify(await (await page.request.get(api(`/sentences/${recordId}`))).json())
   expect(record).toContain('"status":"pending"')
   expect(record).toContain('"flagged":false')
 })
@@ -187,7 +190,7 @@ test('a comment can be added from the labelling page without triggering shortcut
 test('records can be imported from a CSV file with their ids kept', async ({ page }) => {
   await signIn(page)
   await expect(page).toHaveURL(/\/queue$/)
-  await page.goto('/admin/sentences')
+  await page.goto(pagePath('/admin/sentences'))
 
   await page.getByLabel('CSV file to import').setInputFiles({
     name: 'more.csv',
@@ -197,7 +200,9 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
   await page.getByRole('button', { name: 'Upload' }).click()
   await expect(page.getByText('Successfully imported 1 sentences!')).toBeVisible()
 
-  const res = await page.request.get('/api/sentences/0042')
+  // The CSV id is kept as the record's key in this workspace.
+  const res = await page.request.get(api('/sentences?q=baker'))
   expect(res.status()).toBe(200)
-  expect(JSON.stringify(await res.json())).toContain('baker, head')
+  const { sentences } = await res.json() as { sentences: Array<{ recordKey: string; field1: string }> }
+  expect(sentences.map(s => [s.recordKey, s.field1])).toEqual([['0042', 'baker, head']])
 })

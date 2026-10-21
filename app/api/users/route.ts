@@ -1,111 +1,68 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/api-auth'
-import { listVisibleUsers } from '@/lib/server/users'
-import { validateSupervisor } from '@/lib/user-rules'
-import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/api-auth'
+import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
 
-const createUserSchema = z.object({
-  // Sign-in names are case-insensitive: stored in lower case (Better Auth's username plugin).
-  username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen')
-    .transform(u => u.toLowerCase()),
+// Platform administration of global accounts. Workspace membership is managed
+// per workspace (/api/workspaces/[workspaceId]/users).
+
+const createSchema = z.object({
+  username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen'),
   email: z.string().email().max(254).transform(e => e.toLowerCase()),
   name: z.string().min(1).max(200),
-  role: z.enum(['admin', 'supervisor', 'labeller']),
-  supervisorId: z.string().optional().nullable(),
-  tempPassword: z.string().min(8).max(256)
+  platformRole: z.enum(['admin', 'user']).default('user'),
+  tempPassword: z.string().min(8).max(256),
 })
 
-// GET - List users: all for admins, themselves and their team for supervisors
 export async function GET() {
-  const { user: currentUser, error } = await requireSession('admin', 'supervisor')
+  const { error } = await requirePlatformAdmin()
   if (error) return error
 
-  try {
-    return NextResponse.json(await listVisibleUsers(currentUser))
-  } catch (error) {
-    console.error('Error fetching users:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-  }
+  const users = await prisma.user.findMany({
+    select: {
+      id: true, username: true, email: true, name: true, role: true, banned: true,
+      mustResetPassword: true, lastLogin: true, createdAt: true,
+      memberships: {
+        select: { role: true, status: true, workspace: { select: { id: true, name: true } } },
+        orderBy: { workspace: { name: 'asc' } },
+      },
+    },
+    orderBy: [{ role: 'asc' }, { name: 'asc' }],
+  })
+  return NextResponse.json({
+    users: users.map(({ role, ...u }) => ({ ...u, platformRole: role })),
+  })
 }
 
-// POST - Create new user
-export async function POST(req: NextRequest) {
-  const { user: actor, error } = await requireSession('admin')
+export async function POST(req: Request) {
+  const { user: actor, error } = await requirePlatformAdmin()
   if (error) return error
 
-  try {
-    const body = await req.json()
-    const validation = createUserSchema.safeParse(body)
-    
-    if (!validation.success) {
-      return NextResponse.json({ 
-        error: 'Invalid request data',
-        details: validation.error.issues 
-      }, { status: 400 })
-    }
-
-    const { username, email, name, role, supervisorId, tempPassword } = validation.data
-
-    // Check if username or email already exists
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { username },
-          { email }
-        ]
-      }
-    })
-
-    if (existingUser) {
-      if (existingUser.username === username) {
-        return NextResponse.json({ error: 'Username already in use' }, { status: 400 })
-      }
-      return NextResponse.json({ error: 'Email already in use' }, { status: 400 })
-    }
-
-    const supervisorError = await validateSupervisor(null, supervisorId || null)
-    if (supervisorError) {
-      return NextResponse.json({ error: supervisorError }, { status: 400 })
-    }
-
-    // The user and their temporary password (a Better Auth credential account).
-    const user = await prisma.$transaction(async tx => {
-      const created = await tx.user.create({
-        data: {
-          username,
-          displayUsername: validation.data.username,
-          email,
-          name,
-          role,
-          supervisorId: supervisorId || null,
-          mustResetPassword: true
-        },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          name: true,
-          role: true,
-          supervisorId: true,
-          mustResetPassword: true,
-          createdAt: true
-        }
-      })
-      await setPassword(tx, created.id, tempPassword)
-      return created
-    })
-
-    await audit({
-      actorId: actor.id, action: 'user.created', entityType: 'user', entityId: user.id,
-      payload: { username: user.username, role: user.role, supervisorId: user.supervisorId },
-    })
-    return NextResponse.json({ user }, { status: 201 })
-  } catch (error) {
-    console.error('Error creating user:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  const parsed = createSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-}
+  const { email, name, platformRole, tempPassword } = parsed.data
+  const displayUsername = parsed.data.username
+  const username = displayUsername.toLowerCase()
 
+  const taken = await prisma.user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
+  if (taken) {
+    return NextResponse.json({ error: taken.username === username ? 'Username already in use' : 'Email already in use' }, { status: 400 })
+  }
+  const user = await prisma.$transaction(async tx => {
+    const created = await tx.user.create({
+      data: { username, displayUsername, email, name, role: platformRole, mustResetPassword: true },
+      select: { id: true, username: true, email: true, name: true, role: true, createdAt: true },
+    })
+    await setPassword(tx, created.id, tempPassword)
+    return created
+  })
+  await audit({
+    workspaceId: null, actorId: actor.id, action: 'user.created', entityType: 'user', entityId: user.id,
+    payload: { username, platformRole },
+  })
+  return NextResponse.json({ user }, { status: 201 })
+}

@@ -1,4 +1,5 @@
 "use client"
+import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Info } from 'lucide-react'
 import Tooltip from '@/components/Tooltip'
@@ -84,6 +85,7 @@ export default function TaxonomyBrowser({
   onCurrentLevelChange,
   showTabs = false
 }: TaxonomyBrowserProps) {
+  const { href } = useWorkspacePaths()
   const [currentLevel, setCurrentLevel] = useState(1)
   const [currentParent, setCurrentParent] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -308,7 +310,7 @@ export default function TaxonomyBrowser({
         
         for (const label of labelsToShow) {
           try {
-            const res = await fetch(`/api/taxonomies/${taxonomy.key}/nodes?level=${label.level}`)
+            const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${label.level}`))
             if (res.ok) {
               const data = await res.json()
               const node = data.items?.find((n: TaxonomyNode) => n.code === label.nodeCode)
@@ -356,7 +358,7 @@ export default function TaxonomyBrowser({
 
     const loadNodes = async () => {
       try {
-        const res = await fetch(`/api/taxonomies/${taxonomy.key}/nodes?${params}`)
+        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?${params}`))
         if (!res.ok) throw new Error('Failed to fetch nodes')
         const data = await res.json()
         if (!cancelled) {
@@ -393,7 +395,7 @@ export default function TaxonomyBrowser({
           q: searchQuery
         })
 
-        const res = await fetch(`/api/taxonomies/${taxonomy.key}/nodes?${params}`)
+        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?${params}`))
         if (!res.ok) throw new Error('Failed to search')
         const data = await res.json()
         if (!cancelled) {
@@ -427,7 +429,7 @@ export default function TaxonomyBrowser({
       try {
         // Fetch all nodes at the parent's level with a higher limit to ensure we get the parent
         // The default limit is 100, but some taxonomies might have more nodes at a level
-        const res = await fetch(`/api/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`)
+        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`))
         if (!res.ok) {
           console.warn(`Failed to fetch nodes at level ${currentNode.level - 1}`)
           break
@@ -444,7 +446,7 @@ export default function TaxonomyBrowser({
             // Try fetching with offset to get more results
             let found = false
             for (let offset = data.items.length; offset < data.total && offset < 2000; offset += 500) {
-              const moreRes = await fetch(`/api/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`)
+              const moreRes = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`))
               if (!moreRes.ok) break
               const moreData = await moreRes.json()
               const foundParent = moreData.items?.find((n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode))
@@ -783,7 +785,7 @@ export default function TaxonomyBrowser({
                 </div>
               ) : (
                 <div className="text-gray-500">
-                  No labels available. <a href="/admin/taxonomy" className="text-indigo-600 hover:text-indigo-700 underline">Import taxonomy</a>
+                  No labels available. <a href={href('/admin/taxonomy')} className="text-indigo-600 hover:text-indigo-700 underline">Import taxonomy</a>
                 </div>
               )}
             </div>

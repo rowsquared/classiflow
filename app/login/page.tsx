@@ -28,7 +28,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/queue')
+      router.push('/')
       router.refresh()
     } catch (error) {
       console.error('Login error:', error)

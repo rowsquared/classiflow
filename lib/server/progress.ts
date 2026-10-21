@@ -1,8 +1,8 @@
 import 'server-only'
-import { prisma } from '@/lib/prisma'
+import { db } from '@/lib/workspace/db'
 import { Prisma } from '@/lib/generated/prisma/client'
 import type { CurrentUser } from '@/lib/api-auth'
-import { getVisibleUserIds } from '@/lib/access'
+import { getVisibleMembershipIds, getVisibleUserIds, sentenceVisibilityFilter } from '@/lib/access'
 import { computeAgreement } from '@/lib/metrics'
 import { UNKNOWN_NODE_CODE_SET } from '@/lib/constants'
 import type { DateRange } from '@/lib/contracts/progress'
@@ -18,34 +18,21 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   const prevStart = new Date(start.getTime() - duration)
   const prevEnd = new Date(start.getTime() - 1) // End just before current period starts
 
-  // Users whose work is visible: [] for admins (everyone), else self (+ team)
-  const visibleUserIds = (await getVisibleUserIds(user)) ?? []
-
-  // Build where clause for sentence visibility
-  const sentenceWhere: Prisma.SentenceWhereInput = {}
-  // For non-admins, filter by assignments
-  // Note: For supervisors, visibleUserIds includes both their own ID and supervised users
-  if (user.role !== 'admin') {
-    if (visibleUserIds.length > 0) {
-      sentenceWhere.assignments = {
-        some: {
-          userId: { in: visibleUserIds }
-        }
-      }
-    } else {
-      // If no visible user IDs, return no results (e.g., supervisor with no team and no assignments)
-      sentenceWhere.id = 'impossible-id-no-results'
-    }
-  }
+  // Records: this workspace's, limited to the caller's team for non-admins.
+  // Labels: made by the caller's team (null: anyone in the workspace).
+  const sentenceWhere = await sentenceVisibilityFilter(user)
+  const visibleUserIds = await getVisibleUserIds(user)
+  const byVisibleAuthors: Prisma.SentenceAnnotationWhereInput =
+    visibleUserIds === null ? {} : { createdById: { in: visibleUserIds } }
 
   // 1. COMPLETION RATE
   // Total sentences visible to user
-  const totalSentences = await prisma.sentence.count({
+  const totalSentences = await db().sentence.count({
     where: sentenceWhere
   })
 
   // Completed in current period
-  const completedCurrent = await prisma.sentence.count({
+  const completedCurrent = await db().sentence.count({
     where: {
       ...sentenceWhere,
       status: 'submitted',
@@ -57,7 +44,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   })
 
   // Completed in previous period
-  const completedPrevious = await prisma.sentence.count({
+  const completedPrevious = await db().sentence.count({
     where: {
       ...sentenceWhere,
       status: 'submitted',
@@ -78,7 +65,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   const velocityPrevious = Math.round((completedPrevious / daysInPeriod) * 10) / 10
 
   // Estimated days to complete remaining
-  const remainingSentences = await prisma.sentence.count({
+  const remainingSentences = await db().sentence.count({
     where: {
       ...sentenceWhere,
       status: { in: ['pending', 'skipped'] }
@@ -93,21 +80,23 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   const annotationWhere: Prisma.SentenceAnnotationWhereInput = {
     createdAt: { gte: start, lte: end },
     source: 'user',
-    ...(visibleUserIds.length > 0 ? { createdById: { in: visibleUserIds } } : {})
+    workspaceId: user.workspaceId,
+    ...byVisibleAuthors
   }
 
   // 3. AI AGREEMENT RATE (lib/metrics.ts): human labels made in the period
   // vs the AI suggestion for the same record, taxonomy and level.
   const agreementFor = async (from: Date, to: Date) => {
-    const humanLabels = await prisma.sentenceAnnotation.findMany({
+    const humanLabels = await db().sentenceAnnotation.findMany({
       where: {
         createdAt: { gte: from, lte: to },
         source: 'user',
-        ...(visibleUserIds.length > 0 ? { createdById: { in: visibleUserIds } } : {})
+        workspaceId: user.workspaceId,
+        ...byVisibleAuthors
       },
       select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
     })
-    const suggestions = humanLabels.length === 0 ? [] : await prisma.sentenceAISuggestion.findMany({
+    const suggestions = humanLabels.length === 0 ? [] : await db().sentenceAISuggestion.findMany({
       where: { sentenceId: { in: Array.from(new Set(humanLabels.map(a => a.sentenceId))) } },
       select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
     })
@@ -120,62 +109,20 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   const aiAgreementRatePrev = agreementPrev.rate
 
   // 4. MEDIAN LABELING TIME (excluding outliers > 30 min)
-  const labelingTimes = visibleUserIds.length > 0
-    ? await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
-        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
-          EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
-        ) as median_seconds
-        FROM "SentenceAnnotation"
-        WHERE "labelingStartedAt" IS NOT NULL
-          AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
-          AND "createdAt" >= ${start}
-          AND "createdAt" <= ${end}
-          AND "createdById" IN (${Prisma.join(visibleUserIds)})
-      `
-    : await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
-        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
-          EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
-        ) as median_seconds
-        FROM "SentenceAnnotation"
-        WHERE "labelingStartedAt" IS NOT NULL
-          AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
-          AND "createdAt" >= ${start}
-          AND "createdAt" <= ${end}
-      `
+  const labelingTimes = await medianLabelingSeconds(user.workspaceId, visibleUserIds, start, end)
 
   const medianTimeCurrent = labelingTimes[0]?.median_seconds 
     ? Math.round(labelingTimes[0].median_seconds) 
     : null
 
-  const labelingTimesPrev = visibleUserIds.length > 0
-    ? await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
-        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
-          EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
-        ) as median_seconds
-        FROM "SentenceAnnotation"
-        WHERE "labelingStartedAt" IS NOT NULL
-          AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
-          AND "createdAt" >= ${prevStart}
-          AND "createdAt" <= ${prevEnd}
-          AND "createdById" IN (${Prisma.join(visibleUserIds)})
-      `
-    : await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
-        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
-          EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
-        ) as median_seconds
-        FROM "SentenceAnnotation"
-        WHERE "labelingStartedAt" IS NOT NULL
-          AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
-          AND "createdAt" >= ${prevStart}
-          AND "createdAt" <= ${prevEnd}
-      `
+  const labelingTimesPrev = await medianLabelingSeconds(user.workspaceId, visibleUserIds, prevStart, prevEnd)
 
   const medianTimePrevious = labelingTimesPrev[0]?.median_seconds 
     ? Math.round(labelingTimesPrev[0].median_seconds) 
     : null
 
   // 5. UNKNOWN RATE BY LEVEL
-  const unknownByLevel = await prisma.sentenceAnnotation.groupBy({
+  const unknownByLevel = await db().sentenceAnnotation.groupBy({
     by: ['level'],
     where: {
       ...annotationWhere,
@@ -188,7 +135,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
     }
   })
 
-  const annotationsByLevel = await prisma.sentenceAnnotation.groupBy({
+  const annotationsByLevel = await db().sentenceAnnotation.groupBy({
     by: ['level'],
     where: annotationWhere,
     _count: {
@@ -208,7 +155,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   })
 
   // 6. FLAGS & COMMENTS (absolute counts)
-  const flaggedCurrent = await prisma.sentence.count({
+  const flaggedCurrent = await db().sentence.count({
     where: {
       ...sentenceWhere,
       flagged: true,
@@ -219,7 +166,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
     }
   })
 
-  const commentsCurrent = await prisma.comment.count({
+  const commentsCurrent = await db().comment.count({
     where: {
       createdAt: {
         gte: start,
@@ -229,7 +176,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
     }
   })
 
-  const flaggedPrevious = await prisma.sentence.count({
+  const flaggedPrevious = await db().sentence.count({
     where: {
       ...sentenceWhere,
       flagged: true,
@@ -240,7 +187,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
     }
   })
 
-  const commentsPrevious = await prisma.comment.count({
+  const commentsPrevious = await db().comment.count({
     where: {
       createdAt: {
         gte: prevStart,
@@ -293,41 +240,18 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
 
 /** Records completed, skipped and flagged per day (or week) in the period. */
 export async function getProgressTimeline(user: CurrentUser, { start, end }: DateRange, granularity: 'day' | 'week') {
-  // Users whose work is visible: [] for admins (everyone), else self (+ team)
-  const visibleUserIds = (await getVisibleUserIds(user)) ?? []
-
-  // Build where clause for sentence visibility
-  const sentenceWhere: Prisma.SentenceWhereInput = {}
-  // For non-admins, filter by assignments
-  // Note: For supervisors, visibleUserIds includes both their own ID and supervised users
-  if (user.role !== 'admin') {
-    if (visibleUserIds.length > 0) {
-      sentenceWhere.assignments = {
-        some: {
-          userId: { in: visibleUserIds }
-        }
-      }
-    } else {
-      // If no visible user IDs, return no results
-      sentenceWhere.id = 'impossible-id-no-results'
-    }
-  }
+  // This workspace's records, limited to the caller's team for non-admins.
+  const sentenceWhere = await sentenceVisibilityFilter(user)
 
   // Get all sentences in the date range using Prisma
-  const sentences = await prisma.sentence.findMany({
+  const sentences = await db().sentence.findMany({
     where: {
       lastEditedAt: {
         gte: start,
         lte: end,
         not: null
       },
-      ...(user.role !== 'admin' && visibleUserIds.length > 0 ? {
-        assignments: {
-          some: {
-            userId: { in: visibleUserIds }
-          }
-        }
-      } : {})
+      ...sentenceWhere
     },
     select: {
       lastEditedAt: true,
@@ -374,40 +298,28 @@ export async function getProgressTimeline(user: CurrentUser, { start, end }: Dat
 
 /** Per-member figures for the caller's team (admins: everyone). */
 export async function getTeamProgress(user: CurrentUser, { start, end }: DateRange) {
-  // Team members: all users for admins, the supervisor and everyone below them otherwise
-  const teamMemberIds = (await getVisibleUserIds(user))
-    ?? (await prisma.user.findMany({ select: { id: true } })).map(u => u.id)
-
-  // Get team member details with stats
-  const teamMembers = await prisma.user.findMany({
-    where: {
-      id: { in: teamMemberIds }
-    },
+  // Team: every membership for admins, the supervisor and everyone below them otherwise
+  const membershipIds = await getVisibleMembershipIds(user)
+  const memberships = await db().workspaceMembership.findMany({
+    where: { workspaceId: user.workspaceId, ...(membershipIds === null ? {} : { id: { in: membershipIds } }) },
     select: {
-      id: true,
-      name: true,
-      email: true,
       role: true,
-      assignedSentences: {
-        select: {
-          sentence: {
-            select: {
-              id: true,
-              status: true,
-              lastEditedAt: true
-            }
-          }
-        }
-      }
-    }
+      user: { select: { id: true, name: true, email: true } },
+      assignments: { select: { sentenceId: true } },
+    },
   })
+  const teamMembers = memberships.map(m => ({
+    ...m.user,
+    role: m.role,
+    assignedSentenceIds: m.assignments.map(a => a.sentenceId),
+  }))
 
   // Calculate stats for each team member
   const teamStats = await Promise.all(teamMembers.map(async (member) => {
-    const assignedSentenceIds = member.assignedSentences.map(a => a.sentence.id)
+    const { assignedSentenceIds } = member
 
     // Sentences completed in period
-    const completed = await prisma.sentence.count({
+    const completed = await db().sentence.count({
       where: {
         id: { in: assignedSentenceIds },
         status: 'submitted',
@@ -419,7 +331,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     })
 
     // Sentences skipped in period
-    const skipped = await prisma.sentence.count({
+    const skipped = await db().sentence.count({
       where: {
         id: { in: assignedSentenceIds },
         status: 'skipped',
@@ -434,7 +346,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     const totalAssigned = assignedSentenceIds.length
 
     // Total completed (all time)
-    const totalCompleted = await prisma.sentence.count({
+    const totalCompleted = await db().sentence.count({
       where: {
         id: { in: assignedSentenceIds },
         status: 'submitted'
@@ -442,7 +354,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     })
 
     // Pending
-    const pending = await prisma.sentence.count({
+    const pending = await db().sentence.count({
       where: {
         id: { in: assignedSentenceIds },
         status: 'pending'
@@ -450,7 +362,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     })
 
     // Flagged in period
-    const flagged = await prisma.sentence.count({
+    const flagged = await db().sentence.count({
       where: {
         id: { in: assignedSentenceIds },
         flagged: true,
@@ -462,7 +374,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     })
 
     // Median time in period
-    const labelingTimes = await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
+    const labelingTimes = await db().$queryRaw<Array<{ median_seconds: number | null }>>`
       SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
         EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
       ) as median_seconds
@@ -479,8 +391,9 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
       : null
 
     // AI agreement for this user in period (lib/metrics.ts)
-    const userAnnotations = await prisma.sentenceAnnotation.findMany({
+    const userAnnotations = await db().sentenceAnnotation.findMany({
       where: {
+        workspaceId: user.workspaceId,
         createdById: member.id,
         createdAt: {
           gte: start,
@@ -490,7 +403,7 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
       },
       select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
     })
-    const suggestions = userAnnotations.length === 0 ? [] : await prisma.sentenceAISuggestion.findMany({
+    const suggestions = userAnnotations.length === 0 ? [] : await db().sentenceAISuggestion.findMany({
       where: { sentenceId: { in: Array.from(new Set(userAnnotations.map(a => a.sentenceId))) } },
       select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
     })
@@ -523,4 +436,22 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     },
     team: teamStats
   }
+}
+
+/** Median seconds from opening a record to saving a label (sessions over 30 minutes left out). */
+async function medianLabelingSeconds(workspaceId: string, authorIds: string[] | null, from: Date, to: Date) {
+  if (authorIds !== null && authorIds.length === 0) return [{ median_seconds: null }]
+  const byAuthor = authorIds === null ? Prisma.empty : Prisma.sql`AND "createdById" IN (${Prisma.join(authorIds)})`
+  return db().$queryRaw<Array<{ median_seconds: number | null }>>`
+    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY
+      EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
+    ) as median_seconds
+    FROM "SentenceAnnotation"
+    WHERE "workspaceId" = ${workspaceId}
+      AND "labelingStartedAt" IS NOT NULL
+      AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
+      AND "createdAt" >= ${from}
+      AND "createdAt" <= ${to}
+      ${byAuthor}
+  `
 }

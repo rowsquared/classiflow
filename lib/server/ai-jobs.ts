@@ -1,8 +1,8 @@
 import 'server-only'
-import { prisma } from '@/lib/prisma'
+import { db } from '@/lib/workspace/db'
 import { z } from 'zod'
 
-// AI job history for the admin page (app/admin/ai-jobs) and /api/ai-jobs.
+// AI job history of one workspace for its admin page and /api/workspaces/[workspaceId]/ai-jobs.
 // Admins only; the caller checks the role.
 
 const statusSchema = z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled'])
@@ -10,7 +10,7 @@ const statusSchema = z.enum(['pending', 'processing', 'completed', 'failed', 'ca
 export type AIJobListQuery = { statusParams: string[]; page: number; limit: number }
 
 /** Labelling, learning and taxonomy sync jobs, most recent activity first, one page. */
-export async function listAIJobs({ statusParams, page, limit }: AIJobListQuery) {
+export async function listAIJobs(workspaceId: string, { statusParams, page, limit }: AIJobListQuery) {
   // Build where clauses for each job type
   // Always ensure statusFilter has valid values
   let statusFilter: { in: z.infer<typeof statusSchema>[] }
@@ -29,16 +29,16 @@ export async function listAIJobs({ statusParams, page, limit }: AIJobListQuery) 
 
   // Fetch all job types
   const [labelingJobs, learningJobs, syncTaxonomies] = await Promise.all([
-    prisma.aILabelingJob.findMany({
-      where: { status: statusFilter },
+    db().aILabelingJob.findMany({
+      where: { workspaceId, status: statusFilter },
       orderBy: { startedAt: 'desc' },
       include: {
         taxonomy: { select: { key: true } },
         createdBy: { select: { id: true, name: true, email: true } }
       }
     }),
-    prisma.aILearningJob.findMany({
-      where: { status: statusFilter },
+    db().aILearningJob.findMany({
+      where: { workspaceId, status: statusFilter },
       orderBy: { startedAt: 'desc' },
       include: {
         taxonomy: { select: { key: true } },
@@ -46,8 +46,9 @@ export async function listAIJobs({ statusParams, page, limit }: AIJobListQuery) 
       }
     }),
     // Taxonomy sync jobs (still stored on Taxonomy model)
-    prisma.taxonomy.findMany({
+    db().taxonomy.findMany({
       where: {
+        workspaceId,
         lastAISyncStatus: statusParams.length > 0 ? { in: statusParams } : { not: null }
       },
       select: {

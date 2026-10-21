@@ -1,190 +1,110 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/lib/generated/prisma/client'
-import { forbidden, requireSession } from '@/lib/api-auth'
-import { getVisibleUser } from '@/lib/server/users'
-import { isLastAdmin, validateSupervisor } from '@/lib/user-rules'
-import { audit } from '@/lib/audit'
+import { requirePlatformAdmin } from '@/lib/api-auth'
+import { isLastPlatformAdmin, lockPlatformAdmins } from '@/lib/user-rules'
 import { revokeSessions, setPassword } from '@/lib/passwords'
+import { audit } from '@/lib/audit'
 
-const updateUserSchema = z.object({
+// Platform administration of one global account: name, platform role,
+// temporary password, ban, deletion. Workspace roles live on memberships.
+
+const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  role: z.enum(['admin', 'supervisor', 'labeller']).optional(),
-  supervisorId: z.string().nullable().optional(),
-  newPassword: z.string().min(8).max(256).optional()
+  platformRole: z.enum(['admin', 'user']).optional(),
+  newPassword: z.string().min(8).max(256).optional(),
+  banned: z.boolean().optional(),
 })
 
-// GET - Get single user: admins see anyone, supervisors their team, everyone themselves
-export async function GET(
-  req: NextRequest,
-  context: { params: Promise<{ userId: string }> }
-) {
-  const { user: currentUser, error } = await requireSession()
+type Params = { params: Promise<{ userId: string }> }
+
+export async function PUT(req: Request, { params }: Params) {
+  const { user: actor, error } = await requirePlatformAdmin()
   if (error) return error
+  const { userId } = await params
 
-  try {
-    const { userId } = await context.params
-
-    const user = await getVisibleUser(currentUser, userId)
-    if (user === 'forbidden') {
-      return forbidden()
-    }
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    return NextResponse.json({ user })
-  } catch (error) {
-    console.error('Error fetching user:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  const parsed = updateSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-}
+  const { name, platformRole, newPassword, banned } = parsed.data
+  if (banned && userId === actor.id) {
+    return NextResponse.json({ error: 'You cannot ban yourself' }, { status: 400 })
+  }
 
-// PUT - Update user (admins only)
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ userId: string }> }
-) {
-  const { user: actor, error } = await requireSession('admin')
-  if (error) return error
+  const result = await prisma.$transaction(async tx => {
+    await lockPlatformAdmins(tx)
+    const existing = await tx.user.findUnique({ where: { id: userId }, select: { role: true } })
+    if (!existing) return { status: 404 as const }
+    const losesAdmin = existing.role === 'admin' && (platformRole === 'user' || banned === true)
+    if (losesAdmin && await isLastPlatformAdmin(userId, tx)) return { status: 400 as const }
 
-  try {
-    const { userId } = await context.params
-
-    const body = await req.json()
-    const validation = updateUserSchema.safeParse(body)
-
-    if (!validation.success) {
-      return NextResponse.json({
-        error: 'Invalid request data',
-        details: validation.error.issues
-      }, { status: 400 })
-    }
-
-    const { name, role, supervisorId, newPassword } = validation.data
-
-    const existing = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, supervisorId: true } })
-    if (!existing) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    if (role !== undefined && role !== 'admin' && existing.role === 'admin' && await isLastAdmin(userId)) {
-      return NextResponse.json({ error: 'Cannot demote the last admin' }, { status: 400 })
-    }
-
-    if (supervisorId !== undefined) {
-      const supervisorError = await validateSupervisor(userId, supervisorId)
-      if (supervisorError) {
-        return NextResponse.json({ error: supervisorError }, { status: 400 })
-      }
-    }
-
-    // Build update data
-    const updateData: Prisma.UserUncheckedUpdateInput = {}
-    if (name !== undefined) updateData.name = name
-    if (role !== undefined) updateData.role = role
-    if (supervisorId !== undefined) updateData.supervisorId = supervisorId
-
-    // An admin-set password is temporary: the user must change it, and every
-    // session signed in with the old password ends.
-    if (newPassword) {
-      updateData.mustResetPassword = true
-    }
-
-    const user = await prisma.$transaction(async tx => {
-      if (newPassword) {
-        await setPassword(tx, userId, newPassword)
-        await revokeSessions(tx, userId)
-      }
-      return tx.user.update({
-        where: { id: userId },
-        data: updateData,
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          supervisorId: true,
-          mustResetPassword: true,
-          updatedAt: true
-        }
-      })
-    })
-
-    await audit({
-      actorId: actor.id, action: 'user.updated', entityType: 'user', entityId: userId,
-      payload: {
-        fields: Object.keys(updateData).filter(k => k !== 'mustResetPassword'),
-        ...(role !== undefined && role !== existing.role ? { role: { from: existing.role, to: role } } : {}),
-        ...(supervisorId !== undefined && supervisorId !== existing.supervisorId
-          ? { supervisor: { from: existing.supervisorId, to: supervisorId } } : {}),
-        ...(newPassword ? { passwordReset: true } : {}),
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(platformRole !== undefined ? { role: platformRole } : {}),
+        ...(banned !== undefined ? { banned, banReason: banned ? 'Suspended by a platform admin' : null } : {}),
+        // An admin-set password is temporary and ends every session.
+        ...(newPassword ? { mustResetPassword: true } : {}),
       },
     })
-    return NextResponse.json({ user })
-  } catch (error) {
-    console.error('Error updating user:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    if (newPassword) await setPassword(tx, userId, newPassword)
+    if (newPassword || banned) await revokeSessions(tx, userId)
+    return { status: 200 as const, from: existing.role }
+  })
+  if (result.status === 404) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  if (result.status === 400) {
+    return NextResponse.json({ error: 'Keep at least one active platform admin' }, { status: 400 })
   }
+
+  await audit({
+    workspaceId: null, actorId: actor.id, action: 'user.updated', entityType: 'user', entityId: userId,
+    payload: {
+      fields: Object.entries({ name, platformRole, banned }).filter(([, v]) => v !== undefined).map(([k]) => k),
+      ...(platformRole && platformRole !== result.from ? { platformRole: { from: result.from, to: platformRole } } : {}),
+      ...(newPassword ? { passwordReset: true } : {}),
+    },
+  })
+  return NextResponse.json({ ok: true })
 }
 
-// DELETE - Delete user (admins only)
-export async function DELETE(
-  req: NextRequest,
-  context: { params: Promise<{ userId: string }> }
-) {
-  const { user: currentUser, error } = await requireSession('admin')
+export async function DELETE(_req: Request, { params }: Params) {
+  const { user: actor, error } = await requirePlatformAdmin()
   if (error) return error
+  const { userId } = await params
+  if (userId === actor.id) {
+    return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
+  }
 
   try {
-    const { userId } = await context.params
-
-    // Prevent self-deletion (which also guarantees an admin remains)
-    if (userId === currentUser.id) {
-      return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
-    }
-
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
+    const deleted = await prisma.$transaction(async tx => {
+      await lockPlatformAdmins(tx)
+      const target = await tx.user.findUnique({ where: { id: userId }, select: { role: true } })
+      if (!target) return null
+      if (target.role === 'admin' && await isLastPlatformAdmin(userId, tx)) return 'last-admin' as const
+      // Memberships and sessions go with the account; labels, imports and edit
+      // markers keep their data without the author. Comments and AI jobs keep
+      // their author, so an account that has any cannot be deleted (below).
+      return tx.user.delete({ where: { id: userId }, select: { username: true, role: true } })
     })
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    // Comments and AI jobs keep their author (restrict foreign keys), so a user
-    // who has any cannot be deleted without losing that history.
-    const [comments, aiJobs] = await Promise.all([
-      prisma.comment.count({ where: { authorId: userId } }),
-      prisma.$transaction([
-        prisma.aILabelingJob.count({ where: { createdById: userId } }),
-        prisma.aILearningJob.count({ where: { createdById: userId } }),
-      ]).then(counts => counts.reduce((a, b) => a + b, 0)),
-    ])
-    if (comments > 0 || aiJobs > 0) {
+    if (!deleted) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    if (deleted === 'last-admin') return NextResponse.json({ error: 'Keep at least one platform admin' }, { status: 400 })
+    await audit({
+      workspaceId: null, actorId: actor.id, action: 'user.deleted', entityType: 'user', entityId: userId,
+      payload: { username: deleted.username, platformRole: deleted.role },
+    })
+    return NextResponse.json({ ok: true })
+  } catch (caught) {
+    // Comments and AI jobs reference their author with a restricting foreign
+    // key; the workspace tables are not readable here, so let the database say so.
+    if (caught instanceof Prisma.PrismaClientKnownRequestError && caught.code === 'P2003') {
       return NextResponse.json({
-        error: `This user wrote ${comments} comment(s) and started ${aiJobs} AI job(s), which keep their author. ` +
-          'Remove their assignments and change their password instead of deleting the account.'
+        error: 'This account wrote comments or started AI jobs, which keep their author. ' +
+          'Ban it or remove it from its workspaces instead of deleting it.'
       }, { status: 409 })
     }
-
-    // Delete user: assignments cascade; their annotations, imports and last-edit
-    // markers keep the data but lose the user reference (set null).
-    const deleted = await prisma.user.delete({
-      where: { id: userId },
-      select: { username: true, role: true },
-    })
-    await audit({
-      actorId: currentUser.id, action: 'user.deleted', entityType: 'user', entityId: userId,
-      payload: { username: deleted.username, role: deleted.role },
-    })
-
-    return NextResponse.json({ ok: true })
-  } catch (error) {
-    console.error('Error deleting user:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    throw caught
   }
 }

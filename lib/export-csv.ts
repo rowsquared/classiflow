@@ -1,14 +1,17 @@
 import type { Prisma } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
+import { db, withWorkspace } from '@/lib/workspace/db'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { csvLine, type CsvColumn } from '@/lib/csv'
 
 /**
- * Streaming CSV export of records (GET /api/export). Records are read in pages
- * of BATCH_SIZE, in import order, so memory stays flat however many records
- * are exported: one light pass decides the columns, a second streams the rows.
+ * Streaming CSV export of one workspace's records
+ * (GET /api/workspaces/[workspaceId]/export). Records are read in pages of
+ * BATCH_SIZE, in import order, so memory stays flat however many records are
+ * exported: one light pass decides the columns, a second streams the rows.
+ * Each page is read in its own short workspace transaction after checking the
+ * caller may still export, so a revoked admin stops receiving rows.
  *
- * Columns: id; field_<name> and support_<name> in the order the names first
+ * Columns: id (the record key from the import); field_<name> and support_<name> in the order the names first
  * occur; then per taxonomy (by key) <key>_<level> human labels and
  * <key>_ai<level>/<key>_ai<level>c AI suggestions; then status, flagged,
  * last_editor, last_edited, comments. Unknown codes export as UNKNOWN.
@@ -19,6 +22,20 @@ const ORDER: Prisma.SentenceOrderByWithRelationInput[] = [{ importId: 'asc' }, {
 const SLOTS = [1, 2, 3, 4, 5] as const
 
 type Mapping = Record<string, string>
+
+export type ExportScope = {
+  workspaceId: string
+  /** Re-checked before every page; false ends the export with an error. */
+  stillAllowed: () => Promise<boolean>
+}
+
+/** Runs one read in a fresh, re-authorised workspace transaction. */
+function scoped<T>(scope: ExportScope, read: () => Promise<T>): Promise<T> {
+  return (async () => {
+    if (!(await scope.stillAllowed())) throw new Error('Export no longer allowed for this user')
+    return withWorkspace(scope.workspaceId, read)
+  })()
+}
 type FieldSlots = Record<`field${1 | 2 | 3 | 4 | 5}` | `support${1 | 2 | 3 | 4 | 5}`, string | null>
 
 /** Pages through the matching records in export order. */
@@ -47,7 +64,7 @@ type ColumnPlan = {
   taxonomies: Array<{ id: string; key: string; maxDepth: number }>
 }
 
-async function planColumns(where: Prisma.SentenceWhereInput): Promise<ColumnPlan> {
+async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput): Promise<ColumnPlan> {
   const fields: string[] = []
   const supports: string[] = []
   const seen = new Set<string>()
@@ -57,9 +74,9 @@ async function planColumns(where: Prisma.SentenceWhereInput): Promise<ColumnPlan
       list.push(name)
     }
   }
-  for await (const batch of pages(where, args => prisma.sentence.findMany({
+  for await (const batch of pages(where, args => scoped(scope, () => db().sentence.findMany({
     ...args, select: { id: true, fieldMapping: true, supportMapping: true, ...slotSelect },
-  }))) {
+  })))) {
     for (const s of batch) {
       const fieldMapping = (s.fieldMapping ?? {}) as Mapping
       const supportMapping = (s.supportMapping ?? {}) as Mapping
@@ -70,11 +87,14 @@ async function planColumns(where: Prisma.SentenceWhereInput): Promise<ColumnPlan
     }
   }
 
-  const taxonomies = (await prisma.taxonomy.findMany({
-    where: { OR: [{ annotations: { some: { sentence: where } } }, { aiSuggestions: { some: { sentence: where } } }] },
+  const taxonomies = (await scoped(scope, () => db().taxonomy.findMany({
+    where: {
+      workspaceId: scope.workspaceId,
+      OR: [{ annotations: { some: { sentence: where } } }, { aiSuggestions: { some: { sentence: where } } }],
+    },
     select: { id: true, key: true, maxDepth: true },
     orderBy: { key: 'asc' },
-  })).map(t => ({ ...t, maxDepth: t.maxDepth || 5 }))
+  }))).map(t => ({ ...t, maxDepth: t.maxDepth || 5 }))
 
   const text = (header: string) => ({ header, text: true })
   const plain = (header: string) => ({ header })
@@ -91,8 +111,8 @@ async function planColumns(where: Prisma.SentenceWhereInput): Promise<ColumnPlan
 
 const exportCode = (code: string) => (isUnknownNodeCode(code) ? 'UNKNOWN' : code)
 
-async function readRows(args: Parameters<typeof prisma.sentence.findMany>[0] & object) {
-  return prisma.sentence.findMany({
+async function readRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'select'>) {
+  return db().sentence.findMany({
     ...args,
     include: {
       annotations: { where: { source: 'user' }, select: { taxonomyId: true, level: true, nodeCode: true } },
@@ -114,7 +134,7 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
   const labels = new Map(s.annotations.map(a => [`${a.taxonomyId}:${a.level}`, a.nodeCode]))
   const suggestions = new Map(s.aiSuggestions.map(a => [`${a.taxonomyId}:${a.level}`, a]))
 
-  const row: string[] = [s.id]
+  const row: string[] = [s.recordKey]
   for (const column of plan.fields) row.push(valueFor(column, 'field', fieldMapping))
   for (const column of plan.supports) row.push(valueFor(column, 'support', supportMapping))
   for (const t of plan.taxonomies) {
@@ -144,12 +164,14 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
  * once the last row is sent (not called if the stream fails or is cancelled).
  */
 export async function exportStream(
-  where: Prisma.SentenceWhereInput,
+  scope: ExportScope,
+  filter: Prisma.SentenceWhereInput,
   opts: { neutralizeFormulas: boolean; onDone?: (records: number) => Promise<void> | void }
 ): Promise<ReadableStream<Uint8Array>> {
-  const plan = await planColumns(where)
+  const where = { ...filter, workspaceId: scope.workspaceId }
+  const plan = await planColumns(scope, where)
   const encoder = new TextEncoder()
-  const iterator = pages(where, readRows)
+  const iterator = pages(where, args => scoped(scope, () => readRows(args)))
   let records = 0
 
   return new ReadableStream<Uint8Array>({

@@ -48,7 +48,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
   if (user?.id && isLoginPage) {
-    return NextResponse.redirect(new URL('/queue', request.url))
+    return NextResponse.redirect(new URL('/', request.url))
   }
   if (user?.mustResetPassword && pathname !== '/reset-password') {
     return NextResponse.redirect(new URL('/reset-password', request.url))

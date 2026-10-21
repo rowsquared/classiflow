@@ -6,12 +6,14 @@ const BATCH_SIZE = 1000
 /** Inserts parsed nodes and their synonyms (inside the caller's transaction). */
 export async function createTaxonomyNodes(
   tx: Prisma.TransactionClient,
+  workspaceId: string,
   taxonomyId: string,
   nodes: TaxonomyCsvNode[]
 ) {
   for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
     await tx.taxonomyNode.createMany({
       data: nodes.slice(i, i + BATCH_SIZE).map(n => ({
+        workspaceId,
         taxonomyId,
         code: n.code,
         label: n.label,
@@ -35,6 +37,7 @@ export async function createTaxonomyNodes(
   })
   const idByCode = new Map(created.map(n => [n.code, n.id]))
   const synonyms = withSynonyms.flatMap(n => n.synonyms.map(synonym => ({
+    workspaceId,
     taxonomyId,
     nodeId: idByCode.get(n.code)!,
     synonym,

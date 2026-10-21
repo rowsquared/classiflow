@@ -12,10 +12,36 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
+// Ownership (docs/plans/workspace-isolation.md):
+// - Global: User and Better Auth's tables, Workspace, WorkspaceMembership.
+// - Workspace-owned: every other table carries a non-null workspaceId. Rows
+//   that refer to each other use composite (workspaceId, id) foreign keys, so a
+//   record, its labels, comments and taxonomy always share one workspace, and
+//   row-level security (prisma/migrations, lib/workspace/db.ts) limits each
+//   transaction to the workspace it was opened for.
+
+// Global role. Platform admins manage workspaces and accounts and may enter
+// every workspace as its admin.
+enum PlatformRole {
+  admin
+  user
+}
+
+// Role inside one workspace.
+enum WorkspaceRole {
   admin
   supervisor
   labeller
+}
+
+enum WorkspaceStatus {
+  active
+  archived
+}
+
+enum MembershipStatus {
+  active
+  suspended
 }
 
 enum SentenceStatus {
@@ -31,38 +57,36 @@ enum AnnotationSource {
 }
 
 // User, Session, Account, Verification and RateLimit follow Better Auth's
-// schema (lib/auth.ts): core fields plus the username and admin plugins.
-// Passwords live on the "credential" Account row, never on User.
+// schema (lib/auth.ts): core fields plus the username and admin plugins (whose
+// `role` is the platform role). Passwords live on the "credential" Account row.
 model User {
-  id                String    @id @default(cuid())
-  username          String    @unique // Lower case; what people sign in with
+  id                String       @id @default(cuid())
+  username          String       @unique // Lower case; what people sign in with
   displayUsername   String?
-  email             String    @unique // Lower case
-  emailVerified     Boolean   @default(false)
+  email             String       @unique // Lower case
+  emailVerified     Boolean      @default(false)
   name              String
   image             String?
-  role              Role
-  banned            Boolean?  @default(false)
+  role              PlatformRole @default(user)
+  banned            Boolean?     @default(false)
   banReason         String?
   banExpires        DateTime?
-  supervisorId      String?
-  supervisor        User?     @relation("SupervisorToLabellers", fields: [supervisorId], references: [id], onDelete: SetNull)
-  labellers         User[]    @relation("SupervisorToLabellers")
-  mustResetPassword Boolean   @default(true) // Force password reset on first login
+  mustResetPassword Boolean      @default(true) // Force password reset on first login
   lastLogin         DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
-  sessions          Session[]
-  accounts          Account[]
-  annotations       SentenceAnnotation[]
-  comments          Comment[]
-  auditLogs         AuditLog[]
-  imports           SentenceImport[]
-  editedSentences   Sentence[]           @relation("LastEditor")
-  assignedSentences SentenceAssignment[]
-  aiLabelingJobs    AILabelingJob[]
-  aiLearningJobs    AILearningJob[]      @relation("LearningJobsUser")
+  sessions        Session[]
+  accounts        Account[]
+  memberships     WorkspaceMembership[]
+  annotations     SentenceAnnotation[]
+  comments        Comment[]
+  auditLogs       AuditLog[]
+  imports         SentenceImport[]
+  editedSentences Sentence[]            @relation("LastEditor")
+  aiLabelingJobs  AILabelingJob[]
+  aiLearningJobs  AILearningJob[]       @relation("LearningJobsUser")
+  workspaces      Workspace[]           @relation("WorkspaceCreator")
 }
 
 // One row per signed-in browser. Signing a user out everywhere deletes their rows.
@@ -121,9 +145,58 @@ model RateLimit {
   lastRequest BigInt
 }
 
+// An independently managed classification exercise: its own records,
+// taxonomies, members, roles and AI learning.
+model Workspace {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  status      WorkspaceStatus @default(active)
+  archivedAt  DateTime?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  createdBy      User?                  @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  memberships    WorkspaceMembership[]
+  taxonomies     Taxonomy[]
+  imports        SentenceImport[]
+  sentences      Sentence[]
+  aiLabelingJobs AILabelingJob[]
+  aiLearningJobs AILearningJob[]
+  auditLogs      AuditLog[]
+}
+
+// A person's role in one workspace. The supervisor tree links memberships of
+// the same workspace (composite key), so one person can be an admin here and a
+// labeller elsewhere, with different supervisors.
+model WorkspaceMembership {
+  id                     String           @id @default(cuid())
+  workspaceId            String
+  userId                 String
+  role                   WorkspaceRole
+  status                 MembershipStatus @default(active)
+  supervisorMembershipId String?
+  lastSeenAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id])
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supervisor  WorkspaceMembership?  @relation("MembershipTree", fields: [workspaceId, supervisorMembershipId], references: [workspaceId, id], onDelete: NoAction, onUpdate: NoAction)
+  reports     WorkspaceMembership[] @relation("MembershipTree")
+  assignments SentenceAssignment[]
+
+  @@unique([workspaceId, userId])
+  @@unique([workspaceId, id])
+  @@index([userId])
+  @@index([workspaceId, supervisorMembershipId])
+}
+
 model Taxonomy {
   id                              String    @id @default(cuid())
-  key                             String    @unique
+  workspaceId                     String
+  key                             String // Unique within its workspace
   description                     String?
   levelNames                      Json? // { "1": "Major Group", "2": "Sub-major", ... }
   maxDepth                        Int       @default(5)
@@ -141,84 +214,101 @@ model Taxonomy {
   lastLearningError               String?
   newAnnotationsSinceLastLearning Int       @default(0)
 
-  nodes                TaxonomyNode[]
-  synonyms             TaxonomySynonym[]
-  annotations          SentenceAnnotation[]
-  settings             TaxonomySetting?
-  aiSuggestions        SentenceAISuggestion[]
-  aiLabelingJobs       AILabelingJob[]
-  aiLearningJobs       AILearningJob[]        @relation("LearningJobs")
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id])
+  nodes          TaxonomyNode[]
+  synonyms       TaxonomySynonym[]
+  annotations    SentenceAnnotation[]
+  settings       TaxonomySetting?
+  aiSuggestions  SentenceAISuggestion[]
+  aiLabelingJobs AILabelingJob[]
+  aiLearningJobs AILearningJob[]        @relation("LearningJobs")
+
+  @@unique([workspaceId, key])
+  @@unique([workspaceId, id])
 }
 
 model TaxonomySetting {
   id                  String   @id @default(cuid())
+  workspaceId         String
   taxonomyId          String   @unique
   autoSelectThreshold Float?
-  taxonomy            Taxonomy @relation(fields: [taxonomyId], references: [id])
+  taxonomy            Taxonomy @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+
+  @@unique([workspaceId, taxonomyId])
 }
 
 model TaxonomyNode {
-  code       String
-  id         String   @id @default(cuid())
-  taxonomyId String
-  label      String
-  definition String?
-  examples   String?
-  parentCode String?
-  level      Int
-  path       String?
-  isLeaf     Boolean
+  code        String
+  id          String  @id @default(cuid())
+  workspaceId String
+  taxonomyId  String
+  label       String
+  definition  String?
+  examples    String?
+  parentCode  String?
+  level       Int
+  path        String?
+  isLeaf      Boolean
 
-  taxonomy Taxonomy          @relation(fields: [taxonomyId], references: [id])
+  taxonomy Taxonomy          @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
   synonyms TaxonomySynonym[]
 
   @@unique([taxonomyId, code])
+  @@unique([taxonomyId, id])
   @@index([taxonomyId, level])
   @@index([taxonomyId, parentCode])
 }
 
 model TaxonomySynonym {
-  id         String @id @default(cuid())
-  taxonomyId String
-  nodeId     String
-  synonym    String
+  id          String @id @default(cuid())
+  workspaceId String
+  taxonomyId  String
+  nodeId      String
+  synonym     String
 
-  taxonomy Taxonomy     @relation(fields: [taxonomyId], references: [id])
-  node     TaxonomyNode @relation(fields: [nodeId], references: [id])
+  taxonomy Taxonomy     @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+  // The node must belong to the same taxonomy, not just the same workspace.
+  node     TaxonomyNode @relation(fields: [taxonomyId, nodeId], references: [taxonomyId, id])
 
   @@index([taxonomyId, nodeId])
 }
 
 model SentenceImport {
   id           String   @id @default(cuid())
+  workspaceId  String
   fileName     String
   uploadedAt   DateTime @default(now())
   uploadedById String?
   totalRows    Int
 
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id])
   uploadedBy User?      @relation(fields: [uploadedById], references: [id])
   sentences  Sentence[]
 
-  @@index([uploadedAt])
+  @@unique([workspaceId, id])
+  @@index([workspaceId, uploadedAt])
 }
 
 model SentenceAssignment {
-  id         String   @id @default(cuid())
-  sentenceId String
-  userId     String
-  assignedAt DateTime @default(now())
-  assignedBy String?
+  id           String   @id @default(cuid())
+  workspaceId  String
+  sentenceId   String
+  membershipId String
+  assignedAt   DateTime @default(now())
+  assignedBy   String?
 
-  sentence Sentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentence   Sentence            @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  membership WorkspaceMembership @relation(fields: [workspaceId, membershipId], references: [workspaceId, id], onDelete: Cascade)
 
-  @@unique([sentenceId, userId])
-  @@index([userId])
+  @@unique([sentenceId, membershipId])
+  @@index([membershipId])
   @@index([sentenceId])
 }
 
 model Sentence {
-  id          String @id @default(cuid()) // User-provided or auto-generated
+  id          String @id @default(cuid()) // Internal; URLs, joins and AI use it
+  workspaceId String
+  recordKey   String // The CSV's `id` (or a generated one); unique within the workspace
   importId    String
   importOrder Int // Order within the import file (row number)
 
@@ -246,38 +336,63 @@ model Sentence {
   lastEditedAt DateTime?
   createdAt    DateTime       @default(now())
 
-  import        SentenceImport         @relation(fields: [importId], references: [id], onDelete: Cascade)
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id])
+  import        SentenceImport         @relation(fields: [workspaceId, importId], references: [workspaceId, id], onDelete: Cascade)
   lastEditor    User?                  @relation("LastEditor", fields: [lastEditorId], references: [id])
   annotations   SentenceAnnotation[]
   comments      Comment[]
   assignments   SentenceAssignment[]
   aiSuggestions SentenceAISuggestion[]
 
+  @@unique([workspaceId, recordKey])
+  @@unique([workspaceId, id])
   @@index([importId])
-  @@index([status])
-  @@index([field1])
+  @@index([workspaceId, status])
+  @@index([workspaceId, field1])
   @@index([importId, importOrder])
 }
 
 model SentenceAnnotation {
   id                String           @id @default(cuid())
+  workspaceId       String
   sentenceId        String
   taxonomyId        String
   level             Int
-  nodeCode          String // '-99' = unknown
+  nodeCode          String // Level-specific unknown codes: lib/constants.ts
   source            AnnotationSource
   createdById       String?
   labelingStartedAt DateTime? // When labeling session started
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  sentence  Sentence @relation(fields: [sentenceId], references: [id])
-  taxonomy  Taxonomy @relation(fields: [taxonomyId], references: [id])
+  sentence  Sentence @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id])
+  taxonomy  Taxonomy @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
   createdBy User?    @relation(fields: [createdById], references: [id])
 
   @@unique([sentenceId, taxonomyId, level])
   @@index([nodeCode])
   @@index([createdById, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model SentenceAISuggestion {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  sentenceId      String
+  taxonomyId      String
+  level           Int
+  nodeCode        String
+  confidenceScore Float
+  suggestedAt     DateTime @default(now())
+
+  sentence Sentence @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  taxonomy Taxonomy @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([sentenceId, taxonomyId, level])
+  @@index([sentenceId])
+  @@index([taxonomyId, nodeCode])
+  @@index([confidenceScore])
+  @@index([suggestedAt])
 }
 
 enum AILabelingJobStatus {
@@ -288,27 +403,9 @@ enum AILabelingJobStatus {
   cancelled
 }
 
-model SentenceAISuggestion {
-  id              String   @id @default(cuid())
-  sentenceId      String
-  taxonomyId      String
-  level           Int
-  nodeCode        String
-  confidenceScore Float
-  suggestedAt     DateTime @default(now())
-
-  sentence Sentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
-  taxonomy Taxonomy @relation(fields: [taxonomyId], references: [id], onDelete: Cascade)
-
-  @@unique([sentenceId, taxonomyId, level])
-  @@index([sentenceId])
-  @@index([taxonomyId, nodeCode])
-  @@index([confidenceScore])
-  @@index([suggestedAt])
-}
-
 model AILabelingJob {
   id                 String              @id @default(cuid())
+  workspaceId        String
   createdById        String
   taxonomyId         String
   status             AILabelingJobStatus @default(pending)
@@ -325,17 +422,19 @@ model AILabelingJob {
   leaseOwner         String?
   leaseExpiresAt     DateTime?
 
-  createdBy User     @relation(fields: [createdById], references: [id])
-  taxonomy  Taxonomy @relation(fields: [taxonomyId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  createdBy User      @relation(fields: [createdById], references: [id])
+  taxonomy  Taxonomy  @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
 
   @@index([status])
   @@index([createdById])
   @@index([taxonomyId])
-  @@index([startedAt])
+  @@index([workspaceId, startedAt])
 }
 
 model AILearningJob {
   id                 String              @id @default(cuid())
+  workspaceId        String
   createdById        String
   taxonomyId         String
   status             AILabelingJobStatus @default(pending)
@@ -352,44 +451,50 @@ model AILearningJob {
   leaseOwner         String?
   leaseExpiresAt     DateTime?
 
-  createdBy User     @relation("LearningJobsUser", fields: [createdById], references: [id])
-  taxonomy  Taxonomy @relation("LearningJobs", fields: [taxonomyId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  createdBy User      @relation("LearningJobsUser", fields: [createdById], references: [id])
+  taxonomy  Taxonomy  @relation("LearningJobs", fields: [workspaceId, taxonomyId], references: [workspaceId, id])
 
   @@index([status])
   @@index([createdById])
   @@index([taxonomyId])
-  @@index([startedAt])
+  @@index([workspaceId, startedAt])
 }
 
 model Comment {
-  id         String    @id @default(cuid())
-  sentenceId String
-  authorId   String
-  body       String
-  resolved   Boolean   @default(false)
-  resolvedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id          String    @id @default(cuid())
+  workspaceId String
+  sentenceId  String
+  authorId    String
+  body        String
+  resolved    Boolean   @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
-  sentence Sentence @relation(fields: [sentenceId], references: [id])
+  sentence Sentence @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id])
   author   User     @relation(fields: [authorId], references: [id])
 
   @@index([sentenceId])
 }
 
-// Who did what to which object (lib/audit.ts). actorName keeps the username
-// when the actor is later deleted (actorId is then set to null).
+// Who did what to which object (lib/audit.ts). workspaceId is null for
+// platform events (accounts, workspaces). actorName keeps the username when
+// the actor is later deleted (actorId is then set to null).
 model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
-  actorName  String?
-  action     String
-  entityType String
-  entityId   String
-  payload    Json?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  actorName   String?
+  action      String
+  entityType  String
+  entityId    String
+  payload     Json?
+  createdAt   DateTime @default(now())
 
-  actor User? @relation(fields: [actorId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+  actor     User?      @relation(fields: [actorId], references: [id])
 
+  @@index([workspaceId, createdAt])
   @@index([createdAt])
   @@index([action])
   @@index([entityType, entityId])

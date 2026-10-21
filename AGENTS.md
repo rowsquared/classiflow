@@ -50,7 +50,8 @@ Browser: React client components
 
 | Area | Entry points and responsibilities |
 | --- | --- |
-| Application shell | `app/layout.tsx` (CSP nonce), `components/Sidebar.tsx`, `proxy.ts`; `/` redirects to `/queue` |
+| Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, sidebar), `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
+| Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan and status in `docs/plans/workspace-isolation.md` |
 | Work queue | `app/queue/page.tsx`, `app/queue/QueuePageClient.tsx`, `components/queue/`; filtering, sorting, pagination, selection, bulk labels, assignments |
 | Individual labeling | `app/queue/[sentenceId]/page.tsx`, `components/TaxonomyBrowser.tsx`; hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/taxonomies/[key]/page.tsx` |
@@ -68,12 +69,24 @@ Browser: React client components
 
 Read `prisma/schema.prisma` before changing data behavior.
 
+- **Workspaces** isolate everything but accounts. Every workspace table has a
+  non-null `workspaceId` and composite `(workspaceId, id)` foreign keys; row
+  security limits the runtime role to the workspace of the current
+  transaction. Pages live under `/w/[workspaceId]`, data APIs under
+  `/api/workspaces/[workspaceId]`; client code builds both with
+  `lib/workspace/urls.ts`. Workspace data is only accessed inside
+  `withWorkspace()` through `db()` (never the `prisma` singleton); use
+  `afterCommit()` for work that must see committed rows (AI job launch), and
+  `transaction: false` routes with short `withWorkspace()` calls around
+  external HTTP or streaming. Roles and the supervisor tree are per
+  `WorkspaceMembership`; `User.role` is the platform role (`admin | user`).
+
 - **Sentence** means an imported record, not necessarily a grammatical sentence.
   `SentenceImport` groups a CSV upload; `importOrder` preserves row order.
   Records have up to five `fieldN` values to classify and five `supportN` context
   values. JSON `fieldMapping` / `supportMapping` retain original column names.
-- **Taxonomy** has a unique public `key`, a database `id`, custom level names,
-  and a maximum depth of five. Current creation/UI logic limits the app to three
+- **Taxonomy** has a `key` unique within its workspace, a database `id`, custom
+  level names, and a maximum depth of five. Each workspace may have three
   taxonomies. `TaxonomyNode` is unique by `(taxonomyId, code)`; `parentCode`
   describes the hierarchy. Definitions, examples, and synonyms support labeling.
 - **Codes are strings.** Preserve leading zeros through CSV parsing, database
@@ -133,14 +146,16 @@ stored in lower case.
 password reset) and sets the nonce-based Content-Security-Policy. **It passes
 API requests through** apart from a cross-site check. API handlers must perform
 their own session and role checks: start every handler with `requireSession()`
-from `lib/api-auth.ts` (any signed-in user) or `requireSession('admin')` (listed
-roles only). The session and its user are read from the database on every call,
-so use the returned `user`. Server pages use `requirePageUser()` from
+from `lib/api-auth.ts` (identity only), `requirePlatformAdmin()`, or — for
+everything under `/api/workspaces/[workspaceId]` — `workspaceRoute(roles, ...)`
+/ `requireWorkspace(workspaceId, ...roles)` (404 for inaccessible workspaces,
+403 for a forbidden role). The session and its user are read from the database on every call,
+so use the returned `user`. Server pages use `requirePageUser(workspaceId, ...roles)` from
 `lib/server/page-user.ts`. Do not infer protection from an `/admin` UI, the
 proxy, or a neighboring endpoint.
 
-Record-level scoping lives in `lib/access.ts` (admin: all; supervisor: whole
-team subtree; labeller: own assignments). Any handler that reads or writes a
+Record-level scoping lives in `lib/access.ts`, inside a workspace (admin: all of
+the workspace; supervisor: whole team subtree; labeller: own assignments). Any handler that reads or writes a
 record uses `sentenceVisibilityFilter()` or `denyUnlessSentencesVisible()`;
 writes need the same scope as reads. The access matrix is in
 [docs/security.md](docs/security.md); add an integration test when you change it.

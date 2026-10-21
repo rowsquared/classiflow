@@ -3,7 +3,8 @@
 //
 // DATABASE_URL must be the schema owner (the role that runs migrations). The
 // app role APP_DB_USER (password APP_DB_PASSWORD) gets row access to every
-// application table and nothing else: it cannot create, alter or drop tables,
+// application table and nothing else, and is bound by the workspace row
+// security (it is not the table owner and has NOBYPASSRLS): it cannot create, alter or drop tables,
 // cannot touch the migration history, and is not a superuser. Default
 // privileges extend the same grants to tables that later migrations create.
 // Idempotent; the password is set on every run, so rotating it is a restart.
@@ -59,6 +60,8 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
       `REVOKE ALL ON TABLE "${schema}"."_prisma_migrations" FROM ${role}`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${role}`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT USAGE, SELECT ON SEQUENCES TO ${role}`,
+      // AI job recovery across workspaces (ids only; see the baseline migration).
+      `GRANT EXECUTE ON FUNCTION "${schema}".app_recoverable_ai_jobs(timestamp) TO ${role}`,
     ].filter((sql): sql is string => sql !== null)
     await prisma.$transaction(statements.map(sql => prisma.$executeRawUnsafe(sql)))
     console.log(`✓ Database role "${user}" has row access to the application tables only`)

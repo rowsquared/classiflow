@@ -3,6 +3,8 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSession, signOut } from '@/lib/auth-client'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
 import Image from 'next/image'
 import { Tags } from 'lucide-react'
 
@@ -31,6 +33,8 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session } = useSession()
+  const workspace = useWorkspaceInfo()
+  const { href: workspaceHref } = useWorkspacePaths()
 
   // Read from data attribute and sync state, then remove CSS override
   useLayoutEffect(() => {
@@ -192,7 +196,8 @@ export default function Sidebar() {
   const user = session?.user ? {
     name: session.user.name || 'User',
     email: session.user.email || '',
-    role: session.user.role || 'labeller',
+    // The role in the current workspace decides which pages are offered.
+    role: workspace?.role ?? 'labeller',
     initials: (session.user.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
   } : null
 
@@ -201,12 +206,13 @@ export default function Sidebar() {
 
   const visibleNavItems = user ? navItems.filter(item => item.roles.includes(user.role)) : []
 
-  const isActive = (href: string) => {
-    if (href === '/queue') {
-      return pathname === '/queue' || pathname.startsWith('/queue/')
+  const isActive = (path: string) => {
+    const href = workspaceHref(path)
+    if (path === '/queue') {
+      return pathname === href || pathname.startsWith(`${href}/`)
     }
     // Exact match for admin sub-pages
-    if (href.startsWith('/admin/')) {
+    if (path.startsWith('/admin/')) {
       return pathname === href
     }
     return pathname.startsWith(href)
@@ -295,7 +301,7 @@ export default function Sidebar() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={workspaceHref(item.href)}
               className={`
                 flex items-center gap-4 py-3 transition-colors relative
                 ${active ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100'}
@@ -359,6 +365,11 @@ export default function Sidebar() {
                 }}
               >
                 <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
+                {workspace && (
+                  <div className="text-xs text-gray-500 truncate" title={`${workspace.name} (${workspace.role})`}>
+                    {workspace.name} · {workspace.role}
+                  </div>
+                )}
               </div>
             </button>
 
@@ -373,6 +384,13 @@ export default function Sidebar() {
                   minWidth: collapsed ? '120px' : 'auto'
                 }}
               >
+                <Link
+                  href="/workspaces"
+                  onClick={() => setShowLogoutMenu(false)}
+                  className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
+                >
+                  Switch workspace
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"

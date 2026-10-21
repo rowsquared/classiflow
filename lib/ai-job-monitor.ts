@@ -13,14 +13,22 @@
  * restarts, its leases expire and recovery (startJobRecovery, run from
  * instrumentation.ts) lets any instance take the job over: it resumes polling
  * if the external job was already started, otherwise it starts it.
+ *
+ * Workspaces: every job belongs to one workspace, and all its reads and writes
+ * run in that workspace's transactions (lib/workspace/db.ts), reconstructed
+ * from the job row, never from a browser's selection. Recovery finds jobs in
+ * all workspaces through the database function app_recoverable_ai_jobs(),
+ * which returns only ids. Results are written only while the workspace is
+ * active, and only for the job's own records.
  */
 
 import { hostname } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
+import { db, withWorkspace } from '@/lib/workspace/db'
 import { startAIJob, fetchAIJobStatus } from './ai-labeling'
 import type { Prisma } from '@/lib/generated/prisma/client'
-import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS, AI_SOURCE_SLUG, getUnknownCodeForLevel } from './constants'
+import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS, aiSourceSlug, getUnknownCodeForLevel } from './constants'
 import { parseLabelingResults } from './ai-results'
 import { buildFieldMap } from './ai-utils'
 
@@ -64,31 +72,28 @@ const MAX_POLL_BACKOFF_MS = 5 * 60_000
 
 type JobKind = 'labeling' | 'learning'
 
-async function loadJobRecord(jobId: string, kind: JobKind) {
-  if (kind === 'learning') {
-    return prisma.aILearningJob.findUnique({
-      where: { id: jobId },
-      include: { taxonomy: { select: { id: true, key: true } } }
-    })
-  }
-  return prisma.aILabelingJob.findUnique({
-    where: { id: jobId },
-    include: { taxonomy: { select: { id: true, key: true } } }
+async function loadJobRecord(workspaceId: string, jobId: string, kind: JobKind) {
+  return withWorkspace(workspaceId, () => {
+    const args = { where: { id: jobId }, include: { taxonomy: { select: { id: true, key: true } } } }
+    return kind === 'learning' ? db().aILearningJob.findUnique(args) : db().aILabelingJob.findUnique(args)
   })
 }
 
-async function updateJobRecord(jobId: string, kind: JobKind, data: Record<string, unknown>) {
-  if (kind === 'learning') {
-    return prisma.aILearningJob.update({ where: { id: jobId }, data })
-  }
-  return prisma.aILabelingJob.update({ where: { id: jobId }, data })
+async function updateJobRecord(workspaceId: string, jobId: string, kind: JobKind, data: Record<string, unknown>) {
+  await withWorkspace(workspaceId, async () => {
+    if (kind === 'learning') {
+      await db().aILearningJob.update({ where: { id: jobId }, data })
+    } else {
+      await db().aILabelingJob.update({ where: { id: jobId }, data })
+    }
+  })
 }
 
-async function getJobStatus(jobId: string, kind: JobKind) {
-  if (kind === 'learning') {
-    return prisma.aILearningJob.findUnique({ where: { id: jobId }, select: { status: true } })
-  }
-  return prisma.aILabelingJob.findUnique({ where: { id: jobId }, select: { status: true } })
+async function getJobStatus(workspaceId: string, jobId: string, kind: JobKind) {
+  return withWorkspace(workspaceId, () => {
+    const args = { where: { id: jobId }, select: { status: true } }
+    return kind === 'learning' ? db().aILearningJob.findUnique(args) : db().aILabelingJob.findUnique(args)
+  })
 }
 
 const ACTIVE = ['pending' as const, 'processing' as const]
@@ -97,7 +102,7 @@ const ACTIVE = ['pending' as const, 'processing' as const]
  * Takes (or renews) this instance's lease on an active job. Succeeds when the
  * job is unowned, its lease expired, or this instance already holds it.
  */
-async function claimLease(jobId: string, kind: JobKind): Promise<boolean> {
+async function claimLease(workspaceId: string, jobId: string, kind: JobKind): Promise<boolean> {
   const now = new Date()
   const owner = monitorInstanceId()
   const where = {
@@ -106,21 +111,23 @@ async function claimLease(jobId: string, kind: JobKind): Promise<boolean> {
     OR: [{ leaseOwner: null }, { leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }, { leaseOwner: owner }],
   }
   const data = { leaseOwner: owner, leaseExpiresAt: new Date(now.getTime() + LEASE_MS) }
-  const result = kind === 'learning'
-    ? await prisma.aILearningJob.updateMany({ where, data })
-    : await prisma.aILabelingJob.updateMany({ where, data })
+  const result = await withWorkspace(workspaceId, () => kind === 'learning'
+    ? db().aILearningJob.updateMany({ where, data })
+    : db().aILabelingJob.updateMany({ where, data }))
   return result.count === 1
 }
 
 /** Gives the lease back so another instance can take over at once. */
-async function releaseLease(jobId: string, kind: JobKind) {
+async function releaseLease(workspaceId: string, jobId: string, kind: JobKind) {
   const where = { id: jobId, leaseOwner: monitorInstanceId() }
   const data = { leaseOwner: null, leaseExpiresAt: null }
-  if (kind === 'learning') {
-    await prisma.aILearningJob.updateMany({ where, data })
-  } else {
-    await prisma.aILabelingJob.updateMany({ where, data })
-  }
+  await withWorkspace(workspaceId, async () => {
+    if (kind === 'learning') {
+      await db().aILearningJob.updateMany({ where, data })
+    } else {
+      await db().aILabelingJob.updateMany({ where, data })
+    }
+  })
 }
 
 type JobRecord = NonNullable<Awaited<ReturnType<typeof loadJobRecord>>>
@@ -132,13 +139,13 @@ const API_PATH: Record<JobKind, string> = { labeling: '/label', learning: '/lear
 // ---------------------------------------------------------------------------
 
 /** Labeling job: build payload, POST /label, poll for result. */
-export function launchJob(jobId: string) {
-  runMonitor(jobId, 'labeling')
+export function launchJob(jobId: string, workspaceId: string) {
+  runMonitor(jobId, 'labeling', workspaceId)
 }
 
 /** Learning job: build payload with annotations, POST /learn, poll. */
-export function launchLearningJob(jobId: string) {
-  runMonitor(jobId, 'learning')
+export function launchLearningJob(jobId: string, workspaceId: string) {
+  runMonitor(jobId, 'learning', workspaceId)
 }
 
 /**
@@ -152,23 +159,14 @@ export async function ensureJobsMonitored() {
   globalAny.__lastRecoveryCheck = now
 
   const monitors = getActiveMonitors()
-  const unowned = {
-    status: { in: ACTIVE },
-    OR: [{ leaseOwner: null }, { leaseExpiresAt: null }, { leaseExpiresAt: { lt: new Date() } }],
-  }
-  const [labeling, learning] = await Promise.all([
-    prisma.aILabelingJob.findMany({ where: unowned, select: { id: true } }),
-    prisma.aILearningJob.findMany({ where: unowned, select: { id: true } }),
-  ])
-  for (const job of labeling) {
+  // Ids and workspaces only (SECURITY DEFINER function, see the migration);
+  // each job is then read and claimed inside its own workspace.
+  const jobs = await prisma.$queryRaw<Array<{ kind: JobKind; id: string; workspaceId: string }>>`
+    SELECT kind, id, "workspaceId" FROM app_recoverable_ai_jobs(${new Date()}::timestamp)`
+  for (const job of jobs) {
     if (monitors.has(job.id)) continue
-    console.log(`[recovery] Taking over labeling job ${job.id}`)
-    launchJob(job.id)
-  }
-  for (const job of learning) {
-    if (monitors.has(job.id)) continue
-    console.log(`[recovery] Taking over learning job ${job.id}`)
-    launchLearningJob(job.id)
+    console.log(`[recovery] Taking over ${job.kind} job ${job.id}`)
+    runMonitor(job.id, job.kind, job.workspaceId)
   }
 }
 
@@ -198,14 +196,14 @@ async function startLabeling(job: JobRecord): Promise<string> {
 
   if (sentenceIds.length === 0) throw new Error('No sentences to process')
 
-  const sentences = await prisma.sentence.findMany({
-    where: { id: { in: sentenceIds } },
+  const sentences = await withWorkspace(job.workspaceId, () => db().sentence.findMany({
+    where: { workspaceId: job.workspaceId, id: { in: sentenceIds } },
     select: {
       id: true,
       field1: true, field2: true, field3: true, field4: true, field5: true,
       fieldMapping: true
     }
-  })
+  }))
 
   const sentenceMap = new Map(sentences.map(s => [s.id, s]))
   const payloadSentences = sentenceIds
@@ -222,12 +220,12 @@ async function startLabeling(job: JobRecord): Promise<string> {
 
   const externalJobId = await startAIJob('/label', {
     taxonomyKey: job.taxonomy.key,
-    ...(AI_SOURCE_SLUG ? { sourceSlug: AI_SOURCE_SLUG } : {}),
+    sourceSlug: aiSourceSlug(job.workspaceId),
     batchId: job.id,
     sentences: payloadSentences
   })
 
-  await updateJobRecord(job.id, 'labeling', {
+  await updateJobRecord(job.workspaceId, job.id, 'labeling', {
     externalJobId, status: 'processing', startedAt: new Date(), errorMessage: null
   })
 
@@ -241,8 +239,9 @@ async function startLearning(job: JobRecord): Promise<string> {
   if (sentenceIds.length === 0) throw new Error('No sentences to process')
 
   // Load annotations for these sentences (user-submitted only)
-  const annotations = await prisma.sentenceAnnotation.findMany({
+  const annotations = await withWorkspace(job.workspaceId, () => db().sentenceAnnotation.findMany({
     where: {
+      workspaceId: job.workspaceId,
       sentenceId: { in: sentenceIds },
       taxonomyId: job.taxonomyId,
       source: 'user'
@@ -256,7 +255,7 @@ async function startLearning(job: JobRecord): Promise<string> {
         }
       }
     }
-  })
+  }))
 
   // Group annotations by sentence
   const sentencesMap = new Map<string, {
@@ -284,11 +283,11 @@ async function startLearning(job: JobRecord): Promise<string> {
 
   const externalJobId = await startAIJob('/learn', {
     taxonomyKey: job.taxonomy.key,
-    ...(AI_SOURCE_SLUG ? { sourceSlug: AI_SOURCE_SLUG } : {}),
+    sourceSlug: aiSourceSlug(job.workspaceId),
     sentences: sentencesPayload
   })
 
-  await updateJobRecord(job.id, 'learning', {
+  await updateJobRecord(job.workspaceId, job.id, 'learning', {
     externalJobId, status: 'processing', startedAt: new Date(), errorMessage: null
   })
 
@@ -299,7 +298,7 @@ async function startLearning(job: JobRecord): Promise<string> {
 // Internal — generic monitor loop
 // ---------------------------------------------------------------------------
 
-function runMonitor(jobId: string, kind: JobKind) {
+function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
   const monitors = getActiveMonitors()
   if (monitors.has(jobId)) return
   monitors.add(jobId)
@@ -307,29 +306,29 @@ function runMonitor(jobId: string, kind: JobKind) {
   ;(async () => {
     let leased = false
     try {
-      leased = await claimLease(jobId, kind)
+      leased = await claimLease(workspaceId, jobId, kind)
       if (!leased) return // finished, or another instance owns it
 
       // Loaded after claiming, so a job another instance already started is
       // resumed (externalJobId set) rather than sent twice.
-      const job = await loadJobRecord(jobId, kind)
+      const job = await loadJobRecord(workspaceId, jobId, kind)
       if (!job) return
       if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return
 
       const externalJobId = job.externalJobId
         ?? (kind === 'learning' ? await startLearning(job) : await startLabeling(job))
 
-      await pollUntilComplete(jobId, externalJobId, job.totalSentences, job.taxonomyId, job.filterCriteria, kind)
+      await pollUntilComplete(workspaceId, jobId, externalJobId, job.totalSentences, job.taxonomyId, job.filterCriteria, kind)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       console.error(`[monitor] ${kind} job ${jobId} failed: ${msg}`)
       try {
-        await failIfActive(jobId, kind, msg)
+        await failIfActive(workspaceId, jobId, kind, msg)
       } catch { /* best effort */ }
     } finally {
       monitors.delete(jobId)
       if (leased) {
-        await releaseLease(jobId, kind).catch(() => { /* expires on its own */ })
+        await releaseLease(workspaceId, jobId, kind).catch(() => { /* expires on its own */ })
       }
     }
   })()
@@ -339,6 +338,7 @@ function runMonitor(jobId: string, kind: JobKind) {
  * Poll external AI for job status, update progress, store results on completion.
  */
 async function pollUntilComplete(
+  workspaceId: string,
   jobId: string,
   externalJobId: string,
   totalSentences: number,
@@ -351,9 +351,9 @@ async function pollUntilComplete(
   let consecutiveErrors = 0
 
   while (true) {
-    const current = await getJobStatus(jobId, kind)
+    const current = await getJobStatus(workspaceId, jobId, kind)
     if (!current || current.status === 'cancelled') return
-    if (!(await claimLease(jobId, kind))) {
+    if (!(await claimLease(workspaceId, jobId, kind))) {
       console.warn(`[monitor] ${kind} job ${jobId}: lease lost to another instance; stopping here`)
       return
     }
@@ -364,15 +364,17 @@ async function pollUntilComplete(
       const normalized = (status.status || '').toLowerCase()
 
       const progress = typeof status.progress === 'number' ? status.progress : 0
-      await updateJobRecord(jobId, kind, {
+      await updateJobRecord(workspaceId, jobId, kind, {
         processedSentences: Math.round(progress * totalSentences)
       })
 
       if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
         // Completion is a conditional transition: if the job was cancelled while
         // we waited for the service, nothing is written. Results and status
-        // commit together.
-        const completed = await prisma.$transaction(async (tx) => {
+        // commit together, and only while the workspace is active (write: an
+        // archived workspace refuses them).
+        const completed = await withWorkspace(workspaceId, async () => {
+          const tx = db()
           const data = { status: 'completed' as const, processedSentences: totalSentences, completedAt: new Date(), errorMessage: null, leaseOwner: null, leaseExpiresAt: null }
           const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
           const claimed = kind === 'learning'
@@ -380,22 +382,22 @@ async function pollUntilComplete(
             : await tx.aILabelingJob.updateMany({ where, data })
           if (claimed.count === 0) return false
           if (kind === 'labeling') {
-            await storeLabelingResults(tx, jobId, taxonomyId, sentenceIds, status.result || status)
+            await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, sentenceIds, status.result || status)
           }
           return true
-        }, { timeout: 120_000 })
+        }, { write: true, timeoutMs: 120_000 })
         if (!completed) return
 
         // For learning jobs, update taxonomy lastLearningAt
         if (kind === 'learning') {
-          await updateTaxonomyLearningStatus(taxonomyId)
+          await updateTaxonomyLearningStatus(workspaceId, taxonomyId)
         }
 
         return
       }
 
       if (normalized === 'failed' || normalized === 'error') {
-        await failIfActive(jobId, kind, status.error || 'External AI job failed')
+        await failIfActive(workspaceId, jobId, kind, status.error || 'External AI job failed')
         return
       }
     } catch (error) {
@@ -423,27 +425,31 @@ export function pollDelay(consecutiveErrors: number): number {
  * When a learning job completes, update taxonomy's lastLearningAt timestamp.
  * Only updates if there are no other pending/processing learning jobs for this taxonomy.
  */
-async function updateTaxonomyLearningStatus(taxonomyId: string) {
-  const stillActive = await prisma.aILearningJob.count({
-    where: { taxonomyId, status: { in: ['pending', 'processing'] } }
-  })
-  if (stillActive === 0) {
-    await prisma.taxonomy.update({
-      where: { id: taxonomyId },
-      data: { lastLearningAt: new Date(), lastLearningStatus: 'completed', lastLearningError: null }
+async function updateTaxonomyLearningStatus(workspaceId: string, taxonomyId: string) {
+  await withWorkspace(workspaceId, async () => {
+    const stillActive = await db().aILearningJob.count({
+      where: { taxonomyId, status: { in: ['pending', 'processing'] } }
     })
-  }
+    if (stillActive === 0) {
+      await db().taxonomy.update({
+        where: { id: taxonomyId },
+        data: { lastLearningAt: new Date(), lastLearningStatus: 'completed', lastLearningError: null }
+      })
+    }
+  })
 }
 
 /** Marks a job failed unless it already reached a final state (e.g. cancelled). */
-async function failIfActive(jobId: string, kind: JobKind, message: string) {
+async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, message: string) {
   const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
   const data = { status: 'failed' as const, errorMessage: message, completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null }
-  if (kind === 'learning') {
-    await prisma.aILearningJob.updateMany({ where, data })
-  } else {
-    await prisma.aILabelingJob.updateMany({ where, data })
-  }
+  await withWorkspace(workspaceId, async () => {
+    if (kind === 'learning') {
+      await db().aILearningJob.updateMany({ where, data })
+    } else {
+      await db().aILabelingJob.updateMany({ where, data })
+    }
+  })
 }
 
 /**
@@ -454,6 +460,7 @@ async function failIfActive(jobId: string, kind: JobKind, message: string) {
  */
 async function storeLabelingResults(
   tx: Prisma.TransactionClient,
+  workspaceId: string,
   jobId: string,
   taxonomyId: string,
   sentenceIds: string[],
@@ -478,6 +485,7 @@ async function storeLabelingResults(
     if (valid.length === 0) continue
     await tx.sentenceAISuggestion.createMany({
       data: valid.map(s => ({
+        workspaceId,
         sentenceId,
         taxonomyId,
         level: s.level,

@@ -3,19 +3,23 @@ import { NextRequest } from 'next/server'
 import { parse } from 'csv-parse/sync'
 import type { User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createSentences, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { db } from '@/lib/workspace/db'
+import { wsId, inWorkspace, createWorkspace, createSentences, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
-import * as taxonomiesRoute from '@/app/api/taxonomies/route'
-import * as taxonomyRoute from '@/app/api/taxonomies/[key]/route'
-import * as validateRoute from '@/app/api/taxonomies/validate/route'
-import * as incrementalRoute from '@/app/api/taxonomies/[key]/import/route'
-import * as recordImportRoute from '@/app/api/sentences/import/route'
-import * as exportRoute from '@/app/api/export/route'
+import * as taxonomiesRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/route'
+import * as taxonomyRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/[key]/route'
+import * as validateRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/validate/route'
+import * as incrementalRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/[key]/import/route'
+import * as recordImportRoute from '@/app/api/workspaces/[workspaceId]/sentences/import/route'
+import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 
 let admin: User
 
 beforeEach(async () => {
   await resetDatabase()
+  await createWorkspace()
+  await createWorkspace()
+  await createWorkspace()
   admin = await createUser('admin')
   signInAs(admin)
 })
@@ -30,18 +34,18 @@ function multipart(url: string, method: string, fields: Record<string, string>, 
 const TREE = 'id,label,parent_id,level,synonyms\n01,Group,,1,"a, b"\n011,Item 011,01,2,\n012,Item 012,01,2,\n02,Other,,1,\n'
 
 async function createTaxonomy(key = 'occ', csv = TREE) {
-  return taxonomiesRoute.POST(multipart('/api/taxonomies', 'POST', { key, maxDepth: '2' }, csv))
+  return taxonomiesRoute.POST(multipart('/api/taxonomies', 'POST', { key, maxDepth: '2' }, csv), params())
 }
 
 describe('taxonomy CSV lifecycle', () => {
   it('validate and create agree, keep leading zeros and set leaves', async () => {
     const bad = 'id,label,parent_id,level\n01,A,,1\n011,B,01,3\n'
-    const v = await validateRoute.POST(multipart('/api/taxonomies/validate', 'POST', {}, bad))
+    const v = await validateRoute.POST(multipart('/api/taxonomies/validate', 'POST', {}, bad), params())
     expect(v.status).toBe(400)
     expect((await createTaxonomy('bad', bad)).status).toBe(400)
     expect(await prisma.taxonomy.count()).toBe(0)
 
-    expect((await validateRoute.POST(multipart('/x', 'POST', {}, TREE))).status).toBe(200)
+    expect((await validateRoute.POST(multipart('/x', 'POST', {}, TREE), params())).status).toBe(200)
     const res = await createTaxonomy()
     expect(res.status).toBe(200)
     const nodes = await prisma.taxonomyNode.findMany({ orderBy: { code: 'asc' } })
@@ -57,12 +61,12 @@ describe('taxonomy CSV lifecycle', () => {
 
   it('replacing nodes that labels still use needs confirmation', async () => {
     await createTaxonomy()
-    const taxonomy = await prisma.taxonomy.findUniqueOrThrow({ where: { key: 'occ' } })
+    const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { key: 'occ' } })
     const [r] = await createSentences(1)
-    await prisma.sentenceAnnotation.createMany({ data: [
-      { sentenceId: r.id, taxonomyId: taxonomy.id, level: 1, nodeCode: '01', source: 'user' },
-      { sentenceId: r.id, taxonomyId: taxonomy.id, level: 2, nodeCode: '012', source: 'user' },
-    ] })
+    await inWorkspace(() => db().sentenceAnnotation.createMany({ data: [
+      { workspaceId: wsId(), sentenceId: r.id, taxonomyId: taxonomy.id, level: 1, nodeCode: '01', source: 'user' },
+      { workspaceId: wsId(), sentenceId: r.id, taxonomyId: taxonomy.id, level: 2, nodeCode: '012', source: 'user' },
+    ] }))
 
     const smaller = 'id,label,parent_id,level\n01,Group,,1\n011,Item,01,2\n'
     const put = (extra: Record<string, string>) =>
@@ -94,14 +98,14 @@ describe('taxonomy CSV lifecycle', () => {
 
   it('deletes a taxonomy with finished learning jobs, refuses while one runs', async () => {
     await createTaxonomy()
-    const taxonomy = await prisma.taxonomy.findUniqueOrThrow({ where: { key: 'occ' } })
-    const job = await prisma.aILearningJob.create({
-      data: { taxonomyId: taxonomy.id, createdById: admin.id, status: 'processing', totalSentences: 1 },
-    })
+    const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { key: 'occ' } })
+    const job = await inWorkspace(() => db().aILearningJob.create({
+      data: { workspaceId: wsId(), taxonomyId: taxonomy.id, createdById: admin.id, status: 'processing', totalSentences: 1 },
+    }))
     const del = () => taxonomyRoute.DELETE(request('/api/taxonomies/occ', { method: 'DELETE' }), params({ key: 'occ' }))
     expect((await del()).status).toBe(409)
 
-    await prisma.aILearningJob.update({ where: { id: job.id }, data: { status: 'completed' } })
+    await inWorkspace(() => db().aILearningJob.update({ where: { id: job.id }, data: { status: 'completed' } }))
     expect((await del()).status).toBe(200)
     expect(await prisma.taxonomy.count()).toBe(0)
     expect(await prisma.aILearningJob.count()).toBe(0)
@@ -111,34 +115,36 @@ describe('taxonomy CSV lifecycle', () => {
 describe('record import and export', () => {
   it('dry run and commit agree; ids keep leading zeros; uploader recorded', async () => {
     const csv = 'id,field_title,support_region\n007,"Baker, ""head""",=SUM(1)\n008,Clerk,North\n'
-    const dry = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=true', 'POST', {}, csv))
+    const dry = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=true', 'POST', {}, csv), params())
     expect(dry.status).toBe(200)
     expect(await prisma.sentence.count()).toBe(0)
 
-    const commit = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=false', 'POST', {}, csv))
+    const commit = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=false', 'POST', {}, csv), params())
     expect(commit.status).toBe(200)
-    expect((await prisma.sentence.findMany({ orderBy: { id: 'asc' } })).map(s => s.id)).toEqual(['007', '008'])
+    expect((await prisma.sentence.findMany({ orderBy: { recordKey: 'asc' } })).map(s => s.recordKey)).toEqual(['007', '008'])
     expect((await prisma.sentenceImport.findFirstOrThrow()).uploadedById).toBe(admin.id)
 
-    const again = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=false', 'POST', {}, csv))
+    const again = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=false', 'POST', {}, csv), params())
     expect(again.status).toBe(400) // ids already exist
 
-    const dupCols = await recordImportRoute.POST(multipart('/x?dryRun=true', 'POST', {}, 'field_a,field_a\n1,2\n'))
+    const dupCols = await recordImportRoute.POST(multipart('/x?dryRun=true', 'POST', {}, 'field_a,field_a\n1,2\n'), params())
     expect(dupCols.status).toBe(400)
   })
 
   it('export escapes every cell and neutralises formulas only in text columns', async () => {
     await createTaxonomy()
-    const taxonomy = await prisma.taxonomy.findUniqueOrThrow({ where: { key: 'occ' } })
+    const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { key: 'occ' } })
     await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=false', 'POST', {},
-      'id,field_title,support_region\n007,"Baker, ""head""\nline 2",=SUM(1)\n'))
-    await prisma.sentenceAnnotation.createMany({ data: [
-      { sentenceId: '007', taxonomyId: taxonomy.id, level: 1, nodeCode: '01', source: 'user' },
-      { sentenceId: '007', taxonomyId: taxonomy.id, level: 2, nodeCode: '-99', source: 'user' },
-    ] })
-    await prisma.comment.create({ data: { sentenceId: '007', authorId: admin.id, body: '+1 "agree", see row' } })
+      'id,field_title,support_region\n007,"Baker, ""head""\nline 2",=SUM(1)\n'), params())
+    // The CSV id is the record key; labels and comments refer to the internal id.
+    const { id: recordId } = await prisma.sentence.findFirstOrThrow({ where: { recordKey: '007' } })
+    await inWorkspace(() => db().sentenceAnnotation.createMany({ data: [
+      { workspaceId: wsId(), sentenceId: recordId, taxonomyId: taxonomy.id, level: 1, nodeCode: '01', source: 'user' },
+      { workspaceId: wsId(), sentenceId: recordId, taxonomyId: taxonomy.id, level: 2, nodeCode: '-99', source: 'user' },
+    ] }))
+    await inWorkspace(() => db().comment.create({ data: { workspaceId: wsId(), sentenceId: recordId, authorId: admin.id, body: '+1 "agree", see row' } }))
 
-    const res = await exportRoute.GET(request('/api/export'))
+    const res = await exportRoute.GET(request('/api/export'), params())
     expect(res.status).toBe(200)
     const [header, row] = parse(await res.text()) as string[][]
     const cell = (name: string) => row[header.indexOf(name)]
@@ -149,28 +155,28 @@ describe('record import and export', () => {
     expect(cell('occ_2')).toBe('UNKNOWN')
     expect(cell('comments')).toBe(`[${admin.name}]: +1 "agree", see row`)
 
-    const raw = await exportRoute.GET(request('/api/export?formulaSafe=false'))
+    const raw = await exportRoute.GET(request('/api/export?formulaSafe=false'), params())
     const [h2, r2] = parse(await raw.text()) as string[][]
     expect(r2[h2.indexOf('support_region')]).toBe('=SUM(1)')
   })
 
   it('exports large sets completely, in import order, with columns from every import', async () => {
-    const a = await prisma.taxonomy.create({ data: { key: 'zeta', maxDepth: 1 } })
-    const b = await prisma.taxonomy.create({ data: { key: 'alpha', maxDepth: 2 } })
-    const first = await prisma.sentenceImport.create({ data: { fileName: 'a.csv', totalRows: 1300 } })
-    const second = await prisma.sentenceImport.create({ data: { fileName: 'b.csv', totalRows: 1200 } })
+    const a = await inWorkspace(() => db().taxonomy.create({ data: { workspaceId: wsId(), key: 'zeta', maxDepth: 1 } }))
+    const b = await inWorkspace(() => db().taxonomy.create({ data: { workspaceId: wsId(), key: 'alpha', maxDepth: 2 } }))
+    const first = await inWorkspace(() => db().sentenceImport.create({ data: { workspaceId: wsId(), fileName: 'a.csv', totalRows: 1300 } }))
+    const second = await inWorkspace(() => db().sentenceImport.create({ data: { workspaceId: wsId(), fileName: 'b.csv', totalRows: 1200 } }))
     const pad = (n: number) => String(n).padStart(5, '0')
-    await prisma.sentence.createMany({ data: Array.from({ length: 1300 }, (_, i) => ({
-      id: `a${pad(i)}`, importId: first.id, importOrder: 1299 - i, field1: `title ${i}`, fieldMapping: { '1': 'title' },
-    })) })
-    await prisma.sentence.createMany({ data: Array.from({ length: 1200 }, (_, i) => ({
-      id: `b${pad(i)}`, importId: second.id, importOrder: i, field1: `desc ${i}`, support1: `r${i}`,
+    await inWorkspace(() => db().sentence.createMany({ data: Array.from({ length: 1300 }, (_, i) => ({
+      workspaceId: wsId(), recordKey: `a${pad(i)}`, id: `a${pad(i)}`, importId: first.id, importOrder: 1299 - i, field1: `title ${i}`, fieldMapping: { '1': 'title' },
+    })) }))
+    await inWorkspace(() => db().sentence.createMany({ data: Array.from({ length: 1200 }, (_, i) => ({
+      workspaceId: wsId(), recordKey: `b${pad(i)}`, id: `b${pad(i)}`, importId: second.id, importOrder: i, field1: `desc ${i}`, support1: `r${i}`,
       fieldMapping: { '1': 'description' }, supportMapping: { '1': 'region' },
-    })) })
-    await prisma.sentenceAnnotation.create({ data: { sentenceId: 'b00005', taxonomyId: a.id, level: 1, nodeCode: '007', source: 'user' } })
-    await prisma.sentenceAISuggestion.create({ data: { sentenceId: 'a00000', taxonomyId: b.id, level: 2, nodeCode: '0110', confidenceScore: 0.5 } })
+    })) }))
+    await inWorkspace(() => db().sentenceAnnotation.create({ data: { workspaceId: wsId(), sentenceId: 'b00005', taxonomyId: a.id, level: 1, nodeCode: '007', source: 'user' } }))
+    await inWorkspace(() => db().sentenceAISuggestion.create({ data: { workspaceId: wsId(), sentenceId: 'a00000', taxonomyId: b.id, level: 2, nodeCode: '0110', confidenceScore: 0.5 } }))
 
-    const res = await exportRoute.GET(request('/api/export'))
+    const res = await exportRoute.GET(request('/api/export'), params())
     expect(res.status).toBe(200)
     const [header, ...rows] = parse(await res.text()) as string[][]
 

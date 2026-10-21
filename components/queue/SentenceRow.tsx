@@ -1,4 +1,5 @@
 "use client"
+import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 
@@ -114,9 +115,9 @@ export default function SentenceRow({
       }))
       const params = new URLSearchParams()
       params.set('list', storageKey)
-      router.push(`/queue/${sentence.id}?${params.toString()}`)
+      router.push(workspaceHref(`/queue/${sentence.id}?${params.toString()}`))
     } else {
-      router.push(`/queue/${sentence.id}`)
+      router.push(workspaceHref(`/queue/${sentence.id}`))
     }
   }
 

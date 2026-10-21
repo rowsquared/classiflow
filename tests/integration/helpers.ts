@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
-import type { Role } from '@/lib/generated/prisma/client'
+import type { WorkspaceRole as Role } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
+import { withWorkspace } from '@/lib/workspace/db'
 import type { AuthSession } from '@/lib/auth'
 
 let counter = 0
@@ -16,21 +17,50 @@ export async function resetDatabase() {
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} CASCADE`)
 }
 
+let workspaceId: string | null = null
+
+/** The workspace the test file works in; every file chooses one explicitly. */
+export function selectWorkspace(id: string) {
+  workspaceId = id
+}
+
+function currentWorkspace(): string {
+  if (!workspaceId) throw new Error('Call selectWorkspace() (or createWorkspace()) in this test file first')
+  return workspaceId
+}
+
+/** A new workspace, selected for the following helpers. */
+export async function createWorkspace(name = uid('workspace')) {
+  const workspace = await prisma.workspace.create({ data: { name } })
+  selectWorkspace(workspace.id)
+  return workspace
+}
+
 /**
- * A user who is signed in from one browser: the Session row is created with
- * the user, so signInAs() later finds it unless it was revoked since.
+ * A user who is signed in from one browser (the Session row is created with
+ * the user, so signInAs() later finds it unless it was revoked since) and a
+ * member of the current workspace with `role`. supervisorId is a user id.
  */
-export async function createUser(role: Role, opts: { supervisorId?: string | null; mustResetPassword?: boolean } = {}) {
+export async function createUser(
+  role: Role,
+  opts: { supervisorId?: string | null; mustResetPassword?: boolean; platformAdmin?: boolean; workspaceId?: string } = {}
+) {
   const username = uid(role)
+  const ws = opts.workspaceId ?? currentWorkspace()
+  const supervisor = opts.supervisorId
+    ? await prisma.workspaceMembership.findUniqueOrThrow({
+        where: { workspaceId_userId: { workspaceId: ws, userId: opts.supervisorId } },
+      })
+    : null
   return prisma.user.create({
     data: {
       username,
       email: `${username}@test.local`,
       name: username,
-      role,
-      supervisorId: opts.supervisorId ?? null,
+      role: opts.platformAdmin ? 'admin' : 'user',
       mustResetPassword: opts.mustResetPassword ?? false,
       sessions: { create: { token: uid('token'), expiresAt: new Date(Date.now() + 3600_000) } },
+      memberships: { create: { workspaceId: ws, role, supervisorMembershipId: supervisor?.id ?? null } },
     },
   })
 }
@@ -59,17 +89,25 @@ export async function sessionFor(): Promise<AuthSession | null> {
   return { session: rest, user } as AuthSession
 }
 
+/** Records in the current workspace, assigned to the given users (user ids). */
 export async function createSentences(count: number, assignTo: string[] = []) {
-  const imp = await prisma.sentenceImport.create({ data: { fileName: 'test.csv', totalRows: count } })
+  const ws = currentWorkspace()
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { workspaceId: ws, userId: { in: assignTo } },
+    select: { id: true },
+  })
+  const imp = await prisma.sentenceImport.create({ data: { workspaceId: ws, fileName: 'test.csv', totalRows: count } })
   const sentences = []
   for (let i = 0; i < count; i++) {
     sentences.push(await prisma.sentence.create({
       data: {
+        workspaceId: ws,
+        recordKey: uid('record'),
         importId: imp.id,
         importOrder: i,
         field1: `record ${i}`,
         fieldMapping: { '1': 'text' },
-        assignments: { create: assignTo.map(userId => ({ userId })) },
+        assignments: { create: memberships.map(m => ({ membershipId: m.id })) },
       },
     }))
   }
@@ -82,15 +120,18 @@ export async function createSentences(count: number, assignTo: string[] = []) {
  *   02 (leaf)
  */
 export async function createTaxonomy(key = uid('tax'), opts: { isActive?: boolean } = {}) {
+  const ws = currentWorkspace()
   const taxonomy = await prisma.taxonomy.create({
-    data: { key, maxDepth: 2, isActive: opts.isActive ?? true },
+    data: { workspaceId: ws, key, maxDepth: 2, isActive: opts.isActive ?? true },
   })
+  const node = (code: string, label: string, level: number, parentCode: string | null, isLeaf: boolean) =>
+    ({ workspaceId: ws, taxonomyId: taxonomy.id, code, label, level, parentCode, isLeaf })
   await prisma.taxonomyNode.createMany({
     data: [
-      { taxonomyId: taxonomy.id, code: '01', label: 'Group 01', level: 1, parentCode: null, isLeaf: false },
-      { taxonomyId: taxonomy.id, code: '011', label: 'Item 011', level: 2, parentCode: '01', isLeaf: true },
-      { taxonomyId: taxonomy.id, code: '012', label: 'Item 012', level: 2, parentCode: '01', isLeaf: true },
-      { taxonomyId: taxonomy.id, code: '02', label: 'Group 02', level: 1, parentCode: null, isLeaf: true },
+      node('01', 'Group 01', 1, null, false),
+      node('011', 'Item 011', 2, '01', true),
+      node('012', 'Item 012', 2, '01', true),
+      node('02', 'Group 02', 1, null, true),
     ],
   })
   return taxonomy
@@ -104,6 +145,25 @@ export function request(url: string, init: { method?: string; body?: unknown } =
   })
 }
 
-export function params<T extends Record<string, string>>(value: T) {
+/** Route context for a handler under /api/workspaces/[workspaceId]: the current workspace plus `value`. */
+export function params<T extends Record<string, string>>(value?: T) {
+  return { params: Promise.resolve({ workspaceId: currentWorkspace(), ...(value ?? {}) } as { workspaceId: string } & T) }
+}
+
+/** Route context for a handler outside the workspace tree (platform APIs). */
+export function plainParams<T extends Record<string, string>>(value: T) {
   return { params: Promise.resolve(value) }
+}
+
+/**
+ * Runs direct database work in the current workspace's transaction: db()
+ * there stamps and filters workspaceId the way the application does.
+ */
+export function inWorkspace<T>(fn: () => Promise<T>): Promise<T> {
+  return withWorkspace(currentWorkspace(), fn)
+}
+
+/** The current test workspace's id. */
+export function wsId(): string {
+  return currentWorkspace()
 }

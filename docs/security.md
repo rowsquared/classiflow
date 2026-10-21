@@ -41,61 +41,96 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
 - Content-Security-Policy is enforced with a per-request nonce for scripts
   (`proxy.ts`); styles allow `'unsafe-inline'` for React style attributes.
 
+## Workspaces
+
+Everything except accounts lives in a **workspace** (an independently managed
+classification exercise): records, imports, taxonomies, labels, suggestions,
+comments, assignments, AI jobs and workspace audit entries. A person's role
+(`admin`, `supervisor`, `labeller`) and supervisor are per workspace
+(`WorkspaceMembership`); one person can be an admin in one workspace and a
+labeller in another. Suspended memberships grant nothing.
+
+**Platform admins** (`User.role = admin`) create workspaces, manage accounts
+and may enter every workspace, where they act as its admin (authority
+`platform`, shown in the UI). Nobody else learns that a workspace exists unless
+they are an active member: an inaccessible workspace answers **404**, a
+forbidden action in an accessible one **403**.
+
+Isolation is enforced three times:
+
+1. **Composite foreign keys** `(workspaceId, id)`: a label, comment,
+   assignment or suggestion can only point at a record and taxonomy of the
+   same workspace; assignments point at memberships of that workspace.
+2. **Application scope:** handlers under `/api/workspaces/[workspaceId]` run
+   through `workspaceRoute()` (`lib/api-auth.ts`) inside `withWorkspace()`
+   (`lib/workspace/db.ts`); a query extension adds `workspaceId` to every
+   query and insert on workspace tables.
+3. **Row-level security** in PostgreSQL: the transaction-local
+   `app.workspace_id` decides what the runtime role (`APP_DB_USER`) can read
+   and write; without it, workspace tables are empty and unwritable. Covered
+   by `tests/integration/db-runtime-role.test.ts`.
+
+Archived workspaces are read-only: writes get 409, AI jobs were cancelled
+when the workspace was archived.
+
 ## Record visibility
 
-`lib/access.ts` is the single definition, used by the queue, stats, record
-detail, annotations, bulk labels, comments, flags, assignments, user directory
-and progress endpoints:
+`lib/access.ts` is the single definition inside a workspace, used by the
+queue, stats, record detail, annotations, bulk labels, comments, flags,
+assignments, member directory and progress endpoints:
 
-| Role | Records visible | Users visible |
+| Workspace role | Records visible | Members visible |
 | --- | --- | --- |
-| admin | all | all |
-| supervisor | assigned to themselves or anyone below them in the supervisor tree, at any depth | themselves and that subtree |
-| labeller | assigned to themselves | themselves |
+| admin (incl. platform admins) | all of the workspace | all |
+| supervisor | assigned to their membership or any membership below it in this workspace's tree, at any depth | themselves and that subtree |
+| labeller | assigned to their membership | themselves |
 
 **Writes need the same visibility as reads.** Bulk requests are all-or-nothing:
-one record outside the caller's scope rejects the whole request with 403 and
-changes nothing.
+one record outside the caller's scope (including a record of another
+workspace, also for admins) rejects the whole request with 403 and changes
+nothing.
 
 The supervisor tree is walked breadth-first with a cycle guard and a depth limit
-of 25. The user API refuses supervisor links that would create a cycle,
-self-supervision, or a labeller as supervisor.
+of 25. The member API refuses supervisor links that would create a cycle,
+self-supervision, or a labeller as supervisor. Changes that could remove the
+last admin of a workspace (or the last platform admin) are serialised and
+refused.
 
 ## Access matrix
 
-`any` = any signed-in user with a valid session who does not have to reset their
-password. "In scope" = the record is visible under the table above.
+Paths below are relative to `/api/workspaces/[workspaceId]` unless they start
+with `/api/`. `member` = an active member of the workspace (or a platform
+admin) with a valid session who does not have to reset their password.
+"In scope" = the record is visible under the table above.
 
 | Endpoint | Methods | Who |
 | --- | --- | --- |
 | `/api/health` | GET | public (DB connectivity only) |
-| `/api/auth/[...all]` | * | public (Better Auth: sign-in, sign-out, session; admin-plugin endpoints need the admin role) |
+| `/api/auth/[...all]` | * | public (Better Auth: sign-in, sign-out, session; admin-plugin endpoints need the platform admin role) |
 | `/api/auth/reset-password` | POST | signed in, including users who must reset |
-| `/api/sentences` | GET | any; results limited to scope |
-| `/api/sentences/stats` | GET | any; counts limited to scope |
-| `/api/sentences/[id]` | GET | any; record in scope |
-| `/api/sentences/[id]/annotations` | POST | any; record in scope |
-| `/api/sentences/[id]/comments` | GET, POST, PATCH (resolve) | any; record in scope |
-| `/api/sentences/[id]/comments` | DELETE | record in scope **and** (comment author or admin) |
-| `/api/sentences/[id]/flag` | POST | any; record in scope |
-| `/api/sentences/bulk-label` | POST | any; **every** record in scope |
-| `/api/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target user in the caller's team. DELETE without `userIds` only removes the caller's team. |
-| `/api/sentences/import` | POST | admin |
-| `/api/imports` | GET | any (queue import filter) |
-| `/api/imports/[id]` | DELETE | admin |
-| `/api/taxonomies`, `/active`, `/[key]/nodes` | GET | any |
-| `/api/taxonomies` | POST | admin |
-| `/api/taxonomies/[key]` | PUT, DELETE | admin |
-| `/api/taxonomies/[key]/import`, `/restore`, `/sync-ai`, `/validate` | POST | admin |
-| `/api/users` | GET | admin (all), supervisor (own team) |
-| `/api/users` | POST | admin |
-| `/api/users/[id]` | GET | self, admin, or supervisor of that user |
-| `/api/users/[id]` | PUT, DELETE | admin; cannot demote the last admin or delete oneself |
-| `/api/export` | GET | admin |
-| `/api/progress/stats`, `/timeline` | GET | any; limited to own work (labeller) or team (supervisor) |
-| `/api/progress/team` | GET | admin, supervisor (own team) |
-| `/api/ai-labeling/*`, `/api/ai-jobs/*` | all | admin |
-| `/api/audit` | GET | admin |
+| `/api/workspaces` | GET | signed in; lists only workspaces the caller may enter |
+| `/api/workspaces` | POST | platform admin (creates the workspace and its first admin) |
+| `/api/workspaces/[workspaceId]` | GET | member |
+| `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
+| `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, temporary password, ban, delete) |
+| `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
+| `/sentences/[id]` | GET | member; record in scope |
+| `/sentences/[id]/annotations`, `/flag` | POST | member; record in scope |
+| `/sentences/[id]/comments` | GET, POST, PATCH (resolve) | member; record in scope |
+| `/sentences/[id]/comments` | DELETE | record in scope **and** (comment author or admin) |
+| `/sentences/bulk-label` | POST | member; **every** record in scope |
+| `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |
+| `/sentences/import`, `/imports/[id]` DELETE | POST, DELETE | admin |
+| `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |
+| `/taxonomies` and `/taxonomies/[key]/*` writes | POST, PUT, DELETE | admin |
+| `/users` | GET | admin (all members), supervisor (own team) |
+| `/users` | POST | admin (new account + membership); adding an existing account: platform admin |
+| `/users/[id]` | GET | self, admin, or supervisor of that member |
+| `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name and password only for accounts that belong to this workspace alone and never signed in, otherwise platform admin |
+| `/export` | GET | admin; re-checked before every page of the stream |
+| `/progress/stats`, `/timeline` | GET | member; limited to own work (labeller) or team (supervisor) |
+| `/progress/team` | GET | admin, supervisor (own team) |
+| `/ai-labeling/*`, `/ai-jobs/*`, `/audit` | all | admin |
 
 ## Known gaps
 
