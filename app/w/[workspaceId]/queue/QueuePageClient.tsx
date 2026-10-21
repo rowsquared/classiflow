@@ -591,6 +591,7 @@ export default function QueuePageClient({
           sentenceIds={Array.from(selectedIds)}
           onClose={() => setBulkLabelOpen(false)}
           onSuccess={refreshQueue}
+          onComplete={() => setSelectedIds(NO_SELECTION)}
         />
       )}
 

@@ -1,10 +1,12 @@
 'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { parseAsString, useQueryStates } from 'nuqs'
 import PageHeader from '@/components/PageHeader'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { formatRelativeTime } from '@/lib/utils'
-import { createLatestRequest, isAbortError } from '@/lib/latest-request'
 
 type AuditEntry = {
   id: string
@@ -17,9 +19,14 @@ type AuditEntry = {
   payload: unknown
 }
 
+type AuditPage = { entries: AuditEntry[]; nextCursor: string | null }
+
 const ACTION_FILTERS = [
   { value: '', label: 'All events' },
   { value: 'user.', label: 'Users' },
+  { value: 'member.', label: 'Members' },
+  { value: 'mail.', label: 'Mail' },
+  { value: 'workspace.', label: 'Workspace' },
   { value: 'taxonomy.', label: 'Taxonomies' },
   { value: 'records.', label: 'Record imports' },
   { value: 'import.', label: 'Import deletions' },
@@ -30,72 +37,55 @@ const ACTION_FILTERS = [
   { value: 'access.denied', label: 'Refused access' }
 ]
 
-// Filters live in the URL (?action=, entityType=, entityId=, actorId=), so
-// links from elsewhere (a member's history on the Team page) open filtered.
+// Filters live in the URL (?action=, entityType=, entityId=, actorId=; the
+// API's names), so links from elsewhere (a member's history on the Team page)
+// open filtered and back/forward restore them.
+const auditParsers = {
+  action: parseAsString,
+  entityType: parseAsString,
+  entityId: parseAsString,
+  actorId: parseAsString
+}
 const ENTITY_FILTERS = ['entityType', 'entityId', 'actorId'] as const
 
 export default function AuditLogPage() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const pathname = usePathname()
-  const action = searchParams.get('action') ?? ''
-  const entityFilters = ENTITY_FILTERS.map(key => [key, searchParams.get(key)] as const).filter(
-    (pair): pair is readonly [(typeof ENTITY_FILTERS)[number], string] => Boolean(pair[1])
-  )
-  const entityKey = entityFilters.map(([k, v]) => `${k}=${v}`).join('&')
-  const setFilter = (key: string, value: string | null) => {
-    const next = new URLSearchParams(searchParams)
-    if (value) next.set(key, value)
-    else next.delete(key)
-    router.replace(`${pathname}${next.size ? `?${next}` : ''}`)
-  }
-  const clearEntityFilters = () => {
-    const next = new URLSearchParams(searchParams)
-    ENTITY_FILTERS.forEach(key => next.delete(key))
-    router.replace(`${pathname}${next.size ? `?${next}` : ''}`)
-  }
-  const [entries, setEntries] = useState<AuditEntry[]>([])
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const request = useRef(createLatestRequest())
+  const workspaceId = useWorkspaceInfo()?.id ?? ''
+  const [filters, setFilters] = useQueryStates(auditParsers, { history: 'push' })
+  const action = filters.action ?? ''
+  const entityFilters = ENTITY_FILTERS.flatMap(key => {
+    const value = filters[key]
+    return value ? [[key, value] as const] : []
+  })
 
-  const load = async (cursor: string | null) => {
-    const req = request.current.start()
-    setLoading(true)
-    try {
-      const params = new URLSearchParams(entityKey)
-      params.set('limit', '50')
-      if (action) params.set('action', action)
-      if (cursor) params.set('cursor', cursor)
-      const res = await fetch(workspaceApi(`/audit?${params}`), { signal: req.signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as { entries: AuditEntry[]; nextCursor: string | null }
-      if (!req.isCurrent()) return
-      setEntries(prev => (cursor ? [...prev, ...data.entries] : data.entries))
-      setNextCursor(data.nextCursor)
-      setError(null)
-    } catch (caught) {
-      if (isAbortError(caught) || !req.isCurrent()) return
-      setError('Could not load the audit log.')
-    } finally {
-      if (req.isCurrent()) setLoading(false)
-    }
-  }
+  const params = new URLSearchParams()
+  params.set('limit', '50')
+  for (const [key, value] of entityFilters) params.set(key, value)
+  if (action) params.set('action', action)
+  const paramString = params.toString()
 
-  // The first page reloads whenever the filters in the URL change.
-  const loadFirstPage = useEffectEvent(() => load(null))
-  useEffect(() => {
-    loadFirstPage()
-  }, [action, entityKey])
+  // One query per filter set: changing filters cancels the old request, and
+  // "Load older events" appends pages to the same list.
+  const { data, error, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useInfiniteQuery({
+    queryKey: queryKeys.audit(workspaceId, paramString),
+    queryFn: ({ pageParam, signal }) => {
+      const pageParams = new URLSearchParams(paramString)
+      if (pageParam) pageParams.set('cursor', pageParam)
+      return fetchJson<AuditPage>(workspaceApi(`/audit?${pageParams}`), { signal })
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: last => last.nextCursor,
+    staleTime: 0
+  })
+  const entries = data?.pages.flatMap(p => p.entries) ?? []
+  const loading = isFetching
 
   return (
     <>
       <PageHeader title="Audit Log" />
       <div className="px-8 py-8 space-y-4">
         <p className="text-sm text-gray-600">
-          Changes to users, taxonomies, imports, assignments, bulk labels, exports and AI jobs, and refused access.
-          Individual label saves, comments and flags are recorded on the records themselves.
+          Changes to users, members, taxonomies, imports, assignments, bulk labels, exports and AI jobs, mail sent, and
+          refused access. Individual label saves, comments and flags are recorded on the records themselves.
         </p>
 
         <div className="flex items-end gap-4">
@@ -106,7 +96,7 @@ export default function AuditLogPage() {
             <select
               id="audit-action"
               value={action}
-              onChange={e => setFilter('action', e.target.value || null)}
+              onChange={e => void setFilters({ action: e.target.value || null })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {ACTION_FILTERS.map(f => (
@@ -126,7 +116,11 @@ export default function AuditLogPage() {
                 .map(([k, v]) => `${k === 'actorId' ? 'actor' : k === 'entityId' ? 'object' : 'type'} ${v}`)
                 .join(', ')}
             </span>
-            <button type="button" onClick={clearEntityFilters} className="underline text-indigo-700">
+            <button
+              type="button"
+              onClick={() => void setFilters({ entityType: null, entityId: null, actorId: null })}
+              className="underline text-indigo-700"
+            >
               Show all
             </button>
           </div>
@@ -134,8 +128,8 @@ export default function AuditLogPage() {
 
         {error && (
           <div role="alert" className="p-4 rounded-lg bg-red-50 text-red-800 border border-red-200 text-sm">
-            {error}{' '}
-            <button type="button" onClick={() => load(null)} className="underline font-medium">
+            Could not load the audit log.{' '}
+            <button type="button" onClick={() => void refetch()} className="underline font-medium">
               Retry
             </button>
           </div>
@@ -170,7 +164,7 @@ export default function AuditLogPage() {
               ))}
               {!loading && !error && entries.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-600">
                     No events recorded yet.
                   </td>
                 </tr>
@@ -180,17 +174,17 @@ export default function AuditLogPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          {nextCursor && (
+          {hasNextPage && (
             <button
               type="button"
-              onClick={() => load(nextCursor)}
-              disabled={loading}
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               Load older events
             </button>
           )}
-          {loading && <span className="text-sm text-gray-500">Loading…</span>}
+          {loading && <span className="text-sm text-gray-600">Loading…</span>}
         </div>
       </div>
     </>

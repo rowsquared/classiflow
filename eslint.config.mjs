@@ -64,14 +64,13 @@ const eslintConfig = [
   },
   {
     // React Compiler rules (eslint-plugin-react-hooks 7). Components that break
-    // them are skipped by the compiler, not miscompiled. The queue, labelling
-    // and taxonomy browser components are clean (M06); the remaining cases are
-    // in app/accounts/AccountsClient.tsx and app/w/[workspaceId]/admin/audit.
-    // Fix those, then make these errors again.
+    // them are skipped by the compiler, not miscompiled, so they fail lint:
+    // derive state while rendering, key components to reset them, or use
+    // TanStack Query instead of effects (AGENTS.md "Frontend conventions").
     rules: {
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/refs': 'warn',
-      'react-hooks/purity': 'warn'
+      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/refs': 'error',
+      'react-hooks/purity': 'error'
     }
   }
 ]

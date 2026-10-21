@@ -13,13 +13,11 @@ type Options = {
 }
 
 /**
- * Known findings in screens other work owns (lane C2 of the modernization
- * plan converts them). Remove an entry when its screen is fixed.
+ * Known findings that are accepted for now, by page name, each with the file
+ * that needs the fix. Empty: add an entry only with a reason, and remove it
+ * with the fix.
  */
-const KNOWN: Record<string, Options> = {
-  // app/login/page.tsx: white on indigo-500 (#009090) is 4.2:1; use indigo-600.
-  login: { exclude: ['button[type="submit"]'] }
-}
+const KNOWN: Record<string, Options> = {}
 
 export async function expectAccessible(page: Page, name: string, options: Options = {}) {
   const known = KNOWN[name] ?? {}

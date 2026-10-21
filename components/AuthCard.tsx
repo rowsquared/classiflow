@@ -29,7 +29,7 @@ export const authInput =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900'
 
 export const authButton =
-  'w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed'
+  'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed'
 
 /**
  * The token of a link (`#t=...` in the address), kept in this tab's

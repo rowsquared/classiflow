@@ -1,8 +1,12 @@
 'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { formatRelativeTime } from '@/lib/utils'
 import { CheckCircle2, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react'
 import Modal from '@/components/Modal'
@@ -37,59 +41,35 @@ type Props = {
   initialPagination: Pagination
 }
 
+const PAGE_SIZE = 20
+const isActiveJob = (job: AIJob) => job.status === 'pending' || job.status === 'processing'
+
 export default function AIJobsClient({ initialJobs, initialPagination }: Props) {
-  const [jobs, setJobs] = useState<AIJob[]>(initialJobs)
-  const [pagination, setPagination] = useState<Pagination>(initialPagination)
-  const [loading, setLoading] = useState(false)
+  const workspaceId = useWorkspaceInfo()?.id ?? ''
+  const queryClient = useQueryClient()
   const [selectedJob, setSelectedJob] = useState<AIJob | null>(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
-  const skipInitialFetch = useRef(true)
 
-  const fetchJobs = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: '20'
-      })
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter)
-      }
+  const params = new URLSearchParams({ page: page.toString(), limit: String(PAGE_SIZE) })
+  if (statusFilter !== 'all') params.append('status', statusFilter)
+  const paramString = params.toString()
 
-      const res = await fetch(workspaceApi(`/ai-jobs?${params}`))
-      if (res.ok) {
-        const data = await res.json()
-        setJobs(data.jobs || [])
-        setPagination(data.pagination || initialPagination)
-      }
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [page, statusFilter, initialPagination])
-
-  useEffect(() => {
-    if (skipInitialFetch.current) {
-      skipInitialFetch.current = false
-      return
-    }
-    fetchJobs()
-  }, [fetchJobs])
-
-  // Poll for active jobs if any are pending/processing
-  useEffect(() => {
-    const hasActiveJobs = jobs.some(j => j.status === 'pending' || j.status === 'processing')
-    if (!hasActiveJobs) return
-
-    const interval = setInterval(() => {
-      fetchJobs()
-    }, 5000) // Poll every 5 seconds
-
-    return () => clearInterval(interval)
-  }, [jobs, fetchJobs])
+  // The server rendered the first page of all jobs; other views load here.
+  // While any listed job is active the page refreshes every 5 s (paused in
+  // hidden tabs).
+  const { data, isPending } = useQuery({
+    queryKey: queryKeys.aiJobsHistory(workspaceId, paramString),
+    queryFn: ({ signal }) =>
+      fetchJson<{ jobs?: AIJob[]; pagination?: Pagination }>(workspaceApi(`/ai-jobs?${paramString}`), { signal }),
+    initialData:
+      page === 1 && statusFilter === 'all' ? { jobs: initialJobs, pagination: initialPagination } : undefined,
+    placeholderData: keepPreviousData,
+    refetchInterval: query => (query.state.data?.jobs?.some(isActiveJob) ? 5000 : false)
+  })
+  const jobs = data?.jobs ?? []
+  const pagination = data?.pagination ?? initialPagination
+  const loading = isPending
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -147,10 +127,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     }
   }
 
-  const handleJobClick = (job: AIJob) => {
-    setSelectedJob(job)
-    setShowDetailModal(true)
-  }
+  const handleJobClick = (job: AIJob) => setSelectedJob(job)
 
   const handleCancelJob = async (job: AIJob, e: React.MouseEvent) => {
     e.stopPropagation() // Prevent row click
@@ -164,22 +141,17 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     }
 
     try {
-      const res = await fetch(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
+      await fetchJson(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: job.type })
       })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to cancel job')
-      }
-
-      // Refresh jobs list
-      await fetchJobs()
     } catch (error) {
-      console.error('Failed to cancel AI job:', error)
       alert(error instanceof Error ? error.message : 'Failed to cancel job')
+    } finally {
+      // This list, the header badge and the taxonomy statuses show the job.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.aiJobs(workspaceId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.taxonomies(workspaceId) })
     }
   }
 
@@ -191,8 +163,11 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
         {/* Filters */}
         <div className="mb-6 flex items-center gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <label htmlFor="ai-job-status" className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
             <select
+              id="ai-job-status"
               value={statusFilter}
               onChange={e => {
                 setStatusFilter(e.target.value)
@@ -327,10 +302,10 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
       </div>
 
       {/* Job Detail Modal */}
-      {showDetailModal && selectedJob && (
+      {selectedJob && (
         <Modal
           label="Job details"
-          onClose={() => setShowDetailModal(false)}
+          onClose={() => setSelectedJob(null)}
           className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
           closeOnOverlayClick
         >
@@ -340,7 +315,11 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button
+                onClick={() => setSelectedJob(null)}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>

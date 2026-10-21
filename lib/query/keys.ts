@@ -23,9 +23,23 @@ export const queryKeys = {
     ['ws', workspaceId, 'taxonomies', taxonomyKey, 'nodes', params] as const,
 
   imports: (workspaceId: string) => ['ws', workspaceId, 'imports'] as const,
+
+  /** AI jobs: the header badge's active list and the AI jobs page's history. */
+  aiJobs: (workspaceId: string) => ['ws', workspaceId, 'ai-jobs'] as const,
+  aiJobsActive: (workspaceId: string) => ['ws', workspaceId, 'ai-jobs', 'active'] as const,
+  aiJobsHistory: (workspaceId: string, params: string) => ['ws', workspaceId, 'ai-jobs', 'history', params] as const,
+  aiSettings: (workspaceId: string) => ['ws', workspaceId, 'ai-settings'] as const,
+
+  /** Taxonomy administration list (with sync and learning status). */
+  taxonomies: (workspaceId: string) => ['ws', workspaceId, 'taxonomies'] as const,
+  taxonomyAdminList: (workspaceId: string) => ['ws', workspaceId, 'taxonomies', 'admin'] as const,
+
+  audit: (workspaceId: string, params: string) => ['ws', workspaceId, 'audit', params] as const,
   members: (workspaceId: string) => ['ws', workspaceId, 'members'] as const,
   assignments: (workspaceId: string, sentenceIds: string) => ['ws', workspaceId, 'assignments', sentenceIds] as const,
 
   /** The caller's workspace directory (control plane, not workspace data). */
-  workspaces: () => ['workspaces'] as const
+  workspaces: () => ['workspaces'] as const,
+  /** Platform accounts (/accounts; control plane, its own cache). */
+  accounts: () => ['accounts'] as const
 }

@@ -361,7 +361,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>

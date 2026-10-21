@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Modal from '@/components/Modal'
+import Combobox from '@/components/ui/Combobox'
 import { formatRelativeTime } from '@/lib/utils'
 import { generatePassword, type MemberRole, type TeamMember } from '@/lib/team-table'
 import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
@@ -188,22 +189,15 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
               </select>
             </div>
             <div>
-              <label htmlFor="drawer-supervisor" className="block text-sm font-medium text-gray-700 mb-1">
-                Supervisor
-              </label>
-              <select
-                id="drawer-supervisor"
-                value={supervisorId}
-                onChange={e => setSupervisorId(e.target.value)}
-                className={input}
-              >
-                <option value="">None</option>
-                {possibleSupervisors.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name || s.username} ({s.role})
-                  </option>
-                ))}
-              </select>
+              <Combobox
+                label="Supervisor"
+                labelClassName="block text-sm font-medium text-gray-700 mb-1"
+                placeholder="None"
+                inputClassName="!px-3 !py-2 border-gray-300 rounded-lg text-gray-900"
+                options={possibleSupervisors.map(s => ({ value: s.id, label: s.name || s.username, hint: s.role }))}
+                value={supervisorId || null}
+                onChange={value => setSupervisorId(value ?? '')}
+              />
             </div>
             <div>
               <label htmlFor="drawer-name" className="block text-sm font-medium text-gray-700 mb-1">

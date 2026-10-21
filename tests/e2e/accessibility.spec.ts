@@ -88,6 +88,63 @@ test('audit log', async ({ page }) => {
   await expectAccessible(page, 'audit')
 })
 
+test('taxonomy administration and its create dialog', async ({ page }) => {
+  await page.goto(pagePath('/admin/taxonomy'))
+  await expect(page.getByRole('heading', { name: 'ISCO', exact: true })).toBeVisible()
+  await expectAccessible(page, 'taxonomy admin')
+
+  await page.getByRole('button', { name: 'Add New Taxonomy' }).click()
+  await expect(page.getByRole('dialog', { name: 'Create new taxonomy' })).toBeVisible()
+  await expectAccessible(page, 'create taxonomy')
+})
+
+test('AI jobs and AI settings', async ({ page }) => {
+  await page.goto(pagePath('/admin/ai-jobs'))
+  await expect(page.getByLabel('Status')).toBeVisible()
+  await expectAccessible(page, 'ai jobs')
+
+  await page.goto(pagePath('/admin/ai'))
+  await expect(page.getByRole('heading', { name: 'AI suggestions and learning' })).toBeVisible()
+  await expectAccessible(page, 'ai settings')
+})
+
+test('record administration and export', async ({ page }) => {
+  await page.goto(pagePath('/admin/sentences'))
+  await expect(page.getByRole('heading').first()).toBeVisible()
+  await expectAccessible(page, 'records admin')
+
+  await page.goto(pagePath('/admin/export'))
+  await expect(page.getByRole('heading').first()).toBeVisible()
+  await expectAccessible(page, 'export')
+})
+
+test('team add-member dialog', async ({ page }) => {
+  await page.goto(pagePath('/admin/team'))
+  await page.getByRole('button', { name: 'Add member' }).click()
+  await expect(page.getByRole('combobox', { name: 'Supervisor', exact: true })).toBeVisible()
+  await expectAccessible(page, 'add member')
+})
+
+test('accounts', async ({ page }) => {
+  await page.goto('/accounts')
+  await expect(page.locator('tbody tr').first()).toBeVisible()
+  await expectAccessible(page, 'accounts')
+})
+
+test('forgot-password and set-password pages (signed out)', async ({ browser }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await page.goto('/forgot-password')
+  await expect(page.getByRole('textbox').first()).toBeVisible()
+  await expectAccessible(page, 'forgot password')
+
+  // Without a token the page explains that the link is not valid.
+  await page.goto('/set-password')
+  await expect(page.getByRole('link').first()).toBeVisible()
+  await expectAccessible(page, 'set password')
+  await context.close()
+})
+
 test('workspace chooser', async ({ page }) => {
   await page.goto('/workspaces')
   await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible()

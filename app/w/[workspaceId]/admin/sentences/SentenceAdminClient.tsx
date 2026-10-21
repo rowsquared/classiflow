@@ -168,7 +168,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                     id="sentence-file-input"
                   />
                   <div className="flex items-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors">
-                    <span className="text-sm text-gray-500 truncate flex-1">
+                    <span className="text-sm text-gray-600 truncate flex-1">
                       {sentenceFile ? sentenceFile.name : 'No file chosen'}
                     </span>
                   </div>
@@ -180,7 +180,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                   Choose file...
                 </label>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-gray-600 mt-2">
                 Columns: an optional <code>id</code>, one to five <code>field_&lt;name&gt;</code> columns to classify,
                 and up to five <code>support_&lt;name&gt;</code> context columns.
               </p>
@@ -208,20 +208,20 @@ export default function SentenceAdminClient({ initialImports }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Import History</h2>
-              <p className="text-sm text-gray-500 mt-1">Track and manage your previous sentence imports</p>
+              <p className="text-sm text-gray-600 mt-1">Track and manage your previous sentence imports</p>
             </div>
             <button
               onClick={refreshImports}
-              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
             >
               Refresh
             </button>
           </div>
 
           {loadingImports ? (
-            <div className="py-12 text-center text-gray-500">Loading imports...</div>
+            <div className="py-12 text-center text-gray-600">Loading imports...</div>
           ) : imports.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">No imports yet. Upload a CSV file to get started.</div>
+            <div className="py-12 text-center text-gray-600">No imports yet. Upload a CSV file to get started.</div>
           ) : (
             <div className="space-y-4">
               {imports.map(importRecord => (
@@ -231,7 +231,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                 >
                   <div>
                     <h3 className="font-medium text-gray-900">{importRecord.fileName}</h3>
-                    <p className="text-sm text-gray-500">Uploaded on {formatDateTime(importRecord.uploadedAt)}</p>
+                    <p className="text-sm text-gray-600">Uploaded on {formatDateTime(importRecord.uploadedAt)}</p>
                     <p className="text-sm text-gray-600 mt-1">
                       {importRecord.sentenceCount.toLocaleString()} sentences
                     </p>
@@ -242,7 +242,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                         setSelectedImport(importRecord)
                         setDeleteModalOpen(true)
                       }}
-                      className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
                     >
                       Delete
                     </button>
@@ -273,7 +273,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
 
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-red-700 font-medium mb-2">This action cannot be undone.</p>
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-red-700">
                 Type <strong>DELETE</strong> below to confirm.
               </p>
             </div>

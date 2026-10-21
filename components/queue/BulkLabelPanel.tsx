@@ -11,9 +11,11 @@ interface BulkLabelPanelProps {
   sentenceIds: string[]
   onClose: () => void
   onSuccess: () => void
+  /** The records were labelled or skipped (they left the open-work view): the queue clears its selection. */
+  onComplete?: () => void
 }
 
-export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: BulkLabelPanelProps) {
+export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComplete }: BulkLabelPanelProps) {
   const dialog = useDialog(onClose, 'Bulk label')
   const taxonomies: Taxonomy[] = useActiveTaxonomies().data ?? []
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
@@ -138,6 +140,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       }
 
       onSuccess()
+      onComplete?.()
       onClose()
     } catch (error) {
       console.error('Failed to skip sentences:', error)
@@ -200,6 +203,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       } else {
         // All taxonomies done, close panel
         onSuccess()
+        onComplete?.()
         onClose()
       }
     } catch (error) {

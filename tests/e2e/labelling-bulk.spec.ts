@@ -34,6 +34,8 @@ test('bulk labelling: select records in the queue, label them at once, export sh
   for (const text of targets) {
     await expect(rows(page).filter({ hasText: text })).toHaveCount(0)
   }
+  // ...and the selection goes with them.
+  await expect(page.getByText(/sentences? selected/)).toHaveCount(0)
 
   // The export carries the bulk label for both records, codes as strings.
   const res = await page.request.get(api('/export'))

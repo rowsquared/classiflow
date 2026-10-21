@@ -1,7 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { formatRelativeTime } from '@/lib/utils'
 
@@ -32,7 +36,16 @@ export type AISettings = {
  */
 export default function AISettingsClient({ initial, archived }: { initial: AISettings; archived: boolean }) {
   const { api } = useWorkspacePaths()
-  const [settings, setSettings] = useState(initial)
+  const workspaceId = useWorkspaceInfo()?.id ?? ''
+  const queryClient = useQueryClient()
+  const settingsKey = queryKeys.aiSettings(workspaceId)
+  // Server-rendered; every change answers with the new settings, which
+  // replace the cached ones.
+  const { data: settings = initial } = useQuery({
+    queryKey: settingsKey,
+    queryFn: ({ signal }) => fetchJson<AISettings>(api('/ai-settings'), { signal }),
+    initialData: initial
+  })
   const [endpointId, setEndpointId] = useState(initial.active?.endpoint.id ?? initial.endpoints[0]?.id ?? '')
   const [credential, setCredential] = useState('')
   const [busy, setBusy] = useState(false)
@@ -52,7 +65,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
         setMessage({ type: 'error', text: data.error || 'The change could not be saved' })
         return false
       }
-      setSettings(data as AISettings)
+      queryClient.setQueryData(settingsKey, data as AISettings)
       if (success) setMessage({ type: 'success', text: success })
       return true
     } catch {

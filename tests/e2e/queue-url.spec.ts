@@ -3,7 +3,7 @@ import { ADMIN, WORKSPACE_ID } from './fixtures'
 
 // The queue's view lives in the URL (lib/queue-url.ts): reloading or sharing a
 // link shows the same records, and back/forward step through the views.
-// Read-only; runs after journeys.spec.ts, which may have submitted records.
+// Read-only; runs after the data journeys, which submit records.
 
 async function signIn(page: Page) {
   await page.goto('/login')
@@ -20,12 +20,13 @@ test('search and tab survive a reload and back/forward', async ({ page }) => {
   await expect(rows(page).first()).toBeVisible()
   const pending = await rows(page).count()
 
+  // The All tab, so the search finds the record whatever earlier journeys
+  // submitted.
+  await page.getByRole('button', { name: /^All \(/ }).click()
+  await expect(page).toHaveURL(/[?&]tab=all/)
   await page.getByRole('textbox', { name: 'Search records' }).fill('nurse')
   await expect(page).toHaveURL(/[?&]q=nurse/)
   await expect(rows(page)).toHaveCount(1)
-
-  await page.getByRole('button', { name: /^All \(/ }).click()
-  await expect(page).toHaveURL(/[?&]tab=all/)
 
   // A shared link renders the same view on the server.
   await page.reload()

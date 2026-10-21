@@ -1,8 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Modal from '@/components/Modal'
+import QueryProvider from '@/components/QueryProvider'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 
 type Account = {
   id: string
@@ -19,29 +23,31 @@ type Account = {
 const input =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900'
 
+// /accounts is outside any workspace, so it has its own query cache.
 export default function AccountsClient({ currentUserId }: { currentUserId: string }) {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  return (
+    <QueryProvider>
+      <Accounts currentUserId={currentUserId} />
+    </QueryProvider>
+  )
+}
+
+function Accounts({ currentUserId }: { currentUserId: string }) {
+  const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/users')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setAccounts((await res.json()).users)
-      setError(null)
-    } catch {
-      setError('Could not load the accounts.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const {
+    data,
+    isPending: loading,
+    isError
+  } = useQuery({
+    queryKey: queryKeys.accounts(),
+    queryFn: ({ signal }) => fetchJson<{ users: Account[] }>('/api/users', { signal })
+  })
+  const accounts = data?.users ?? []
+  const error = isError ? 'Could not load the accounts.' : null
+  const load = () => queryClient.invalidateQueries({ queryKey: queryKeys.accounts() })
 
   const send = async (url: string, method: string, body?: unknown) => {
     const res = await fetch(url, {
@@ -88,7 +94,7 @@ export default function AccountsClient({ currentUserId }: { currentUserId: strin
 
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-medium text-gray-500 uppercase">
+            <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-medium text-gray-600 uppercase">
               <tr>
                 <th className="px-4 py-3">Username</th>
                 <th className="px-4 py-3">Name</th>
@@ -123,7 +129,7 @@ export default function AccountsClient({ currentUserId }: { currentUserId: strin
                     {a.lastLogin ? new Date(a.lastLogin).toLocaleDateString() : 'Never'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditing(a)} className="text-indigo-600 hover:text-indigo-700">
+                    <button onClick={() => setEditing(a)} className="text-indigo-700 hover:text-indigo-800">
                       Edit
                     </button>
                   </td>
@@ -131,7 +137,7 @@ export default function AccountsClient({ currentUserId }: { currentUserId: strin
               ))}
               {!loading && accounts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-600">
                     No accounts.
                   </td>
                 </tr>

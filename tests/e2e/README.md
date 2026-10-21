@@ -9,9 +9,9 @@ administration (create from a CSV with leading-zero codes, browse, incremental
 import, edit, delete; `taxonomy-admin.spec.ts`); the queue view in the URL
 (reload, back/forward) and the workspace switcher (`queue-url.spec.ts`); and
 axe-core on the main pages (`accessibility.spec.ts`, helper `a11y.ts`), which
-fails on serious or critical findings. Known findings in screens not converted
-yet are listed in `a11y.ts` with the file that needs the fix; remove the entry
-with the fix. `global-setup.ts` migrates the database, then runs `seed.ts`
+fails on serious or critical findings. There are no accepted exceptions; if
+one is ever needed, it goes in `KNOWN` in `a11y.ts` with the file that needs
+the fix. `global-setup.ts` migrates the database, then runs `seed.ts`
 with plain Node (Prisma 7's client is ES modules) to empty it and seed an
 admin, a two-level taxonomy and three records. The Content-Security-Policy is
 enforced, and any violation fails a journey (`failOnCspViolations()` in

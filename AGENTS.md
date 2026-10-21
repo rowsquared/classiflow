@@ -52,7 +52,8 @@ Browser: React client components
   workspace page tree; the workspace layout keys it by workspace, user and
   role, so nothing fetched under one scope is shown under another, and sign-out
   clears it. Keys come from `lib/query/keys.ts` and always start with
-  `['ws', workspaceId]` (except the control-plane workspace list); query
+  `['ws', workspaceId]` (except the control-plane workspace list and
+  `/accounts`, which has its own provider outside any workspace); query
   functions use `fetchJson` (`lib/query/fetch.ts`: passes the abort signal,
   throws `HttpError` on non-2xx). Pass server-rendered data as `initialData`
   only when the query's parameters match what the server loaded (the queue
@@ -65,7 +66,9 @@ Browser: React client components
 - **URL state:** nuqs (`useQueryStates`, adapter in the workspace layout). A
   screen's parsers live in a shared module the server page also reads with
   `createLoader` (queue: `lib/queue-url.ts`, whose parameter names are the
-  API's), so the server renders the view the URL names. Use `history: 'push'`
+  API's), so the server renders the view the URL names. Client-only views keep
+  their parsers next to them (Team: `lib/team-url.ts`; audit log: in its
+  page). Use `history: 'push'`
   for deliberate view changes (tab, filters, page), the default replace for
   typing.
 - **Widgets:** Radix primitives. `components/ui/Combobox.tsx` (searchable
@@ -79,8 +82,9 @@ Browser: React client components
   by the applied filters), or adjust state during render; per-browser
   preferences use `useStoredBoolean` (`lib/use-local-storage.ts`).
 - **Accessibility:** `tests/e2e/accessibility.spec.ts` runs axe-core on the
-  main pages and fails on serious or critical findings; add a page there when
-  you add one.
+  main pages and dialogs and fails on serious or critical findings; add a page
+  there when you add one. White text needs `indigo-600` or darker, body text
+  `gray-600` or darker on white; every input and select has a label.
 
 ## Where to look
 
@@ -90,8 +94,8 @@ Browser: React client components
 | Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan and status in `docs/plans/workspace-isolation.md` |
 | Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments |
 | Individual labeling | `app/w/[workspaceId]/queue/[sentenceId]/page.tsx`, `components/labeling/` (screen, data hooks, panels, comments dialog), `components/TaxonomyBrowser.tsx`, `lib/labeling.ts` (submit and navigation rules), `lib/labeling-navigation.ts` (previous/next list); hierarchical selection, suggestions, keyboard navigation, comments, flags |
-| Taxonomy browsing | `app/taxonomies/[key]/page.tsx` |
-| Administration | `app/admin/taxonomy/`, `sentences/`, `team/`, `export/`, `ai-jobs/`; `/admin` redirects to `/admin/taxonomy` |
+| Taxonomy browsing | `app/w/[workspaceId]/taxonomies/[key]/page.tsx` |
+| Administration | `app/w/[workspaceId]/admin/`: `taxonomy/` (screen parts in `components/taxonomy-admin/`), `sentences/`, `team/` (`components/team/`), `export/`, `ai-jobs/`, `ai/`, `audit/`; `/admin` redirects to `/admin/taxonomy` |
 | Progress | `app/w/[workspaceId]/progress/`, `lib/server/progress.ts`, `app/api/workspaces/[workspaceId]/progress/`: the page still uses `stats`, `timeline`, `team`; the dashboard reports `overview`, `activity`, `people` (fixed query count, `lib/reporting-dates.ts` for days/weeks in the reporting time zone) wait for their UI (plan D3) |
 | Record APIs | `app/api/sentences/`; queue queries, stats, imports, assignment, bulk labels, individual records/annotations/comments/flags |
 | Other data APIs | `app/api/taxonomies/`, `app/api/imports/`, `app/api/users/`, `app/api/export/` |
@@ -288,7 +292,7 @@ lockfile together. Do not introduce a different package manager.
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database and `npx prisma generate`; commit generated SQL. The history starts at one baseline (`20261021120000_init`, fresh start) |
 
 `next build` type-checks but does not lint (Next.js 16); lint runs in CI. The
-React Compiler lint rules are warnings for now (see `eslint.config.mjs`).
+React Compiler lint rules are errors (see `eslint.config.mjs`).
 Run the checks relevant to a code change and distinguish pre-existing failures
 from regressions.
 

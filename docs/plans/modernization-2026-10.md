@@ -84,16 +84,26 @@ Still open from this plan:
   Behaviour changes: the queue list no longer replaces the table with a
   spinner on every change (old rows stay, dimmed, until the new ones arrive);
   saving a comment keeps the dialog open with the comment listed.
-- **M06 part 2 (lane C2, open):** taxonomy admin split
-  (`app/w/[workspaceId]/admin/taxonomy/TaxonomyAdminClient.tsx`); AI jobs page,
-  taxonomy admin polling and `components/AIJobStatusBadge.tsx` on Query
-  (`refetchInterval`), deleting their `setInterval`/abort code and then
-  `lib/latest-request.ts` (last user: the audit page); team and audit filters
-  on nuqs; the team supervisor/member pickers on `Combobox`; TanStack Table for
-  the team list (optional); the remaining React Compiler warnings
-  (`AccountsClient.tsx`, audit page), then make those rules errors; the login
-  button contrast entry in `tests/e2e/a11y.ts`; axe on the taxonomy admin, AI
-  jobs, export and accounts pages.
+- **M06 part 2** done 22 October 2026 (lane C2), so **M06 is done**: the
+  taxonomy admin screen split into `components/taxonomy-admin/` (data hook
+  with `refetchInterval` while a sync or learning job runs, card, create /
+  edit / delete dialogs, file chooser; pure helpers in `lib/taxonomy-admin.ts`,
+  unit tested); the AI jobs page, the AI job badge and AI settings on
+  TanStack Query (no hand-written intervals or abort code left;
+  `lib/latest-request.ts` deleted); the audit log on `useInfiniteQuery` with
+  its filters in the URL through nuqs; the Team page's search, filters and
+  sort in the URL (`lib/team-url.ts`, unit tested); the team supervisor
+  pickers (filter, add member, member drawer) on `Combobox`; `/accounts` on
+  Query with its own cache. The React Compiler rules are errors again
+  (`eslint.config.mjs`); no warnings remain in client code. axe-core now also
+  covers taxonomy admin and its create dialog, AI jobs, AI settings, records
+  admin, export, the add-member dialog, accounts, forgot-password and
+  set-password, with no accepted exceptions (`tests/e2e/a11y.ts` `KNOWN` is
+  empty; the contrast and naming fixes are in those screens, the sign-in and
+  password pages' buttons included). After a bulk label or skip the queue
+  clears its selection (the records left the view). Not done: TanStack Table
+  for the team list (optional; the hand-made table is small and tested), and
+  M01's optional removal of hand-written `useMemo`/`useCallback`.
 - The rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
 - Watch: Prisma 7.10's query interpreter runs the sub-queries of one

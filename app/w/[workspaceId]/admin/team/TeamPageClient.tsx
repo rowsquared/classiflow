@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useQueryStates } from 'nuqs'
 import { useSession } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import PageHeader from '@/components/PageHeader'
@@ -9,17 +10,18 @@ import CreateMemberModal from '@/components/team/CreateMemberModal'
 import MemberDrawer from '@/components/team/MemberDrawer'
 import MemberImportModal from '@/components/team/MemberImportModal'
 import PendingInvitations, { type PendingInvitation } from '@/components/team/PendingInvitations'
+import Combobox from '@/components/ui/Combobox'
 import { formatRelativeTime } from '@/lib/utils'
 import {
   filterMembers,
   nextSort,
   NO_FILTERS,
   sortMembers,
-  type Sort,
   type SortKey,
   type TeamFilters,
   type TeamMember
 } from '@/lib/team-table'
+import { sortFromUrl, sortToUrl, teamFiltersFromUrl, teamFiltersToUrl, teamParsers } from '@/lib/team-url'
 import { workspaceApi } from '@/lib/workspace/urls'
 
 export type User = TeamMember
@@ -59,8 +61,12 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
   const { data: session } = useSession()
   const workspace = useWorkspaceInfo()
   const [members, setMembers] = useState<User[]>(initialUsers)
-  const [filters, setFilters] = useState<TeamFilters>(NO_FILTERS)
-  const [sort, setSort] = useState<Sort>(null)
+  // Search, filters and sort live in the URL (lib/team-url.ts).
+  const [url, setUrl] = useQueryStates(teamParsers)
+  const filters = teamFiltersFromUrl(url)
+  const sort = sortFromUrl(url.sort)
+  const setFilters = (next: TeamFilters, history: 'push' | 'replace' = 'push') =>
+    void setUrl(teamFiltersToUrl(next), { history })
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -90,12 +96,13 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
     await reload()
   }
 
-  const shown = useMemo(() => sortMembers(filterMembers(members, filters), sort), [members, filters, sort])
+  const shown = sortMembers(filterMembers(members, filters), sort)
   const supervisors = members.filter(m => m.status === 'active' && (m.role === 'admin' || m.role === 'supervisor'))
   const selected = members.find(m => m.id === selectedId) ?? null
   const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS)
+  // Typing replaces the history entry; choosing a filter adds one.
   const setFilter = <K extends keyof TeamFilters>(key: K, value: TeamFilters[K]) =>
-    setFilters(f => ({ ...f, [key]: value }))
+    setFilters({ ...filters, [key]: value }, key === 'search' ? 'replace' : 'push')
 
   return (
     <div className="flex flex-col h-screen">
@@ -130,22 +137,16 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
             <option value="supervisor">Supervisors</option>
             <option value="labeller">Labellers</option>
           </select>
-          <label className="sr-only" htmlFor="team-supervisor">
-            Supervisor
-          </label>
-          <select
-            id="team-supervisor"
-            value={filters.supervisorId}
-            onChange={e => setFilter('supervisorId', e.target.value)}
-            className={select}
-          >
-            <option value="">Any supervisor</option>
-            {supervisors.map(s => (
-              <option key={s.id} value={s.id}>
-                Reports to {s.name || s.username}
-              </option>
-            ))}
-          </select>
+          <Combobox
+            label="Filter by supervisor"
+            hideLabel
+            placeholder="Any supervisor"
+            className="w-52"
+            inputClassName="!py-2 border-gray-300 rounded-lg text-gray-900"
+            options={supervisors.map(s => ({ value: s.id, label: s.name || s.username, hint: s.role }))}
+            value={filters.supervisorId || null}
+            onChange={value => setFilter('supervisorId', value ?? '')}
+          />
           <label className="sr-only" htmlFor="team-status">
             Status
           </label>
@@ -213,7 +214,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
             }
           >
             Email:{' '}
-            <span className={mailEnabled ? 'text-indigo-700 font-medium' : 'text-gray-500 font-medium'}>
+            <span className={mailEnabled ? 'text-indigo-700 font-medium' : 'text-gray-600 font-medium'}>
               {mailEnabled ? 'on' : 'off'}
             </span>
           </p>
@@ -231,11 +232,13 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
                       scope="col"
                       title={column.title}
                       aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap"
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase whitespace-nowrap"
                     >
                       <button
                         type="button"
-                        onClick={() => setSort(s => nextSort(s, column.key))}
+                        onClick={() =>
+                          void setUrl({ sort: sortToUrl(nextSort(sort, column.key)) }, { history: 'push' })
+                        }
                         className="uppercase hover:text-gray-800"
                       >
                         {column.label}
@@ -282,7 +285,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
                     <button
                       type="button"
                       onClick={() => setSelectedId(m.id)}
-                      className="text-indigo-600 hover:text-indigo-700"
+                      className="text-indigo-700 hover:text-indigo-800"
                     >
                       Open
                     </button>
@@ -291,7 +294,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
               ))}
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-gray-600">
                     No members match these filters.
                   </td>
                 </tr>
