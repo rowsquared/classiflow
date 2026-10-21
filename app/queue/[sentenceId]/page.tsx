@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import PageHeader from '@/components/PageHeader'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '@/components/TaxonomyBrowser'
@@ -7,6 +7,7 @@ import ResizablePanel from '@/components/ResizablePanel'
 import { formatFieldName } from '@/lib/utils'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
 import Modal from '@/components/Modal'
+import { ToastContainer, type Toast } from '@/components/Toast'
 
 type Sentence = {
   id: string
@@ -85,6 +86,14 @@ export default function LabelingPage() {
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([])
   const [comment, setComment] = useState('')
   const [showCommentDialog, setShowCommentDialog] = useState(false)
+  // Failures are shown as toasts (kept for 10 s) instead of blocking showError() dialogs.
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastCounter = useRef(0)
+  const showError = (message: string) => {
+    const id = `toast-${toastCounter.current++}`
+    setToasts(prev => [...prev, { id, type: 'error', message, duration: 10_000 }])
+  }
+  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
   const [hasComment, setHasComment] = useState(false)
   const [showResolvedComments, setShowResolvedComments] = useState(false)
   const [hasResolvedComments, setHasResolvedComments] = useState(false)
@@ -266,13 +275,13 @@ export default function LabelingPage() {
       })
       if (!res.ok) {
         console.error('Failed to update comment')
-        alert('Failed to update comment. Please try again.')
+        showError('Failed to update comment. Please try again.')
         return
       }
       await loadComments(showResolvedComments)
     } catch (error) {
       console.error('Failed to update comment:', error)
-      alert('Failed to update comment. Please try again.')
+      showError('Failed to update comment. Please try again.')
     }
   }
 
@@ -285,13 +294,13 @@ export default function LabelingPage() {
       })
       if (!res.ok) {
         console.error('Failed to delete comment')
-        alert('Failed to delete comment. Please try again.')
+        showError('Failed to delete comment. Please try again.')
         return
       }
       await loadComments(showResolvedComments)
     } catch (error) {
       console.error('Failed to delete comment:', error)
-      alert('Failed to delete comment. Please try again.')
+      showError('Failed to delete comment. Please try again.')
     }
   }
 
@@ -478,7 +487,7 @@ export default function LabelingPage() {
   // Handle Submit
   const handleSubmit = async () => {
     if (!canSubmit || !activeTaxonomy) {
-      alert('Please select a complete path or mark as unknown')
+      showError('Please select a complete path or mark as unknown')
       return
     }
 
@@ -543,11 +552,11 @@ export default function LabelingPage() {
         }
       } else {
         const data = await res.json()
-        alert(`Failed to submit annotations: ${data.error || 'Unknown error'}`)
+        showError(`Failed to submit annotations: ${data.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Failed to submit:', error)
-      alert('Failed to submit annotations')
+      showError('Failed to submit annotations')
     }
   }
 
@@ -675,6 +684,7 @@ export default function LabelingPage() {
 
   return (
     <>
+      <ToastContainer toasts={toasts} onClose={removeToast} />
       <PageHeader title="Labeling" actions={backButton} />
       <div className="h-[calc(100vh-66px)] bg-gray-50 flex overflow-hidden">
         {/* Left Panel - Sentence Fields */}
@@ -1054,11 +1064,11 @@ export default function LabelingPage() {
                       setShowCommentDialog(false)
                     } else {
                       console.error('Failed to save comment')
-                      alert('Failed to save comment. Please try again.')
+                      showError('Failed to save comment. Please try again.')
                     }
                   } catch (error) {
                     console.error('Failed to save comment:', error)
-                    alert('Failed to save comment. Please try again.')
+                    showError('Failed to save comment. Please try again.')
                   }
                 }}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"

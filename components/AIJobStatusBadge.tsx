@@ -78,8 +78,18 @@ export default function AIJobStatusBadge() {
     }
 
     fetchJobs()
-    const interval = setInterval(fetchJobs, 3000)
-    return () => clearInterval(interval)
+    // Not while the tab is hidden; catch up as soon as it is visible again.
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchJobs()
+    }, 3000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchJobs()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [isAdmin, isInitialLoad])
 
   // Close dropdown when clicking outside

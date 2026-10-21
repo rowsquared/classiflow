@@ -36,8 +36,8 @@ not all of them.
 | W06 import/export | done | — |
 | W07 AI | done in code | verify against a running Taxomind; idempotent job start (needs Taxomind support) |
 | W08 metrics | correctness done | performance tuning with measured data |
-| W09 UI | mostly done | contrast/narrow viewports, labelling save errors (`alert()`), component size |
-| W10 tests/CI | mostly done | more journeys (imports, admin, comments); shared filter-param builder; build-time check bypass |
+| W09 UI | mostly done | contrast/narrow viewports, component size |
+| W10 tests/CI | mostly done | more journeys (taxonomy admin, team, bulk label); shared filter-param builder |
 | W11 docs | done | keep the map in README/AGENTS current |
 | W12 ops | mostly done | backup schedule/objectives (maintainer), upgrade test from a real dump, structured logs/alerts, read-only FS and limits |
 

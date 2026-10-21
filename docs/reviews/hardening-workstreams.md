@@ -677,9 +677,11 @@ narrow viewport sizes. Validate through actual browser journeys.
       announced through a polite live region.
 - [x] A failed stats refresh keeps the last numbers and says they may be out
       of date (browser-tested with the queue failure journey).
-- [ ] The AI job badge polls on its own interval.
+- [x] The AI job badge pauses its 3 s polling in hidden tabs.
+- [x] Labelling page failures (save, comments, incomplete path) show error
+      toasts instead of blocking `alert()` dialogs; the work on screen stays.
 - [ ] Not yet checked: contrast, narrow viewports, keyboard resizing of
-      panels, failed-save recovery on the labelling page (still `alert()`).
+      panels.
 - [ ] Splitting the 1,000-line labelling and taxonomy admin components.
 
 ## W10 Maintainability, tests, and CI
@@ -735,9 +737,14 @@ remove demonstrated duplication while keeping route behavior explicit.
       `eslint-disable` comments.
 - [ ] Queue and stats build the same filter parameters in two places
       (`QueuePageClient.tsx`); the route handlers parse them separately too.
-- [ ] `next.config.ts` still skips type and lint errors in `next build`; CI is
-      the gate. Remove the bypass once nobody deploys without CI.
-- [ ] More journeys: imports, taxonomy admin, team management, comments.
+- [x] `next build` type-checks again (staging deploys without waiting for CI,
+      so the image build is the last gate there). Lint stays CI-only. Found on
+      the way: the Dockerfile did not copy `instrumentation.ts`, so AI job
+      recovery at startup (W07) was missing from images; fixed and checked by
+      building from exactly the files the Dockerfile copies.
+- [x] Journeys for comments (shortcuts stay off while typing) and record
+      import (ids keep leading zeros); 10 journeys in total.
+- [ ] More journeys: taxonomy admin, team management, bulk labelling.
 
 ## W11 Documentation and agent navigation
 

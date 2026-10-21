@@ -162,3 +162,42 @@ test('the audit log lists the export and can be filtered', async ({ page }) => {
   await page.getByLabel('Show').selectOption({ label: 'Users' })
   await expect(page.getByRole('cell', { name: 'export.downloaded' })).toHaveCount(0)
 })
+
+test('a comment can be added from the labelling page without triggering shortcuts', async ({ page }) => {
+  await signIn(page)
+  await rows(page).filter({ hasText: 'software developer' }).click()
+  await expect(page).toHaveURL(/\/queue\/[^/?]+/)
+  const recordId = new URL(page.url()).pathname.split('/').pop()!
+
+  await page.keyboard.press('c')
+  const dialog = page.getByRole('dialog', { name: 'Comments' })
+  await expect(dialog).toBeVisible()
+  // "s" (skip) and "f" (flag) are shortcuts outside the dialog; typing them here must not fire.
+  await dialog.getByPlaceholder('Enter your comment...').fill('needs a second look: senior or junior?')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog.getByText('needs a second look: senior or junior?')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  const record = JSON.stringify(await (await page.request.get(`/api/sentences/${recordId}`)).json())
+  expect(record).toContain('"status":"pending"')
+  expect(record).toContain('"flagged":false')
+})
+
+test('records can be imported from a CSV file with their ids kept', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.goto('/admin/sentences')
+
+  await page.getByLabel('CSV file to import').setInputFiles({
+    name: 'more.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('id,field_job_title,support_region\n0042,"baker, head",north\n'),
+  })
+  await page.getByRole('button', { name: 'Upload' }).click()
+  await expect(page.getByText('Successfully imported 1 sentences!')).toBeVisible()
+
+  const res = await page.request.get('/api/sentences/0042')
+  expect(res.status()).toBe(200)
+  expect(JSON.stringify(await res.json())).toContain('baker, head')
+})

@@ -166,6 +166,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                     type="file"
                     accept=".csv"
                     onChange={(e) => setSentenceFile(e.target.files?.[0] || null)}
+                    aria-label="CSV file to import"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                     id="sentence-file-input"
                   />
@@ -183,7 +184,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                 </label>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                CSV must include required columns: sentence, field_suffix (max 5), support_suffix (max 5)
+                Columns: an optional <code>id</code>, one to five <code>field_&lt;name&gt;</code> columns to classify, and up to five <code>support_&lt;name&gt;</code> context columns.
               </p>
             </div>
 

@@ -26,10 +26,6 @@ const nextConfig: NextConfig = {
 	eslint: {
 		ignoreDuringBuilds: true,
 	},
-	// Disable TypeScript errors during builds (production deployment should succeed)
-	typescript: {
-		ignoreBuildErrors: true,
-	},
 	// Security headers
 	async headers() {
 		return [

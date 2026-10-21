@@ -21,7 +21,7 @@ COPY prisma ./prisma
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM deps AS builder
-COPY next.config.ts tsconfig.json postcss.config.js eslint.config.mjs middleware.ts ./
+COPY next.config.ts tsconfig.json postcss.config.js eslint.config.mjs middleware.ts instrumentation.ts ./
 COPY app ./app
 COPY components ./components
 COPY lib ./lib
