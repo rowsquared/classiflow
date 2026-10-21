@@ -7,6 +7,7 @@ import {
   prisma,
   wsId,
   inWorkspace,
+  createAIConnection,
   createWorkspace,
   createSentences,
   createUser,
@@ -120,12 +121,14 @@ describe('taxonomy CSV lifecycle', () => {
   it('deletes a taxonomy with finished learning jobs, refuses while one runs', async () => {
     await createTaxonomy()
     const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { key: 'occ' } })
+    const connection = await createAIConnection()
     const job = await inWorkspace(() =>
       db().aILearningJob.create({
         data: {
           workspaceId: wsId(),
           taxonomyId: taxonomy.id,
           createdById: admin.id,
+          connectionVersionId: connection.id,
           status: 'processing',
           totalSentences: 1
         }

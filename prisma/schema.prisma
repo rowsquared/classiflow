@@ -86,6 +86,7 @@ model User {
   editedSentences Sentence[]            @relation("LastEditor")
   aiLabelingJobs  AILabelingJob[]
   aiLearningJobs  AILearningJob[]       @relation("LearningJobsUser")
+  aiSyncJobs      AITaxonomySyncJob[]
   workspaces      Workspace[]           @relation("WorkspaceCreator")
 }
 
@@ -153,17 +154,21 @@ model Workspace {
   description String?
   status      WorkspaceStatus @default(active)
   archivedAt  DateTime?
+  // Whether new AI jobs may start (lib/ai-connections.ts); needs a connection.
+  aiEnabled   Boolean         @default(false)
   createdById String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  createdBy      User?                  @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy      User?                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   memberships    WorkspaceMembership[]
   taxonomies     Taxonomy[]
   imports        SentenceImport[]
   sentences      Sentence[]
   aiLabelingJobs AILabelingJob[]
   aiLearningJobs AILearningJob[]
+  aiSyncJobs     AITaxonomySyncJob[]
+  aiConnections  AIConnectionVersion[]
   auditLogs      AuditLog[]
 }
 
@@ -204,10 +209,6 @@ model Taxonomy {
   createdById                     String?
   createdAt                       DateTime  @default(now())
   updatedAt                       DateTime  @updatedAt
-  lastAISyncAt                    DateTime?
-  lastAISyncStatus                String?
-  lastAISyncError                 String?
-  lastAISyncJobId                 String?
   lastLearningAt                  DateTime?
   lastLearningJobId               String?
   lastLearningStatus              String?
@@ -222,6 +223,7 @@ model Taxonomy {
   aiSuggestions  SentenceAISuggestion[]
   aiLabelingJobs AILabelingJob[]
   aiLearningJobs AILearningJob[]        @relation("LearningJobs")
+  aiSyncJobs     AITaxonomySyncJob[]
 
   @@unique([workspaceId, key])
   @@unique([workspaceId, id])
@@ -343,6 +345,8 @@ model Sentence {
   comments      Comment[]
   assignments   SentenceAssignment[]
   aiSuggestions SentenceAISuggestion[]
+  labelingJobs  AILabelingJobInput[]
+  learningJobs  AILearningJobInput[]
 
   @@unique([workspaceId, recordKey])
   @@unique([workspaceId, id])
@@ -404,28 +408,34 @@ enum AILabelingJobStatus {
 }
 
 model AILabelingJob {
-  id                 String              @id @default(cuid())
-  workspaceId        String
-  createdById        String
-  taxonomyId         String
-  status             AILabelingJobStatus @default(pending)
-  totalSentences     Int
-  processedSentences Int                 @default(0)
-  failedSentences    Int                 @default(0)
-  batchSize          Int                 @default(1000)
-  filterCriteria     Json?
-  externalJobId      String?
-  startedAt          DateTime            @default(now())
-  completedAt        DateTime?
-  errorMessage       String?
+  id                  String              @id @default(cuid())
+  workspaceId         String
+  createdById         String
+  taxonomyId          String
+  status              AILabelingJobStatus @default(pending)
+  totalSentences      Int
+  processedSentences  Int                 @default(0)
+  failedSentences     Int                 @default(0)
+  batchSize           Int                 @default(1000)
+  // How the records were chosen (for display); the records themselves are
+  // the job's AILabelingJobInput rows.
+  filterCriteria      Json?
+  connectionVersionId String
+  externalJobId       String?
+  startedAt           DateTime            @default(now())
+  completedAt         DateTime?
+  errorMessage        String?
   // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
-  leaseOwner         String?
-  leaseExpiresAt     DateTime?
+  leaseOwner          String?
+  leaseExpiresAt      DateTime?
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
-  createdBy User      @relation(fields: [createdById], references: [id])
-  taxonomy  Taxonomy  @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id])
+  createdBy  User                 @relation(fields: [createdById], references: [id])
+  taxonomy   Taxonomy             @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+  connection AIConnectionVersion  @relation(fields: [workspaceId, connectionVersionId], references: [workspaceId, id])
+  inputs     AILabelingJobInput[]
 
+  @@unique([workspaceId, id])
   @@index([status])
   @@index([createdById])
   @@index([taxonomyId])
@@ -433,32 +443,133 @@ model AILabelingJob {
 }
 
 model AILearningJob {
-  id                 String              @id @default(cuid())
-  workspaceId        String
-  createdById        String
-  taxonomyId         String
-  status             AILabelingJobStatus @default(pending)
-  totalSentences     Int
-  processedSentences Int                 @default(0)
-  failedSentences    Int                 @default(0)
-  batchSize          Int                 @default(100)
-  filterCriteria     Json?
-  externalJobId      String?
-  startedAt          DateTime            @default(now())
-  completedAt        DateTime?
-  errorMessage       String?
+  id                  String              @id @default(cuid())
+  workspaceId         String
+  createdById         String
+  taxonomyId          String
+  status              AILabelingJobStatus @default(pending)
+  totalSentences      Int
+  processedSentences  Int                 @default(0)
+  failedSentences     Int                 @default(0)
+  batchSize           Int                 @default(100)
+  filterCriteria      Json?
+  connectionVersionId String
+  externalJobId       String?
+  startedAt           DateTime            @default(now())
+  completedAt         DateTime?
+  errorMessage        String?
   // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
-  leaseOwner         String?
-  leaseExpiresAt     DateTime?
+  leaseOwner          String?
+  leaseExpiresAt      DateTime?
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
-  createdBy User      @relation("LearningJobsUser", fields: [createdById], references: [id])
-  taxonomy  Taxonomy  @relation("LearningJobs", fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id])
+  createdBy  User                 @relation("LearningJobsUser", fields: [createdById], references: [id])
+  taxonomy   Taxonomy             @relation("LearningJobs", fields: [workspaceId, taxonomyId], references: [workspaceId, id])
+  connection AIConnectionVersion  @relation(fields: [workspaceId, connectionVersionId], references: [workspaceId, id])
+  inputs     AILearningJobInput[]
 
+  @@unique([workspaceId, id])
   @@index([status])
   @@index([createdById])
   @@index([taxonomyId])
   @@index([workspaceId, startedAt])
+}
+
+// The records of one labeling job, in the order they are sent: the
+// authoritative input set (results for other records are rejected).
+model AILabelingJobInput {
+  workspaceId String
+  jobId       String
+  sentenceId  String
+  position    Int
+
+  job      AILabelingJob @relation(fields: [workspaceId, jobId], references: [workspaceId, id], onDelete: Cascade)
+  sentence Sentence      @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([jobId, sentenceId])
+  @@index([sentenceId])
+}
+
+// The records whose human labels one learning job sends.
+model AILearningJobInput {
+  workspaceId String
+  jobId       String
+  sentenceId  String
+  position    Int
+
+  job      AILearningJob @relation(fields: [workspaceId, jobId], references: [workspaceId, id], onDelete: Cascade)
+  sentence Sentence      @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([jobId, sentenceId])
+  @@index([sentenceId])
+}
+
+// Sending a taxonomy to the AI service (POST /taxonomies), with the same
+// lease and recovery discipline as labeling and learning jobs.
+model AITaxonomySyncJob {
+  id                  String              @id @default(cuid())
+  workspaceId         String
+  taxonomyId          String
+  connectionVersionId String
+  createdById         String?
+  status              AILabelingJobStatus @default(pending)
+  externalJobId       String?
+  startedAt           DateTime            @default(now())
+  completedAt         DateTime?
+  errorMessage        String?
+  leaseOwner          String?
+  leaseExpiresAt      DateTime?
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id])
+  taxonomy   Taxonomy            @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
+  connection AIConnectionVersion @relation(fields: [workspaceId, connectionVersionId], references: [workspaceId, id])
+  createdBy  User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@index([status])
+  @@index([taxonomyId, startedAt])
+  @@index([workspaceId, startedAt])
+}
+
+// An AI service endpoint a platform admin approved (control plane). Workspace
+// connections can only point at approved, unretired endpoints, so workspace
+// settings cannot become arbitrary server-side network access. The URL never
+// changes; retire it and approve a new one instead.
+model AIEndpoint {
+  id          String    @id @default(cuid())
+  name        String
+  baseUrl     String    @unique
+  createdById String?
+  createdAt   DateTime  @default(now())
+  retiredAt   DateTime?
+
+  connections AIConnectionVersion[]
+}
+
+// One immutable version of a workspace's AI connection: an approved endpoint,
+// the namespace and an encrypted credential (lib/ai-credentials.ts). A new
+// version retires the previous one; jobs keep the version they started with,
+// so a settings change never redirects a running job. A retired version's
+// credential is erased once no active job uses it.
+model AIConnectionVersion {
+  id          String    @id @default(cuid())
+  workspaceId String
+  version     Int
+  endpointId  String
+  namespace   String
+  credential  String? // Ciphertext with its key id; never returned by any API
+  createdById String?
+  createdAt   DateTime  @default(now())
+  retiredAt   DateTime?
+
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id])
+  endpoint     AIEndpoint          @relation(fields: [endpointId], references: [id])
+  labelingJobs AILabelingJob[]
+  learningJobs AILearningJob[]
+  syncJobs     AITaxonomySyncJob[]
+
+  @@unique([workspaceId, version])
+  @@unique([workspaceId, id])
 }
 
 model Comment {

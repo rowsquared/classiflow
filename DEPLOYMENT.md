@@ -61,8 +61,10 @@ See [ENV_SETUP.md](ENV_SETUP.md) for every variable. Required in production:
 ## Running more than one instance
 
 Several app containers can share one database. AI jobs are safe: each job is
-held by one instance through a database lease and taken over if that instance
-dies (see AGENTS.md "Optional AI integration"). Sessions and the sign-in rate
+held by one instance through a database lease, given back when the instance is
+stopped (SIGTERM) and taken over if it dies (see AGENTS.md "Optional AI
+integration"). The AI job ceilings (`AI_MAX_ACTIVE_JOBS*`) hold across
+instances. Sessions and the sign-in rate
 limit live in the database, so they are shared too.
 
 Connection budget: each instance opens up to `DATABASE_POOL_SIZE` connections
@@ -85,9 +87,36 @@ start `scripts/start.sh` runs
 `SELECT/INSERT/UPDATE/DELETE` on the application tables (also tables added by
 later migrations) and nothing else: no DDL, no `TRUNCATE`, no access to the
 migration history, no bypass of row security. It may also call the narrow
-recovery function for AI jobs. The server and admin bootstrap then connect as
+AI job functions (recovery, admission, lease release), which return ids only. The server and admin bootstrap then connect as
 that role. Changing `APP_DB_PASSWORD` and restarting rotates the password. The
 CI smoke job and the integration tests run this way.
+
+## AI credentials
+
+Each workspace's Taxomind access token is stored encrypted (AES-256-GCM) with
+the keys in `AI_CREDENTIALS_KEYS` (ENV_SETUP.md). The database alone holds no
+usable token, and the keys alone hold no data:
+
+- **Back up the keys separately from the database** (a password manager or the
+  secret store of the hosting platform). A restored database without its keys
+  needs every workspace admin to enter the token again (AI Settings); nothing
+  else is lost.
+- **Rotate a key:** generate one (`echo "k2027:$(openssl rand -base64 32)"`),
+  put it *first* in `AI_CREDENTIALS_KEYS`, keep the old one after it, and
+  restart. Then re-encrypt what is stored and check that nothing still uses the
+  old key:
+
+  ```bash
+  docker compose exec app node scripts/rotate-ai-credentials.ts
+  docker compose exec app node scripts/rotate-ai-credentials.ts --check
+  ```
+
+  Remove the old key and restart. (The script runs as the schema owner, which
+  sees every workspace's connections; it never prints a token.)
+- A connection version that was replaced keeps its token only while jobs that
+  started with it are running; the next settings change erases it.
+- Taxomind services must be approved by a platform admin (Workspaces page)
+  before a workspace can use them. Requests to them do not follow redirects.
 
 ## Reverse proxy
 
@@ -208,7 +237,8 @@ docker compose exec app node scripts/restore-check.ts   # uses the container's D
 ## Troubleshooting
 
 - **Database does not exist**: Ensure the database is created and the name matches `DATABASE_URL`.
-- **AI labeling returns 404**: Verify `AI_LABELING_API_URL` points to the Taxomind service base path.
+- **AI labeling returns 404**: Verify the approved service's base URL (Workspaces page) points to the Taxomind base path, including a prefix such as `/api`.
+- **AI jobs stay "pending"**: the workspace or the deployment is at its job ceiling (`AI_MAX_ACTIVE_JOBS_PER_WORKSPACE`, `AI_MAX_ACTIVE_JOBS`), or `AI_CREDENTIALS_KEYS` is not set on the instance (then no instance runs AI jobs).
 
 ## Platform Notes
 

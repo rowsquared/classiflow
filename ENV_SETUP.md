@@ -40,19 +40,28 @@ changing them later does nothing. To recover access see DEPLOYMENT.md "Admin Use
 
 ## AI suggestions (optional)
 
-Leave `AI_LABELING_API_URL` and `AI_LABELING_API_KEY` unset for human-only
-labelling; AI features stay disabled. They are set together or not at all.
+AI is configured **per workspace** (Admin › AI Settings): a platform admin
+approves the Taxomind services workspaces may use (Workspaces page), and each
+workspace admin connects the workspace to one of them with the workspace's own
+access token. The deployment only provides the encryption keys for those tokens
+and the namespace. Leave `AI_CREDENTIALS_KEYS` unset for human-only labelling;
+AI features stay disabled.
 
 | Variable | Required | Default (code / Compose) | Secret | Purpose |
 | --- | --- | --- | --- | --- |
-| `AI_LABELING_API_URL` | for AI | unset | no | Taxomind base URL, including any path prefix such as `/api` |
-| `AI_LABELING_API_KEY` | for AI | unset | yes | Bearer token for Taxomind |
+| `AI_CREDENTIALS_KEYS` | for AI | unset | yes | Keys that encrypt the workspaces' access tokens (AES-256-GCM): comma-separated `<keyId>:<base64 of 32 bytes>`, e.g. `k2026a:$(openssl rand -base64 32)`. The first key encrypts, all listed keys decrypt (rotation: DEPLOYMENT.md "AI credentials"). **Back it up separately from the database**: without it the stored tokens are useless |
 | `AI_SOURCE_SLUG` | yes, with AI | none | no | Deployment namespace for Taxomind, e.g. `classiflow-app-rowsquared`. Each workspace uses `<AI_SOURCE_SLUG>--<workspaceId>`, so workspaces never share a model; staging and production need different values |
+| `AI_LABELING_API_URL` | no | unset | no | Optional: registered once as an *approved* Taxomind service at start-up (base URL including any path prefix such as `/api`). It configures no workspace; each still needs its own connection and token. Platform admins can approve and retire services in the UI instead |
+| `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` | no | 3 | no | AI jobs (labelling, learning, taxonomy sync) one workspace may have running at the AI service; more wait as "pending" |
+| `AI_MAX_ACTIVE_JOBS` | no | 10 | no | The same ceiling for the whole deployment; queued jobs are admitted fairly across workspaces |
 | `AI_LABELING_BATCH_SIZE` | no | 1000 / 100 | no | Records per labelling job |
 | `AI_LEARNING_BATCH_SIZE` | no | 100 / 100 | no | Records per learning job |
 | `AI_LEARNING_MIN_NEW_ANNOTATIONS` | no | 500 / 500 | no | New human labels needed before learning can start |
 | `AI_JOB_POLL_INTERVAL_MS` | no | 60000 / 5000 | no | Status poll interval; also sets the job lease length (2 × interval + 60 s) |
 | `AI_JOB_POLL_TIMEOUT_MS` | no | 18000000 (5 h) / 600000 | no | A job still running after this is marked failed |
+
+`AI_LABELING_API_KEY` is no longer read: a deployment-wide token would give
+every workspace the same Taxomind access. Enter tokens per workspace instead.
 
 ## Runtime and build
 

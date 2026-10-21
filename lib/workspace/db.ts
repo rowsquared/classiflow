@@ -35,6 +35,10 @@ const WORKSPACE_MODELS = new Set([
   'SentenceAISuggestion',
   'AILabelingJob',
   'AILearningJob',
+  'AILabelingJobInput',
+  'AILearningJobInput',
+  'AITaxonomySyncJob',
+  'AIConnectionVersion',
   'Comment',
   'WorkspaceMembership',
   'AuditLog'

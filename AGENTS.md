@@ -59,7 +59,7 @@ Browser: React client components
 | Progress | `app/progress/`, `app/api/progress/{stats,timeline,team}/`; counts, timelines, team metrics |
 | Record APIs | `app/api/sentences/`; queue queries, stats, imports, assignment, bulk labels, individual records/annotations/comments/flags |
 | Other data APIs | `app/api/taxonomies/`, `app/api/imports/`, `app/api/users/`, `app/api/export/` |
-| AI APIs | `app/api/ai-labeling/` starts labeling and learning; `app/api/ai-jobs/` provides combined history, active jobs, cancellation |
+| AI APIs | `ai-labeling/` starts labeling and learning, `taxonomies/[key]/sync-ai` queues a sync, `ai-jobs/` provides combined history, active jobs, cancellation, `ai-settings/` the workspace connection; `/api/ai-endpoints` approved services (platform); UI in `app/w/[workspaceId]/admin/ai/` and `app/workspaces/AIEndpointsPanel.tsx` |
 | Authentication | `lib/auth.ts` (Better Auth server), `lib/auth-client.ts` (browser), `lib/api-auth.ts`, `lib/passwords.ts`, `proxy.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
@@ -163,29 +163,43 @@ writes need the same scope as reads. The access matrix is in
 
 ## Optional AI integration
 
-- `lib/ai-labeling.ts` is the HTTP boundary: bearer-token requests, request
-  timeouts, external job creation/status/cancellation, and older polling helpers.
-  AI features require `AI_LABELING_API_URL` and `AI_LABELING_API_KEY`.
-- `lib/ai-utils.ts` builds named field payloads from `fieldN` / `fieldMapping`.
-  `AI_SOURCE_SLUG` scopes taxonomy keys for a deployment; preserve it in AI
-  payloads. Batch sizes, thresholds, and polling settings live in
-  `lib/constants.ts`; Compose/environment defaults can differ from code defaults.
-- Labeling (`/api/ai-labeling/jobs`) and learning (`/api/ai-labeling/learn`)
-  resolve records, create one database job per batch, and launch monitors from
-  `lib/ai-job-monitor.ts`. Jobs run concurrently; Taxomind handles its own queue.
-  Monitors persist external IDs, progress, completion/failure, and labeling
-  suggestions. Learning uses submitted user annotations and a minimum-new-labels
-  threshold.
+- **Per-workspace connections** (`lib/ai-connections.ts`): platform admins
+  approve Taxomind endpoints (`AIEndpoint`); a workspace admin creates an
+  immutable `AIConnectionVersion` (approved endpoint, namespace
+  `<AI_SOURCE_SLUG>--<workspaceId>`, credential encrypted by
+  `lib/ai-credentials.ts` with `AI_CREDENTIALS_KEYS`) and turns
+  `Workspace.aiEnabled` on. New jobs need `connectionForNewJobs()`; every job
+  records its version and keeps it. Never return, log or audit a credential.
+  `AI_LABELING_API_URL` only pre-approves an endpoint; there is no
+  deployment-wide token.
+- `lib/ai-labeling.ts` is the HTTP boundary: `taxomindClient(connection)` with
+  bearer token, timeouts, no redirects, job creation/status/cancellation, all
+  typed by the OpenAPI contract (`lib/contracts/taxomind.ts`, including
+  `TaxonomyRequest`). `lib/ai-utils.ts` builds named field payloads from
+  `fieldN` / `fieldMapping`. Batch sizes, thresholds, ceilings and polling
+  settings live in `lib/constants.ts`; Compose defaults can differ.
+- Three job kinds in `lib/ai-job-monitor.ts`: labeling (`AILabelingJob`, its
+  records in `AILabelingJobInput`), learning (`AILearningJob` /
+  `AILearningJobInput`) and taxonomy sync (`AITaxonomySyncJob`). Routes create
+  them `pending` and call `scheduleAIJobs()` after commit; the database
+  function `app_admit_ai_jobs()` admits them to `processing` under
+  `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` / `AI_MAX_ACTIVE_JOBS`, fairly across
+  workspaces. Results are stored only for the job's input rows. Learning uses
+  submitted user annotations and a minimum-new-labels threshold. A taxonomy's
+  AI state (`lastAISyncStatus` in API responses) is its latest sync job.
 - Ownership is a database lease per job (`leaseOwner`, `leaseExpiresAt`),
   claimed with a conditional update before a job is started or polled and
   renewed on every poll, so only one instance works on a job. Recovery
   (`startJobRecovery()` from `instrumentation.ts`, every 30 s, and
-  `ensureJobsMonitored()` from the active-jobs API) takes over jobs whose lease
-  expired: it resumes polling when `externalJobId` is set, otherwise starts the
-  job. Failed status requests back off exponentially (capped at 5 minutes).
+  `ensureJobsMonitored()` from the active-jobs API) takes over admitted jobs
+  whose lease expired: it resumes polling when `externalJobId` is set,
+  otherwise starts the job. SIGTERM/SIGINT give this instance's leases back
+  (`releaseAllLeases()`). Failed status requests back off exponentially
+  (capped at 5 minutes). Cancelling (route or workspace archival) asks
+  Taxomind to cancel after commit, through the job's own connection.
   `tests/integration/ai-job-monitor.test.ts` runs the monitor against a stub
-  service.
-- Taxonomy sync uses `Taxonomy.lastAISync*` fields and the older monitor helper.
+  service that checks the OpenAPI contract; `ai-connections.test.ts` covers
+  connections, admission and lease release.
 
 ## Local development and checks
 

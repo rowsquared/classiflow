@@ -4,6 +4,7 @@ import { createPrismaClient } from '@/lib/prisma'
 import { testDatabaseUrl } from './global-setup'
 import { withWorkspace } from '@/lib/workspace/db'
 import type { AuthSession } from '@/lib/auth'
+import { credentialAad, deploymentKeyring, encryptCredential } from '@/lib/ai-credentials'
 
 /**
  * The schema owner, for fixtures, truncation and assertions: it sees every
@@ -197,4 +198,45 @@ export function inWorkspace<T>(fn: () => Promise<T>): Promise<T> {
 /** The current test workspace's id. */
 export function wsId(): string {
   return currentWorkspace()
+}
+
+/**
+ * An approved endpoint and a connection version of the current workspace,
+ * with AI turned on. The credential is encrypted as the application stores it
+ * when AI_CREDENTIALS_KEYS is set (the AI tests set it), else left empty.
+ * A new connection retires the workspace's previous one.
+ */
+export async function createAIConnection(opts: { baseUrl?: string; credential?: string } = {}) {
+  const ws = currentWorkspace()
+  const baseUrl = opts.baseUrl ?? 'http://127.0.0.1:9'
+  const endpoint = await prisma.aIEndpoint.upsert({
+    where: { baseUrl },
+    create: { name: 'Test endpoint', baseUrl },
+    update: { retiredAt: null }
+  })
+  const latest = await prisma.aIConnectionVersion.findFirst({
+    where: { workspaceId: ws },
+    orderBy: { version: 'desc' }
+  })
+  await prisma.aIConnectionVersion.updateMany({
+    where: { workspaceId: ws, retiredAt: null },
+    data: { retiredAt: new Date() }
+  })
+  const id = uid('connection')
+  const keyring = deploymentKeyring()
+  const connection = await prisma.aIConnectionVersion.create({
+    data: {
+      id,
+      workspaceId: ws,
+      version: (latest?.version ?? 0) + 1,
+      endpointId: endpoint.id,
+      namespace: `${process.env.AI_SOURCE_SLUG || 'test'}--${ws}`,
+      credential:
+        keyring && opts.credential !== undefined
+          ? encryptCredential(opts.credential, credentialAad(ws, id), keyring)
+          : null
+    }
+  })
+  await prisma.workspace.update({ where: { id: ws }, data: { aiEnabled: true } })
+  return connection
 }

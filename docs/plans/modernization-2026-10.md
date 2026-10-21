@@ -460,15 +460,14 @@ Still open:
   `externalJobId`, recovery sends the batch again. Closing this needs
   Taxomind to deduplicate by `(sourceSlug, batchId)` and return the existing
   job. `/learn` has no batch id at all.
-- **Taxonomy delete notification:** the taxonomy delete route sends
-  `POST /taxonomies` with `action: 'delete'`. Taxomind accepts only `create`
-  and answers 422, so `aiNotified` is always false. Either Taxomind gets a
-  delete action or the call goes.
-- **Typed taxonomy requests:** `startAIJob('/taxonomies', …)` still takes an
-  untyped payload, because the payloads are built in the taxonomy routes
-  (outside M09's scope). Typing them as `TaxonomyRequest` would surface the
-  delete mismatch above at compile time. Taxomind ignores the `description` and
-  `synonyms` the sync route sends.
+- ~~**Taxonomy delete notification**~~ resolved 22 October 2026: the call
+  (`action: 'delete'`, always answered 422) is gone, with `aiNotified`.
+  Deleting a taxonomy leaves the workspace's model for that key in Taxomind
+  until a new sync replaces it. A real delete needs a Taxomind delete action
+  first (Taxomind-side work); then add it as a job kind.
+- ~~**Typed taxonomy requests**~~ done: the taxonomy sync job sends the
+  generated `TaxonomyRequest` (no `description`, no `synonyms`, which Taxomind
+  ignores).
 - **Taxomind end to end** (below): still only the stub; the snapshot makes
   the stub match Taxomind's declared contract, not its runtime behaviour.
 
@@ -484,8 +483,10 @@ duplicate-label backup table, the old fallback database password) are dropped.
 - **Taxomind end to end** (W07): run labeling and learning against a real
   Taxomind; so far only the stub service in
   `tests/integration/ai-job-monitor.test.ts` has been used.
-- **Release AI job leases on shutdown** (W07): today they expire within
-  2 × poll interval + 60 s after an instance stops.
+- ~~**Release AI job leases on shutdown**~~ (W07) done: SIGTERM/SIGINT run
+  `releaseAllLeases()` (`app_release_ai_leases()`), so another instance takes
+  over at once; a killed instance's leases still expire within 2 × poll
+  interval + 60 s.
 - ~~**More browser journeys** (W10)~~ done 22 October 2026 (`tests/e2e/labelling-bulk.spec.ts`, `taxonomy-admin.spec.ts`): taxonomy admin and bulk labelling (team
   management comes with the [user management plan](user-management.md)).
 - **Backups** (W12, phase 3): the maintainer sets recovery objectives

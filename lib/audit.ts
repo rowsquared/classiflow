@@ -55,6 +55,12 @@ export type AuditAction =
   | 'ai.labeling_started'
   | 'ai.learning_started'
   | 'ai.job_cancelled'
+  | 'ai.enabled'
+  | 'ai.disabled'
+  | 'ai.connection_created'
+  | 'ai.connection_removed'
+  | 'ai.endpoint_approved'
+  | 'ai.endpoint_retired'
   | 'access.denied'
 
 export type AuditEntry = {

@@ -71,7 +71,28 @@ Isolation is enforced three times:
    by `tests/integration/db-runtime-role.test.ts`.
 
 Archived workspaces are read-only: writes get 409, AI jobs were cancelled
-when the workspace was archived.
+(also at the AI service) when the workspace was archived, and a late AI result
+is not stored.
+
+## AI connections
+
+- **Endpoints:** a workspace can only talk to an AI service a platform admin
+  approved (`AIEndpoint`); workspace admins choose one, they cannot enter a URL,
+  so workspace settings cannot reach arbitrary hosts from the server. Requests
+  do not follow redirects. Retired endpoints take no new connections or jobs.
+- **Credentials** are per workspace connection version, write-only: sent once
+  by a workspace admin, encrypted at rest with AES-256-GCM
+  (`lib/ai-credentials.ts`, keys in `AI_CREDENTIALS_KEYS`, bound to their row),
+  never returned by an API, written to a log, an audit payload or a job row.
+  A replaced version's credential is erased once no job uses it.
+- **Namespaces:** every request names `<AI_SOURCE_SLUG>--<workspaceId>`, so
+  workspaces never train or query the same model at classiflow's end. Whether
+  Taxomind enforces that separation for one credential is not verified yet
+  (release gate in docs/plans/workspace-isolation.md).
+- **Jobs** keep the connection version they started with; results are stored
+  only for the job's recorded input records, and only while the workspace is
+  active. Cross-workspace job functions (recovery, admission, lease release)
+  return ids only.
 
 ## Record visibility
 
@@ -113,6 +134,7 @@ admin) with a valid session who does not have to reset their password.
 | `/api/workspaces/[workspaceId]` | GET | member |
 | `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, temporary password, ban, delete) |
+| `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
 | `/sentences/[id]` | GET | member; record in scope |
 | `/sentences/[id]/annotations`, `/flag` | POST | member; record in scope |
@@ -130,7 +152,7 @@ admin) with a valid session who does not have to reset their password.
 | `/export` | GET | admin; re-checked before every page of the stream |
 | `/progress/stats`, `/timeline` | GET | member; limited to own work (labeller) or team (supervisor) |
 | `/progress/team` | GET | admin, supervisor (own team) |
-| `/ai-labeling/*`, `/ai-jobs/*`, `/audit` | all | admin |
+| `/ai-labeling/*`, `/ai-jobs/*`, `/ai-settings`, `/ai-settings/connection`, `/audit` | all | admin (credentials write-only) |
 
 ## Known gaps
 

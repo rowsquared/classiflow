@@ -41,7 +41,7 @@ cp .env.example .env
 ```
 
 3. For local access, uncomment the app port mapping in `docker-compose.yml` (3000:3000).
-4. Optional: enable AI suggestions by deploying Taxomind and setting `AI_LABELING_API_URL` and `AI_LABELING_API_KEY` in `.env`.
+4. Optional: enable AI suggestions by deploying Taxomind, setting `AI_CREDENTIALS_KEYS` and `AI_SOURCE_SLUG` in `.env`, approving the service as a platform admin (Workspaces page) and connecting each workspace with its token (Admin › AI Settings).
 5. Start the stack:
 ```bash
 docker compose up -d --build
@@ -53,8 +53,9 @@ For hosted setup or a demo, see https://rowsquared.com/classiflow/.
 ## Configuration
 
 All variables (required, optional, defaults, which are secret) are in
-[ENV_SETUP.md](ENV_SETUP.md). AI suggestions stay off until `AI_LABELING_API_URL`
-and `AI_LABELING_API_KEY` are set.
+[ENV_SETUP.md](ENV_SETUP.md). AI suggestions stay off until the deployment has
+`AI_CREDENTIALS_KEYS` and `AI_SOURCE_SLUG` and a workspace admin connects the
+workspace to an approved Taxomind service.
 
 ## First Login
 

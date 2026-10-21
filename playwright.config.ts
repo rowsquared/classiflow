@@ -28,7 +28,10 @@ export default defineConfig({
       BETTER_AUTH_SECRET: 'e2e-only-not-a-real-secret-0123456789',
       BETTER_AUTH_URL: baseURL,
       // The journeys sign in more often than a person would.
-      SIGN_IN_RATE_LIMIT: '1000'
+      SIGN_IN_RATE_LIMIT: '1000',
+      // AI can be configured (tests/e2e/ai-settings.spec.ts); no service runs.
+      AI_SOURCE_SLUG: 'ai',
+      AI_CREDENTIALS_KEYS: 'e2e:MlYB0Tmfes0OCnkWHxv/4MwbwWkWUTFZAj7YUvaDDcg='
     }
   }
 })

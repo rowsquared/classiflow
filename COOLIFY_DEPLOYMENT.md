@@ -69,9 +69,14 @@ Also turn on **Include Source Commit in Build** in the application's settings so
 #### Optional AI Labeling Variables
 
 ```env
-# AI Labeling Service (if using)
+# Encrypts each workspace's Taxomind token (keep a copy outside Coolify too):
+# echo "k1:$(openssl rand -base64 32)"
+AI_CREDENTIALS_KEYS=k1:<base64 of 32 random bytes>
+# Optional: registered as an approved Taxomind service at start-up. Workspace
+# admins still connect their workspace with their own token (Admin > AI Settings).
 AI_LABELING_API_URL=https://your-ai-service.example.com
-AI_LABELING_API_KEY=your-api-key-here
+AI_MAX_ACTIVE_JOBS_PER_WORKSPACE=3
+AI_MAX_ACTIVE_JOBS=10
 AI_LABELING_BATCH_SIZE=100
 AI_LEARNING_BATCH_SIZE=100
 AI_LEARNING_MIN_NEW_ANNOTATIONS=500
@@ -157,12 +162,12 @@ The default admin user is **automatically created** on first deployment using th
 - Ensure `DATABASE_URL` in the app matches the DB name you create.
 
 ### AI labeling API returns `Not Found`
-- The base URL is set via `AI_LABELING_API_URL`. It must point at the service root that serves the expected endpoints (e.g., `/learn`, `/learn/{jobId}/status`, `/label`).
-- If the provider uses a prefix (e.g., `/api`), include it in `AI_LABELING_API_URL` (e.g., `https://taxomind-api.rowsquared.org/api`).
-- Verify with `curl -i "$AI_LABELING_API_URL/learn"`; a 200/401/403 indicates you hit the right service, a 404 means the base path is wrong.
+- The base URL is the approved service's (Workspaces page, or `AI_LABELING_API_URL`). It must point at the service root that serves the expected endpoints (e.g., `/learn`, `/learn/{jobId}/status`, `/label`).
+- If the provider uses a prefix (e.g., `/api`), include it (e.g., `https://taxomind-api.rowsquared.org/api`). Approve the corrected URL and retire the wrong one; workspaces then save their connection again.
+- Verify with `curl -i "<base URL>/learn"`; a 200/401/403 indicates you hit the right service, a 404 means the base path is wrong.
 
 ### AI job cancel behavior
-- When you cancel a job from the UI, the app cancels it both locally (in the database) and on the external Taxomind API (`POST /{endpoint}/{jobId}/cancel`).
+- When you cancel a job from the UI, the app cancels it both locally (in the database) and on the external Taxomind API (`POST /{endpoint}/{jobId}/cancel`), with the connection the job started with. Archiving a workspace does the same for all of its jobs.
 - The external cancel is best-effort — if it fails (e.g. network issue), the local cancellation still proceeds and the polling loop stops.
 
 ---

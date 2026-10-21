@@ -2,12 +2,16 @@ import Link from 'next/link'
 import { requirePageSession } from '@/lib/server/page-user'
 import { listAccessibleWorkspaces } from '@/lib/server/workspaces'
 import CreateWorkspaceForm from './CreateWorkspaceForm'
+import AIEndpointsPanel, { type ApprovedEndpoint } from './AIEndpointsPanel'
+import { aiDeployment, listEndpoints } from '@/lib/ai-connections'
+import { asJson } from '@/lib/server/json'
 
 // The workspace chooser: only workspaces the user may enter are listed.
 // Platform admins can create workspaces here.
 export default async function WorkspacesPage() {
   const user = await requirePageSession()
   const workspaces = await listAccessibleWorkspaces(user)
+  const endpoints = user.platformRole === 'admin' ? asJson(await listEndpoints({ includeRetired: true })) : []
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-auto">
@@ -52,6 +56,9 @@ export default async function WorkspacesPage() {
         )}
 
         {user.platformRole === 'admin' && <CreateWorkspaceForm />}
+        {user.platformRole === 'admin' && (
+          <AIEndpointsPanel initialEndpoints={endpoints as ApprovedEndpoint[]} deployment={aiDeployment()} />
+        )}
       </div>
     </div>
   )

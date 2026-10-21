@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { afterCommit, db, scopeWorkspaceId } from '@/lib/workspace/db'
-import { launchJob } from '@/lib/ai-job-monitor'
+import { scheduleAIJobs } from '@/lib/ai-job-monitor'
+import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connections'
 import { AI_LABELING_BATCH_SIZE } from '@/lib/constants'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
@@ -45,6 +46,14 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       return NextResponse.json({ error: 'Taxonomy not found' }, { status: 404 })
     }
 
+    const connection = await connectionForNewJobs()
+    if ('unavailable' in connection) {
+      return NextResponse.json(
+        { error: AI_UNAVAILABLE_MESSAGES[connection.unavailable], code: connection.unavailable },
+        { status: 409 }
+      )
+    }
+
     // Resolve sentence IDs
     const sentenceWhere = buildSentenceFilter(input)
     const sentences = await db().sentence.findMany({
@@ -75,7 +84,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
           status: 'pending',
           totalSentences: batchIds.length,
           batchSize: AI_LABELING_BATCH_SIZE,
-          filterCriteria: { sentenceIds: batchIds }
+          connectionVersionId: connection.id,
+          // How the records were chosen; the records are the job's input rows.
+          filterCriteria: {
+            importIds: input.importIds ?? [],
+            selectedRecords: input.sentenceIds?.length ?? 0,
+            onlyUnsubmitted: input.onlyUnsubmitted ?? false
+          }
         },
         include: {
           taxonomy: { select: { key: true } },
@@ -83,11 +98,19 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
         }
       })
 
+      await db().aILabelingJobInput.createMany({
+        data: batchIds.map((sentenceId, position) => ({
+          workspaceId: user.workspaceId,
+          jobId: job.id,
+          sentenceId,
+          position
+        }))
+      })
       jobs.push(job)
-
-      // Fire-and-forget: launch the monitor which will send to external API and poll
-      afterCommit(() => launchJob(job.id, user.workspaceId))
     }
+
+    // Queued; admitted up to the job ceilings once committed (lib/ai-job-monitor.ts).
+    afterCommit(scheduleAIJobs)
 
     console.log(
       `✅ Created ${jobs.length} AI labeling job(s) for taxonomy ${taxonomy.key} ` +

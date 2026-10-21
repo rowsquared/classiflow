@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db, inCurrentWorkspace, scopeWorkspaceId } from '@/lib/workspace/db'
 import { Prisma } from '@/lib/generated/prisma/client'
-import { aiSourceSlug, UNKNOWN_NODE_CODES } from '@/lib/constants'
+import { UNKNOWN_NODE_CODES } from '@/lib/constants'
 import { workspaceRoute } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
@@ -193,9 +193,10 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
     // taxonomy that no longer exists. Cancel or wait for those jobs first.
     const activeJobs = await Promise.all([
       db().aILabelingJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
-      db().aILearningJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } })
+      db().aILearningJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
+      db().aITaxonomySyncJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } })
     ])
-    if (activeJobs[0] + activeJobs[1] > 0) {
+    if (activeJobs[0] + activeJobs[1] + activeJobs[2] > 0) {
       return NextResponse.json(
         {
           ok: false,
@@ -205,8 +206,9 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
       )
     }
 
-    // Hard delete: local data first, in one transaction. The AI service is only
-    // told afterwards, so a failed local delete never leaves it out of step.
+    // Hard delete, in one transaction. The AI service is not told: Taxomind has
+    // no delete action yet (it accepts only `create`), so the workspace's
+    // model for this key stays there until it is replaced by a new sync.
     const deletionResult = await inCurrentWorkspace(async () => {
       const tx = db()
       const deletedAISuggestions = await tx.sentenceAISuggestion.deleteMany({
@@ -234,6 +236,7 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
       // Finished AI job history for this taxonomy (every job table references it)
       await tx.aILabelingJob.deleteMany({ where: { taxonomyId } })
       await tx.aILearningJob.deleteMany({ where: { taxonomyId } })
+      await tx.aITaxonomySyncJob.deleteMany({ where: { taxonomyId } })
 
       await tx.taxonomy.delete({
         where: { id: taxonomyId }
@@ -246,25 +249,6 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
         deletedSynonyms: deletedSynonyms.count
       }
     })
-
-    // Tell the AI service, if one is configured. Failure is reported, not fatal:
-    // the taxonomy is already gone here.
-    let aiNotified = false
-    if (process.env.AI_LABELING_API_URL) {
-      try {
-        const { startAIJob } = await import('@/lib/ai-labeling')
-        await startAIJob('/taxonomies', {
-          action: 'delete',
-          sourceSlug: aiSourceSlug(actor.workspaceId),
-          taxonomy: {
-            key: taxonomyKey
-          }
-        })
-        aiNotified = true
-      } catch (syncError) {
-        console.error('Taxonomy deleted, but notifying the AI service failed:', syncError)
-      }
-    }
 
     await audit({
       actorId: actor.id,
@@ -281,7 +265,6 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
     return NextResponse.json({
       ok: true,
       message: 'Taxonomy and all associated data deleted successfully',
-      aiNotified,
       deleted: {
         nodes: deletionResult.deletedNodes,
         annotations: deletionResult.deletedAnnotations,

@@ -2,13 +2,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Taxonomy, User } from '@/lib/generated/prisma/client'
+import type { AIConnectionVersion, Taxonomy, User } from '@/lib/generated/prisma/client'
 import openapi from '@/lib/contracts/taxomind.openapi.json'
 import { db } from '@/lib/workspace/db'
 import {
   prisma,
   wsId,
   inWorkspace,
+  createAIConnection,
   createWorkspace,
   createSentences,
   createTaxonomy,
@@ -26,13 +27,16 @@ import {
 // answered 422 as Taxomind would and fails the test. Tests that need a
 // malformed reply send it `raw`, past the check.
 //
+// Every job runs through the workspace's connection version (an approved
+// endpoint at the stub's address, credential `stub-key`).
+//
 // Poll fast; the modules read these at load time, so they are imported after
 // the stub listens (beforeAll).
 vi.hoisted(() => {
   process.env.AI_JOB_POLL_INTERVAL_MS = '20'
   process.env.AI_JOB_POLL_TIMEOUT_MS = '10000'
-  process.env.AI_LABELING_API_KEY = 'stub-key'
   process.env.AI_SOURCE_SLUG = 'stub-deployment'
+  process.env.AI_CREDENTIALS_KEYS = 'k2026:MlYB0Tmfes0OCnkWHxv/4MwbwWkWUTFZAj7YUvaDDcg='
 })
 
 type SchemaName = keyof typeof openapi.components.schemas
@@ -55,7 +59,13 @@ let server: Server
 let monitor: typeof import('@/lib/ai-job-monitor')
 let ai: typeof import('@/lib/ai-labeling')
 let syncRoute: typeof import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
+let labelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+let cancelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
+let workspaceRoute: typeof import('@/app/api/workspaces/[workspaceId]/route')
+let stubUrl: string
 const started: StubJob[] = []
+const cancels: string[] = []
+let allowedAuth = new Set(['Bearer stub-key'])
 let statusReply: StatusReply
 let createdReply: ((resource: Resource) => Reply) | undefined
 let authHeaders: string[] = []
@@ -132,6 +142,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const job = status && started[Number(status[2]) - 1]
   if (status && job && job.resource === status[1]) {
     if (status[3] === 'cancel' && req.method === 'POST') {
+      cancels.push(url)
       return reply(
         res,
         SCHEMAS[job.resource].status,
@@ -159,10 +170,13 @@ beforeAll(async () => {
     handle(req, res).catch(() => send(res, 500, {}))
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  process.env.AI_LABELING_API_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  stubUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   monitor = await import('@/lib/ai-job-monitor')
   ai = await import('@/lib/ai-labeling')
   syncRoute = await import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
+  labelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+  cancelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
+  workspaceRoute = await import('@/app/api/workspaces/[workspaceId]/route')
 })
 
 afterAll(async () => {
@@ -171,6 +185,7 @@ afterAll(async () => {
 
 let admin: User
 let taxonomy: Taxonomy
+let connection: AIConnectionVersion
 
 beforeEach(async () => {
   await resetDatabase()
@@ -178,34 +193,66 @@ beforeEach(async () => {
   await createWorkspace()
   await createWorkspace()
   started.length = 0
+  cancels.length = 0
+  allowedAuth = new Set(['Bearer stub-key'])
   authHeaders = []
   violations = []
   createdReply = undefined
   admin = await createUser('admin')
   taxonomy = await createTaxonomy('ISCO')
+  connection = await createAIConnection({ baseUrl: stubUrl, credential: 'stub-key' })
+  // Recovery is rate-limited per process; each test starts with a fresh window.
+  ;(globalThis as { __lastRecoveryCheck?: number }).__lastRecoveryCheck = 0
 })
 
-afterEach(() => {
+afterEach(async () => {
   expect(violations).toEqual([])
-  expect(authHeaders.every(h => h === 'Bearer stub-key')).toBe(true)
+  expect(authHeaders.filter(h => !allowedAuth.has(h))).toEqual([])
+  // Let monitors and admission from this test finish before the next test
+  // truncates the tables, so they cannot deadlock with its setup.
+  const state = globalThis as {
+    __aiShuttingDown?: boolean
+    __activeJobMonitors?: Set<string>
+    __aiAdmission?: { running: boolean }
+  }
+  state.__aiShuttingDown = true
+  try {
+    await vi.waitFor(
+      () => {
+        expect(state.__activeJobMonitors?.size ?? 0).toBe(0)
+        expect(state.__aiAdmission?.running ?? false).toBe(false)
+      },
+      { timeout: 20_000, interval: 50 }
+    )
+  } finally {
+    state.__aiShuttingDown = false
+  }
 })
 
 const ACTIVE = ['pending', 'processing']
 
+/** A queued labeling job for these records (its input rows), on the current connection. */
 async function labelingJob(sentenceIds: string[], extra: Record<string, unknown> = {}) {
-  return inWorkspace(() =>
-    db().aILabelingJob.create({
+  return inWorkspace(async () => {
+    const job = await db().aILabelingJob.create({
       data: {
         workspaceId: wsId(),
         createdById: admin.id,
         taxonomyId: taxonomy.id,
+        connectionVersionId: connection.id,
         totalSentences: sentenceIds.length,
-        filterCriteria: { sentenceIds },
         ...extra
       }
     })
-  )
+    await db().aILabelingJobInput.createMany({
+      data: sentenceIds.map((sentenceId, position) => ({ workspaceId: wsId(), jobId: job.id, sentenceId, position }))
+    })
+    return job
+  })
 }
+
+/** Admits queued jobs and starts their monitors, as routes do after commit. */
+const run = () => monitor.admitQueuedJobs()
 
 /** Waits until the job leaves pending/processing (or the predicate holds). */
 async function settle(id: string, done = (status: string) => !ACTIVE.includes(status)) {
@@ -231,7 +278,7 @@ const storedSuggestions = async () =>
 
 describe('AI job monitor against a stub service', () => {
   it('sends the records, polls to completion and stores only valid suggestions', async () => {
-    const [a, b] = await createSentences(2)
+    const [a, b, outside] = await createSentences(3)
     statusReply = job =>
       job.polls < 3
         ? { body: { status: 'running', progress: 0.5 } }
@@ -244,16 +291,17 @@ describe('AI job monitor against a stub service', () => {
               ]
             },
             { sentenceId: b.id, annotations: [{ level: 1, nodeCode: '99', confidence: 0.7 }] }, // not in the taxonomy
-            { sentenceId: 'someone-else', annotations: [{ level: 1, nodeCode: '02', confidence: 0.5 }] } // foreign record
+            { sentenceId: 'someone-else', annotations: [{ level: 1, nodeCode: '02', confidence: 0.5 }] }, // foreign record
+            { sentenceId: outside.id, annotations: [{ level: 1, nodeCode: '02', confidence: 0.5 }] } // not in the job's input
           ])(job)
     const job = await labelingJob([a.id, b.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
     expect(done.externalJobId).toBe('ext-1')
-    expect(done.failedSentences).toBe(1)
+    expect(done.failedSentences).toBe(2)
     expect(done.leaseOwner).toBeNull()
     expect(started).toHaveLength(1)
     expect(started[0]?.body).toEqual({
@@ -291,7 +339,7 @@ describe('AI job monitor against a stub service', () => {
     ])
     const job = await labelingJob([a.id, b.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     expect((await settle(job.id)).status).toBe('completed')
 
     const stored = await storedSuggestions()
@@ -311,7 +359,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = () => ({ body: { status: 'failed', error: 'model not trained' } })
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
@@ -323,7 +371,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = () => ({ body: { status: 'canceled' } })
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
@@ -339,7 +387,7 @@ describe('AI job monitor against a stub service', () => {
         : { body: { status: 'running' } }
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     await settle(job.id, status => status === 'processing')
     await inWorkspace(() => db().aILabelingJob.update({ where: { id: job.id }, data: { status: 'cancelled' } }))
     cancelled = true
@@ -357,7 +405,7 @@ describe('AI job monitor against a stub service', () => {
         : completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -378,7 +426,7 @@ describe('AI job monitor against a stub service', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -411,7 +459,7 @@ describe('AI job monitor against a stub service', () => {
     })
     const job = await labelingJob([a.id, b.id, c.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -424,7 +472,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = () => ({ body: { status: 'completed', result: null } })
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
@@ -438,7 +486,7 @@ describe('AI job monitor against a stub service', () => {
     vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
@@ -454,7 +502,7 @@ describe('AI job monitor against a stub service', () => {
     vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     const job = await labelingJob([a.id])
 
-    monitor.launchJob(job.id, wsId())
+    await run()
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
@@ -465,16 +513,17 @@ describe('AI job monitor against a stub service', () => {
     const [a] = await createSentences(1)
     statusReply = completedWith([])
     const job = await labelingJob([a.id], {
+      status: 'processing',
       leaseOwner: 'other-instance',
       leaseExpiresAt: new Date(Date.now() + 60_000)
     })
 
-    monitor.launchJob(job.id, wsId())
+    await monitor.ensureJobsMonitored()
     await new Promise(r => setTimeout(r, 200))
 
     expect(started).toHaveLength(0)
     const after = await prisma.aILabelingJob.findUniqueOrThrow({ where: { id: job.id } })
-    expect(after).toMatchObject({ status: 'pending', leaseOwner: 'other-instance' })
+    expect(after).toMatchObject({ status: 'processing', leaseOwner: 'other-instance' })
   })
 
   it("takes over a dead instance's job and resumes polling without resending it", async () => {
@@ -524,19 +573,23 @@ describe('AI job monitor against a stub service', () => {
       })
     )
     statusReply = () => ({ body: { status: 'completed' } })
-    const job = await inWorkspace(() =>
-      db().aILearningJob.create({
+    const job = await inWorkspace(async () => {
+      const created = await db().aILearningJob.create({
         data: {
           workspaceId: wsId(),
           createdById: admin.id,
           taxonomyId: taxonomy.id,
-          totalSentences: 1,
-          filterCriteria: { sentenceIds: [a.id] }
+          connectionVersionId: connection.id,
+          totalSentences: 1
         }
       })
-    )
+      await db().aILearningJobInput.create({
+        data: { workspaceId: wsId(), jobId: created.id, sentenceId: a.id, position: 0 }
+      })
+      return created
+    })
 
-    monitor.launchLearningJob(job.id, wsId())
+    await run()
     await expect
       .poll(async () => (await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })).status)
       .toBe('completed')
@@ -551,10 +604,10 @@ describe('AI job monitor against a stub service', () => {
         {
           sentenceId: a.id,
           fields: { text: 'record 0' },
-          annotations: expect.arrayContaining([
+          annotations: [
             { level: 1, nodeCode: '01' },
             { level: 2, nodeCode: '011' }
-          ])
+          ]
         }
       ]
     })
@@ -571,29 +624,44 @@ describe('taxonomy sync against a stub service', () => {
       request(`/api/workspaces/${wsId()}/taxonomies/ISCO/sync-ai`, { method: 'POST' }),
       params({ key: 'ISCO' })
     )
-  const syncStatus = async () =>
-    (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncStatus
+  const syncJob = () => prisma.aITaxonomySyncJob.findFirstOrThrow({ orderBy: { startedAt: 'desc' } })
 
-  it('sends the taxonomy as the contract describes it and records completion', async () => {
+  it('queues a sync job, sends the taxonomy as the contract describes it and records completion', async () => {
     signInAs(admin)
     statusReply = job => ({ body: job.polls < 2 ? { status: 'running' } : { status: 'completed', progress: 1 } })
 
     const res = await sync()
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, jobId: 'ext-1' })
+    const body = await res.json()
+    expect(body).toMatchObject({ ok: true, status: 'pending' })
 
-    await expect.poll(syncStatus).toBe('completed')
-    const body = started[0]?.body as {
+    await expect.poll(async () => (await syncJob()).status).toBe('completed')
+    const job = await syncJob()
+    expect(job).toMatchObject({ id: body.jobId, externalJobId: 'ext-1', connectionVersionId: connection.id })
+    const sent = started[0]?.body as {
       action: string
       sourceSlug: string
-      taxonomy: { key: string; nodes: Array<{ code: string }> }
+      taxonomy: Record<string, unknown> & { nodes: Array<{ code: string }> }
     }
-    expect(body).toMatchObject({
+    expect(sent).toMatchObject({
       action: 'create',
       sourceSlug: `stub-deployment--${wsId()}`,
-      taxonomy: { key: 'ISCO' }
+      taxonomy: { key: 'ISCO', maxDepth: 2 }
     })
-    expect(body.taxonomy.nodes.map(n => n.code).sort()).toEqual(['01', '011', '012', '02'])
+    // Only what Taxomind reads (TaxonomyRequest): no description, no synonyms.
+    expect(Object.keys(sent.taxonomy).sort()).toEqual(['key', 'levelNames', 'maxDepth', 'nodes'])
+    expect(sent.taxonomy.nodes.map(n => n.code).sort()).toEqual(['01', '011', '012', '02'])
+  })
+
+  it('refuses a second sync while one is queued or running', async () => {
+    signInAs(admin)
+    statusReply = () => ({ body: { status: 'running' } })
+    expect((await sync()).status).toBe(200)
+    expect((await sync()).status).toBe(409)
+    await cancelRoute.POST(
+      request('/x', { method: 'POST', body: { type: 'taxonomy_sync' } }),
+      params({ jobId: (await syncJob()).id })
+    )
   })
 
   it('records a sync that Taxomind cancelled as failed', async () => {
@@ -602,20 +670,136 @@ describe('taxonomy sync against a stub service', () => {
 
     expect((await sync()).status).toBe(200)
 
-    await expect.poll(syncStatus).toBe('failed')
-    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncError).toBe(
-      'AI job was cancelled in the AI service'
+    await expect.poll(async () => (await syncJob()).status).toBe('failed')
+    expect((await syncJob()).errorMessage).toBe('External AI job was cancelled in the AI service')
+  })
+
+  it("resumes an orphaned sync job's polling without sending the taxonomy again", async () => {
+    started.push({ resource: 'taxonomies', body: {}, polls: 0 })
+    statusReply = () => ({ body: { status: 'completed' } })
+    const job = await inWorkspace(() =>
+      db().aITaxonomySyncJob.create({
+        data: {
+          workspaceId: wsId(),
+          taxonomyId: taxonomy.id,
+          connectionVersionId: connection.id,
+          status: 'processing',
+          externalJobId: 'ext-1',
+          leaseOwner: 'dead-instance',
+          leaseExpiresAt: new Date(Date.now() - 1000)
+        }
+      })
     )
+
+    await monitor.ensureJobsMonitored()
+
+    await expect
+      .poll(async () => (await prisma.aITaxonomySyncJob.findUniqueOrThrow({ where: { id: job.id } })).status)
+      .toBe('completed')
+    expect(started).toHaveLength(1)
+  })
+
+  it('cancels a sync job and asks Taxomind to cancel it with the job connection', async () => {
+    signInAs(admin)
+    statusReply = () => ({ body: { status: 'running' } })
+    expect((await sync()).status).toBe(200)
+    await expect.poll(async () => (await syncJob()).externalJobId).toBe('ext-1')
+
+    const res = await cancelRoute.POST(
+      request('/x', { method: 'POST', body: { type: 'taxonomy_sync' } }),
+      params({ jobId: (await syncJob()).id })
+    )
+    expect(await res.json()).toEqual({ ok: true, status: 'cancelled' })
+    await expect.poll(() => cancels).toEqual(['/taxonomies/ext-1/cancel'])
   })
 
   it('cancels jobs on Taxomind best-effort', async () => {
+    const client = ai.taxomindClient({ baseUrl: stubUrl, credential: 'stub-key' })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await ai.cancelAIJob('/label', 'ext-404') // unknown job: 404, logged, not thrown
+    await client.cancelJob('label', 'ext-404') // unknown job: 404, logged, not thrown
     expect(String(warn.mock.calls[0]?.[1])).toContain('AI labeling API error (404)')
     warn.mockRestore()
     started.push({ resource: 'taxonomies', body: {}, polls: 0 })
-    await ai.cancelAIJob('/taxonomies', 'ext-1')
+    await client.cancelJob('taxonomies', 'ext-1')
     expect(authHeaders).toHaveLength(2)
+  })
+})
+
+describe('workspace connections', () => {
+  const startLabeling = (sentenceIds: string[]) =>
+    labelRoute.POST(request('/x', { method: 'POST', body: { taxonomyKey: 'ISCO', sentenceIds } }), params())
+
+  it('starts no job without a usable connection, and says why', async () => {
+    const [a] = await createSentences(1)
+    signInAs(admin)
+
+    await prisma.workspace.update({ where: { id: wsId() }, data: { aiEnabled: false } })
+    let res = await startLabeling([a.id])
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('disabled')
+
+    await prisma.workspace.update({ where: { id: wsId() }, data: { aiEnabled: true } })
+    await prisma.aIConnectionVersion.updateMany({ data: { retiredAt: new Date() } })
+    res = await startLabeling([a.id])
+    expect((await res.json()).code).toBe('no_connection')
+    expect(await prisma.aILabelingJob.count()).toBe(0)
+  })
+
+  it('queues one job per batch with its input records and runs it with the connection', async () => {
+    const [a, b] = await createSentences(2)
+    statusReply = completedWith([{ sentenceId: b.id, annotations: [{ level: 1, nodeCode: '02', confidence: 0.4 }] }])
+    signInAs(admin)
+
+    const res = await startLabeling([b.id, a.id])
+    expect(res.status).toBe(200)
+    const job = await prisma.aILabelingJob.findFirstOrThrow()
+    expect(job.connectionVersionId).toBe(connection.id)
+    const inputs = await prisma.aILabelingJobInput.findMany({ where: { jobId: job.id }, orderBy: { position: 'asc' } })
+    expect(inputs.map(i => i.sentenceId).sort()).toEqual([a.id, b.id].sort())
+
+    expect((await settle(job.id)).status).toBe('completed')
+    expect(await storedSuggestions()).toEqual([[b.id, 1, '02', 0.4]])
+  })
+
+  it('keeps a job on the connection version it started with', async () => {
+    const [a] = await createSentences(1)
+    let release = false
+    statusReply = job => (release ? completedWith([])(job) : { body: { status: 'running' } })
+    const job = await labelingJob([a.id])
+    await run()
+    await settle(job.id, () => started.length === 1)
+
+    // A new version with another credential: new jobs use it, this one does not.
+    const next = await createAIConnection({ baseUrl: stubUrl, credential: 'rotated-key' })
+    allowedAuth.add('Bearer rotated-key')
+    release = true
+
+    expect((await settle(job.id)).status).toBe('completed')
+    expect(next.version).toBe(connection.version + 1)
+    expect(authHeaders.every(h => h === 'Bearer stub-key')).toBe(true)
+  })
+
+  it('cancels queued and running jobs when the workspace is archived, and asks Taxomind to cancel', async () => {
+    const [a, b] = await createSentences(2)
+    statusReply = () => ({ body: { status: 'running' } })
+    const running = await labelingJob([a.id])
+    await run()
+    await settle(running.id, () => started.length === 1)
+    const queued = await labelingJob([b.id]) // not admitted: nothing schedules it
+    signInAs(admin)
+
+    const res = await workspaceRoute.PUT(request('/x', { method: 'PUT', body: { status: 'archived' } }), params())
+    expect(res.status).toBe(200)
+
+    for (const id of [running.id, queued.id]) {
+      expect(await prisma.aILabelingJob.findUniqueOrThrow({ where: { id } })).toMatchObject({
+        status: 'cancelled',
+        errorMessage: 'Workspace archived'
+      })
+    }
+    await expect.poll(() => cancels).toEqual(['/label/ext-1/cancel'])
+    const archived = await prisma.auditLog.findFirstOrThrow({ where: { action: 'workspace.archived' } })
+    expect(archived.payload).toMatchObject({ cancelledJobs: 2 })
   })
 })
 

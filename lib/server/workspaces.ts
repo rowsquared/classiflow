@@ -1,7 +1,8 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
 import type { Role, SessionUser } from '@/lib/api-auth'
-import { db, withWorkspace } from '@/lib/workspace/db'
+import { afterCommit, db, withWorkspace } from '@/lib/workspace/db'
+import { cancelExternalJob } from '@/lib/ai-job-monitor'
 
 // The workspace directory and lifecycle (control plane). Workspace and
 // membership rows have no row security; workspace data is touched only
@@ -70,9 +71,11 @@ export async function updateWorkspace(workspaceId: string, data: { name?: string
 /**
  * Archives or reopens a workspace. Archiving takes an exclusive lock on the
  * workspace row, so it waits for writes in flight (they hold share locks) and
- * no write starts afterwards; pending and running AI jobs are cancelled in the
- * same transaction so a late result cannot be stored. Returns the number of
- * cancelled jobs.
+ * no write starts afterwards; queued and running AI jobs are cancelled in the
+ * same transaction so a late result cannot be stored. Once committed, the AI
+ * service is asked to cancel the jobs it already has (best effort, through
+ * each job's own connection; archival never waits for it). Returns the number
+ * of cancelled jobs.
  */
 export async function setWorkspaceStatus(workspaceId: string, status: 'active' | 'archived'): Promise<number> {
   return withWorkspace(workspaceId, async () => {
@@ -83,11 +86,35 @@ export async function setWorkspaceStatus(workspaceId: string, status: 'active' |
     })
     if (status !== 'archived') return 0
     const active = { status: { in: ['pending' as const, 'processing' as const] } }
-    const cancelled = { status: 'cancelled' as const, completedAt: new Date(), errorMessage: 'Workspace archived' }
-    const [labeling, learning] = await Promise.all([
-      db().aILabelingJob.updateMany({ where: active, data: cancelled }),
-      db().aILearningJob.updateMany({ where: active, data: cancelled })
+    const select = { id: true, externalJobId: true, connectionVersionId: true } as const
+    const [labeling, learning, sync] = await Promise.all([
+      db().aILabelingJob.findMany({ where: active, select }),
+      db().aILearningJob.findMany({ where: active, select }),
+      db().aITaxonomySyncJob.findMany({ where: active, select })
     ])
-    return labeling.count + learning.count
+    const cancelled = {
+      status: 'cancelled' as const,
+      completedAt: new Date(),
+      errorMessage: 'Workspace archived',
+      leaseOwner: null,
+      leaseExpiresAt: null
+    }
+    await db().aILabelingJob.updateMany({ where: active, data: cancelled })
+    await db().aILearningJob.updateMany({ where: active, data: cancelled })
+    await db().aITaxonomySyncJob.updateMany({ where: active, data: cancelled })
+
+    const external = [
+      ...labeling.map(job => ({ kind: 'labeling' as const, ...job })),
+      ...learning.map(job => ({ kind: 'learning' as const, ...job })),
+      ...sync.map(job => ({ kind: 'sync' as const, ...job }))
+    ].flatMap(job => (job.externalJobId ? [{ ...job, externalJobId: job.externalJobId }] : []))
+    if (external.length > 0) {
+      afterCommit(() => {
+        for (const job of external) {
+          void cancelExternalJob(workspaceId, job.kind, job.externalJobId, job.connectionVersionId)
+        }
+      })
+    }
+    return labeling.length + learning.length + sync.length
   })
 }

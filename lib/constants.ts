@@ -26,6 +26,13 @@ export const AI_LEARNING_MIN_NEW_ANNOTATIONS = parseInt(process.env.AI_LEARNING_
 export const AI_JOB_POLL_INTERVAL_MS = parseInt(process.env.AI_JOB_POLL_INTERVAL_MS || '60000', 10)
 export const AI_JOB_POLL_TIMEOUT_MS = parseInt(process.env.AI_JOB_POLL_TIMEOUT_MS || '18000000', 10)
 export const AI_SOURCE_SLUG = process.env.AI_SOURCE_SLUG || ''
+// Jobs sent to the AI service at once (lib/ai-job-monitor.ts admission): per
+// workspace and for the whole deployment. Further jobs wait as "pending".
+export const AI_MAX_ACTIVE_JOBS_PER_WORKSPACE = Math.max(
+  1,
+  parseInt(process.env.AI_MAX_ACTIVE_JOBS_PER_WORKSPACE || '3', 10) || 3
+)
+export const AI_MAX_ACTIVE_JOBS = Math.max(1, parseInt(process.env.AI_MAX_ACTIVE_JOBS || '10', 10) || 10)
 
 /**
  * The AI service namespace of one workspace: the deployment's AI_SOURCE_SLUG

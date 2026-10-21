@@ -60,8 +60,12 @@ services:
       DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Admin User}
 
       # AI Labeling (Optional)
-      AI_LABELING_API_URL: ${AI_LABELING_API_URL}
-      AI_LABELING_API_KEY: ${AI_LABELING_API_KEY}
+      # Encrypts the workspaces' AI tokens; back it up apart from the database.
+      AI_CREDENTIALS_KEYS: ${AI_CREDENTIALS_KEYS:-}
+      # Registered as an approved AI service at start-up; configures no workspace.
+      AI_LABELING_API_URL: ${AI_LABELING_API_URL:-}
+      AI_MAX_ACTIVE_JOBS_PER_WORKSPACE: ${AI_MAX_ACTIVE_JOBS_PER_WORKSPACE:-3}
+      AI_MAX_ACTIVE_JOBS: ${AI_MAX_ACTIVE_JOBS:-10}
       AI_LABELING_BATCH_SIZE: ${AI_LABELING_BATCH_SIZE:-100}
       AI_LEARNING_BATCH_SIZE: ${AI_LEARNING_BATCH_SIZE:-100}
       AI_LEARNING_MIN_NEW_ANNOTATIONS: ${AI_LEARNING_MIN_NEW_ANNOTATIONS:-500}

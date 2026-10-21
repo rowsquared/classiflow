@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { afterCommit, db, scopeWorkspaceId } from '@/lib/workspace/db'
-import { launchLearningJob } from '@/lib/ai-job-monitor'
+import { scheduleAIJobs } from '@/lib/ai-job-monitor'
+import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connections'
 import { AI_LEARNING_BATCH_SIZE, AI_LEARNING_MIN_NEW_ANNOTATIONS } from '@/lib/constants'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
@@ -27,6 +28,14 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
 
     if (!taxonomy) {
       return NextResponse.json({ error: 'Taxonomy not found' }, { status: 404 })
+    }
+
+    const connection = await connectionForNewJobs()
+    if ('unavailable' in connection) {
+      return NextResponse.json(
+        { error: AI_UNAVAILABLE_MESSAGES[connection.unavailable], code: connection.unavailable },
+        { status: 409 }
+      )
     }
 
     if (taxonomy.newAnnotationsSinceLastLearning < AI_LEARNING_MIN_NEW_ANNOTATIONS) {
@@ -86,7 +95,8 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
           status: 'pending',
           totalSentences: batchIds.length,
           batchSize: AI_LEARNING_BATCH_SIZE,
-          filterCriteria: { sentenceIds: batchIds }
+          connectionVersionId: connection.id,
+          filterCriteria: { since: taxonomy.lastLearningAt?.toISOString() ?? null }
         },
         include: {
           taxonomy: { select: { key: true } },
@@ -94,9 +104,17 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
         }
       })
 
+      await db().aILearningJobInput.createMany({
+        data: batchIds.map((sentenceId, position) => ({
+          workspaceId: user.workspaceId,
+          jobId: job.id,
+          sentenceId,
+          position
+        }))
+      })
       jobs.push(job)
-      afterCommit(() => launchLearningJob(job.id, user.workspaceId))
     }
+    afterCommit(scheduleAIJobs)
 
     // Reset annotation counter and set status to processing
     await db().taxonomy.update({

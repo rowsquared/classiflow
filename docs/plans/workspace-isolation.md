@@ -92,17 +92,49 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    reactivate, platform admins add existing accounts, `/accounts` page.
 4. ~~Docs~~ done: AGENTS.md, docs/security.md, ENV_SETUP, DEPLOYMENT,
    user-management revision.
-5. **Still open:** P4 invitations (with user management U7); P6
-   per-workspace AI connections (encrypted credentials, versions), typed job
-   input tables, persisted taxonomy-sync job, per-workspace job ceilings;
-   P7 external AI cancellation on archive, transactional audit for
-   membership changes, import/lint boundary check against the `prisma`
-   singleton, restore check (done 22 October 2026: `scripts/restore-check.ts`,
-   run by `scripts/restore-drill.sh`, checks row security on every workspace
-   table, the runtime role's attributes and grants, and every workspace's rows
-   through that role); a searchable header switcher (today: "Switch
-   workspace" link to the chooser); Taxomind namespace isolation verified
-   live (release gate for AI).
+5. ~~P6 per-workspace AI~~ done (lane B, migration
+   `20261022110000_per_workspace_ai`):
+   - Platform admins approve endpoints (`AIEndpoint`, Workspaces page,
+     `/api/ai-endpoints`); `AI_LABELING_API_URL` is only registered as one.
+     Workspace admins create immutable connection versions
+     (`AIConnectionVersion`: endpoint, namespace, credential) under Admin ›
+     AI Settings and turn `Workspace.aiEnabled` on; a new version retires the
+     old one, whose credential is erased once no job uses it. Credentials are
+     AES-256-GCM with key ids (`AI_CREDENTIALS_KEYS`, bound to their row by
+     associated data), write-only, never logged or audited; rotation is
+     `scripts/rotate-ai-credentials.ts` (DEPLOYMENT.md "AI credentials").
+     `AI_LABELING_API_KEY` is gone: there is no deployment-wide client
+     (`taxomindClient(connection)`), and requests refuse redirects.
+   - Jobs record their connection version and keep it for polling and
+     cancelling. Typed input tables (`AILabelingJobInput`,
+     `AILearningJobInput`, composite FKs) are the authoritative record set;
+     results for other records are rejected.
+   - Taxonomy sync is a persisted job (`AITaxonomySyncJob`) with the same
+     lease, recovery and cancellation as the others; `Taxonomy.lastAISync*`
+     and the old polling helpers are gone (the API still reports
+     `lastAISyncStatus`, derived from the latest sync job).
+   - Ceilings: `app_admit_ai_jobs()` admits queued jobs under
+     `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` (3) and `AI_MAX_ACTIVE_JOBS` (10) with
+     an advisory lock, round-robin across workspaces.
+   - Not done: approving endpoints per workspace (any approved endpoint is
+     open to every workspace), per-workspace thresholds/batch sizes (still
+     deployment settings), and restore-with-key rehearsal on a real backup
+     (procedure in DEPLOYMENT.md, belongs to the W12 backup work).
+6. ~~P7 restore check~~ done (lane E): `scripts/restore-check.ts`, run by
+   `scripts/restore-drill.sh`, checks row security on every workspace table,
+   the runtime role's attributes and grants, and every workspace's rows
+   through that role.
+7. ~~P7 external AI cancellation on archive~~ done: archival cancels queued
+   and running jobs (all three kinds) in its transaction and asks Taxomind to
+   cancel after commit, through each job's connection; leases are also given
+   back on SIGTERM/SIGINT.
+8. **Still open:** P4 invitations (with user management U7); P7
+   transactional audit for membership changes, import/lint boundary check
+   against the `prisma` singleton; a searchable header
+   switcher (today: "Switch workspace" link to the chooser); Taxomind
+   namespace isolation verified live (release gate for AI: two namespaces with
+   one credential, identical taxonomy keys; until then give independent
+   workspaces separate Taxomind credentials or instances).
 
 ## Recommendation and agreed requirements
 

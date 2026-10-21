@@ -423,7 +423,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage({ type: 'success', text: `AI sync started for "${taxonomy.key}" (job ${data.jobId})` })
+        setMessage({ type: 'success', text: `AI sync queued for "${taxonomy.key}"; its status updates here` })
         // Refresh silently after a short delay
         setTimeout(() => refreshTaxonomies(), 500)
       } else {

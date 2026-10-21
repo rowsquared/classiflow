@@ -1,5 +1,6 @@
 import 'server-only'
 import { db } from '@/lib/workspace/db'
+import { latestSyncByTaxonomy, NEVER_SYNCED } from '@/lib/server/ai-jobs'
 
 // Taxonomy data for the admin page, the queue page and
 // /api/workspaces/[workspaceId]/taxonomies. Every member of the workspace sees them.
@@ -18,6 +19,8 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
     },
     orderBy: [{ createdAt: 'desc' }]
   })
+
+  const syncs = await latestSyncByTaxonomy(taxonomies.map(t => t.id))
 
   // Add computed statistics
   const taxonomiesWithStats = await Promise.all(
@@ -47,6 +50,7 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
 
       return {
         ...taxonomy,
+        ...(syncs.get(taxonomy.id) ?? NEVER_SYNCED),
         nodeCount: taxonomy._count.nodes,
         annotationCount: taxonomy._count.annotations,
         actualMaxLevel: maxLevelNode?.level || 0,
@@ -71,10 +75,13 @@ export async function listActiveTaxonomies(workspaceId: string) {
       id: true,
       key: true,
       maxDepth: true,
-      levelNames: true,
-      lastAISyncStatus: true
+      levelNames: true
     },
     orderBy: { createdAt: 'asc' }
   })
-  return { ok: true as const, taxonomies }
+  const syncs = await latestSyncByTaxonomy(taxonomies.map(t => t.id))
+  return {
+    ok: true as const,
+    taxonomies: taxonomies.map(t => ({ ...t, lastAISyncStatus: syncs.get(t.id)?.lastAISyncStatus ?? null }))
+  }
 }
