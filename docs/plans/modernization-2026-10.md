@@ -368,9 +368,8 @@ database is disposable until M00 lands.
 
 ## Open points for the maintainer
 
-- Confirm that no database anywhere (an old Coolify volume, a local copy)
-  holds labels worth keeping before M00 replaces the migration history. If
-  one does, export it to CSV first; it can be re-imported.
+None. Confirmed 21 October 2026: no database anywhere holds data worth
+keeping, so M00 can replace the migration history.
 
 ## Sources
 
