@@ -3,6 +3,7 @@ import { getSession, type AuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { audit } from '@/lib/audit'
 import { withWorkspace, WorkspaceArchivedError } from '@/lib/workspace/db'
+import { touchLastSeen } from '@/lib/last-seen'
 
 /** A person's role inside one workspace. */
 export type Role = 'admin' | 'supervisor' | 'labeller'
@@ -141,6 +142,14 @@ export async function reloadWorkspaceUser(userId: string, workspaceId: string): 
 }
 
 export async function requireWorkspace(workspaceId: string, ...roles: Role[]): Promise<WorkspaceResult> {
+  return checkWorkspace(workspaceId, roles, false)
+}
+
+/**
+ * `passive`: background polls (the AI job badge) that do not show a person is
+ * there; they do not update "last seen" (lib/last-seen.ts).
+ */
+async function checkWorkspace(workspaceId: string, roles: Role[], passive: boolean): Promise<WorkspaceResult> {
   const result = await checkSession(false)
   if (result.error) return result
   const user = await resolveWorkspaceUser(result.user, workspaceId)
@@ -152,6 +161,7 @@ export async function requireWorkspace(workspaceId: string, ...roles: Role[]): P
     })
     return { error: forbidden() }
   }
+  if (!passive && user.membershipId) await touchLastSeen(user.membershipId)
   return { session: result.session, user }
 }
 
@@ -177,11 +187,11 @@ type WorkspaceHandler<P> = (
 export function workspaceRoute<P extends WorkspaceParams = WorkspaceParams>(
   roles: Role[],
   handler: WorkspaceHandler<P>,
-  { transaction = true, timeoutMs }: { transaction?: boolean; timeoutMs?: number } = {}
+  { transaction = true, timeoutMs, passive = false }: { transaction?: boolean; timeoutMs?: number; passive?: boolean } = {}
 ) {
   return async (req: NextRequest, { params }: RouteContext<P>): Promise<Response> => {
     const resolved = await params
-    const { user, session, error } = await requireWorkspace(resolved.workspaceId, ...roles)
+    const { user, session, error } = await checkWorkspace(resolved.workspaceId, roles, passive)
     if (error) return error
     const write = req.method !== 'GET' && req.method !== 'HEAD'
     if (write && user.archived) return workspaceArchived()

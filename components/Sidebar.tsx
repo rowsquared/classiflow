@@ -2,7 +2,7 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useSession, signOut } from '@/lib/auth-client'
+import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import Image from 'next/image'
@@ -95,6 +95,13 @@ export default function Sidebar() {
     const newState = !collapsed
     setCollapsed(newState)
     localStorage.setItem('sidebar-collapsed', JSON.stringify(newState))
+  }
+
+  // Ends this person's sessions in every other browser; this one stays.
+  const handleSignOutElsewhere = async () => {
+    setShowLogoutMenu(false)
+    const { error } = await revokeOtherSessions()
+    alert(error ? 'Could not sign out the other sessions.' : 'Signed out on all other devices.')
   }
 
   const handleLogout = async () => {
@@ -384,6 +391,12 @@ export default function Sidebar() {
                   minWidth: collapsed ? '120px' : 'auto'
                 }}
               >
+                <button
+                  onClick={handleSignOutElsewhere}
+                  className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
+                >
+                  Sign out other devices
+                </button>
                 <Link
                   href="/workspaces"
                   onClick={() => setShowLogoutMenu(false)}

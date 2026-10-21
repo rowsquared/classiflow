@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
 import { db } from '@/lib/workspace/db'
-import { wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { prisma, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
 import * as annotationsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route'
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'

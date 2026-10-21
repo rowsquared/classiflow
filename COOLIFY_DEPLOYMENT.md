@@ -54,10 +54,11 @@ DEFAULT_ADMIN_NAME=Admin User
 DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 ```
 
-#### Recommended
+#### Required: runtime database role
 
 ```env
-# Run the server as a least-privilege database role (see DEPLOYMENT.md "Database roles")
+# The server runs as this least-privilege role; workspace row security binds it
+# (see DEPLOYMENT.md "Database roles"). The deploy refuses to start without it.
 APP_DB_USER=classiflow_app
 APP_DB_PASSWORD=<another long random password>
 ```
@@ -383,7 +384,7 @@ To scale the application:
 ### Production Recommendations
 
 1. Use long random values for `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
-2. Set `APP_DB_USER`/`APP_DB_PASSWORD` so the server runs with row access only
+2. `APP_DB_USER`/`APP_DB_PASSWORD` are required: the server runs with row access only, under workspace row security
 3. Enable database backups and run `scripts/restore-drill.sh` on one (DEPLOYMENT.md "Backups")
 4. Configure SSL/TLS (handled by Coolify)
 5. Set up monitoring and alerts

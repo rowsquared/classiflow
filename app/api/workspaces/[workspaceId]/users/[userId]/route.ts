@@ -6,13 +6,14 @@ import { isLastWorkspaceAdmin, lockWorkspaceAdmins } from '@/lib/user-rules'
 import { revokeSessions, setPassword } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/workspace/db'
+import { passwordProblem } from '@/lib/password-policy'
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   role: z.enum(['admin', 'supervisor', 'labeller']).optional(),
   supervisorId: z.string().nullable().optional(),
   status: z.enum(['active', 'suspended']).optional(),
-  newPassword: z.string().min(8).max(256).optional(),
+  newPassword: z.string().max(256).optional(),
 })
 
 // GET: admins see any member, supervisors their team, everyone themselves.
@@ -68,6 +69,12 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params }
   }
   if ((name !== undefined || newPassword) && !(await mayManageAccount(actor, userId))) {
     return forbidden('This account is used beyond this workspace; only a platform admin can change its name or password')
+  }
+
+  if (newPassword) {
+    const account = await db().user.findUniqueOrThrow({ where: { id: userId }, select: { username: true, email: true, name: true } })
+    const weak = passwordProblem(newPassword, { ...account, name: name ?? account.name })
+    if (weak) return NextResponse.json({ error: `New password: ${weak}`, field: 'newPassword' }, { status: 400 })
   }
 
   let supervisorMembershipId: string | null | undefined

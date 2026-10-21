@@ -11,6 +11,7 @@
 //   leaving a server nobody can sign in to.
 import { connect } from './lib/db.ts'
 import { setPassword, USERNAME_PATTERN } from '../lib/passwords.ts'
+import { passwordProblem } from '../lib/password-policy.ts'
 
 const PLACEHOLDER_PASSWORDS = new Set([
   'change-me-immediately',
@@ -49,9 +50,11 @@ async function initAdmin() {
   if (!USERNAME_PATTERN.test(adminUsername)) {
     throw new Error('DEFAULT_ADMIN_USERNAME may only contain letters, digits, dot, underscore and hyphen')
   }
-  if (adminPassword.length < 8) {
-    throw new Error('No admin exists yet and DEFAULT_ADMIN_PASSWORD is missing or shorter than 8 characters')
+  if (!adminPassword) {
+    throw new Error('No admin exists yet and DEFAULT_ADMIN_PASSWORD is missing')
   }
+  const weak = passwordProblem(adminPassword, { username: adminUsername, email: adminEmail, name: adminName })
+  if (weak) throw new Error(`DEFAULT_ADMIN_PASSWORD is not acceptable: ${weak}`)
   if (PLACEHOLDER_PASSWORDS.has(adminPassword.toLowerCase())) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('DEFAULT_ADMIN_PASSWORD is a well-known placeholder; set a real password')

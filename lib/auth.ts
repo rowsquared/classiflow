@@ -5,6 +5,7 @@ import { admin, username } from 'better-auth/plugins'
 import { headers } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { USERNAME_PATTERN } from '@/lib/passwords'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/password-policy'
 
 // Sign-in attempts per client IP per minute (ENV_SETUP.md).
 const SIGN_IN_LIMIT = { window: 60, max: Number(process.env.SIGN_IN_RATE_LIMIT) || 10 }
@@ -22,8 +23,8 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,
-    minPasswordLength: 8,
-    maxPasswordLength: 256,
+    minPasswordLength: PASSWORD_MIN_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH,
   },
   user: {
     additionalFields: {
@@ -44,8 +45,9 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        // Raw SQL so a sign-in does not count as an edit of the account (updatedAt).
         after: async session => {
-          await prisma.user.update({ where: { id: session.userId }, data: { lastLogin: new Date() } })
+          await prisma.$executeRaw`UPDATE "User" SET "lastLogin" = (now() AT TIME ZONE 'UTC') WHERE id = ${session.userId}`
         },
       },
     },

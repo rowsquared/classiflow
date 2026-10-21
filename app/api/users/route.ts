@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin } from '@/lib/api-auth'
 import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
+import { passwordProblem } from '@/lib/password-policy'
 
 // Platform administration of global accounts. Workspace membership is managed
 // per workspace (/api/workspaces/[workspaceId]/users).
@@ -13,7 +14,7 @@ const createSchema = z.object({
   email: z.string().email().max(254).transform(e => e.toLowerCase()),
   name: z.string().min(1).max(200),
   platformRole: z.enum(['admin', 'user']).default('user'),
-  tempPassword: z.string().min(8).max(256),
+  tempPassword: z.string().max(256),
 })
 
 export async function GET() {
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
   const { email, name, platformRole, tempPassword } = parsed.data
   const displayUsername = parsed.data.username
   const username = displayUsername.toLowerCase()
+  const weak = passwordProblem(tempPassword, { username, email, name })
+  if (weak) return NextResponse.json({ error: `Temporary password: ${weak}`, field: 'tempPassword' }, { status: 400 })
 
   const taken = await prisma.user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
   if (taken) {

@@ -34,8 +34,8 @@ git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
 ```
 
-2. Copy the environment template and fill in `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`
-   and `DEFAULT_ADMIN_PASSWORD` (see [ENV_SETUP.md](ENV_SETUP.md)):
+2. Copy the environment template and fill in `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`,
+   `APP_DB_PASSWORD` and `DEFAULT_ADMIN_PASSWORD` (see [ENV_SETUP.md](ENV_SETUP.md)):
 ```bash
 cp .env.example .env
 ```

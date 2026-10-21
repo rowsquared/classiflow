@@ -41,10 +41,10 @@ services:
       # Database. This is the schema owner: it runs migrations (and recovery
       # scripts via `docker compose exec`).
       DATABASE_URL: postgresql://${POSTGRES_USER:-classiflow}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-classiflow}?schema=public
-      # Optional: run the server as a least-privilege role instead of the owner.
-      # scripts/start.sh creates/updates it on every start (see DEPLOYMENT.md).
-      APP_DB_USER: ${APP_DB_USER:-}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-}
+      # Required: the server runs as this least-privilege role, which workspace
+      # row security binds. scripts/start.sh creates/updates it on every start.
+      APP_DB_USER: ${APP_DB_USER:?}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
 
       # Authentication (Better Auth, lib/auth.ts)
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}

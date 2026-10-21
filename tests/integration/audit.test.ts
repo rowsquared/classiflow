@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { User } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
-import { plainParams, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { prisma, plainParams, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
 import * as usersRoute from '@/app/api/workspaces/[workspaceId]/users/route'
 import * as userRoute from '@/app/api/workspaces/[workspaceId]/users/[userId]/route'

@@ -1,8 +1,16 @@
 import { NextRequest } from 'next/server'
 import type { WorkspaceRole as Role } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
+import { createPrismaClient } from '@/lib/prisma'
+import { testDatabaseUrl } from './global-setup'
 import { withWorkspace } from '@/lib/workspace/db'
 import type { AuthSession } from '@/lib/auth'
+
+/**
+ * The schema owner, for fixtures, truncation and assertions: it sees every
+ * workspace's rows. Application code under test uses lib/prisma.ts, which
+ * connects as the runtime role (setup.ts).
+ */
+export const prisma = createPrismaClient(testDatabaseUrl())
 
 let counter = 0
 const uid = (prefix: string) => `${prefix}${++counter}_${Date.now().toString(36)}`

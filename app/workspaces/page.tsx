@@ -12,7 +12,12 @@ export default async function WorkspacesPage() {
   return (
     <div className="min-h-screen bg-gray-50 overflow-auto">
       <div className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Workspaces</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
+          {user.platformRole === 'admin' && (
+            <Link href="/accounts" className="text-sm text-indigo-600 hover:text-indigo-700">Manage accounts</Link>
+          )}
+        </div>
         <p className="text-sm text-gray-600 mb-8">
           Each workspace is a separate classification exercise with its own records, taxonomies, members and roles.
         </p>

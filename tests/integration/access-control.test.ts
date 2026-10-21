@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { Sentence, User } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
 import { db } from '@/lib/workspace/db'
-import { plainParams, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { prisma, plainParams, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
 import * as queueRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as statsRoute from '@/app/api/workspaces/[workspaceId]/sentences/stats/route'

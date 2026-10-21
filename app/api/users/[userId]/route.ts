@@ -6,6 +6,7 @@ import { requirePlatformAdmin } from '@/lib/api-auth'
 import { isLastPlatformAdmin, lockPlatformAdmins } from '@/lib/user-rules'
 import { revokeSessions, setPassword } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
+import { passwordProblem } from '@/lib/password-policy'
 
 // Platform administration of one global account: name, platform role,
 // temporary password, ban, deletion. Workspace roles live on memberships.
@@ -13,8 +14,10 @@ import { audit } from '@/lib/audit'
 const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   platformRole: z.enum(['admin', 'user']).optional(),
-  newPassword: z.string().min(8).max(256).optional(),
+  newPassword: z.string().max(256).optional(),
   banned: z.boolean().optional(),
+  // Sign the account out everywhere without other changes.
+  revokeSessions: z.literal(true).optional(),
 })
 
 type Params = { params: Promise<{ userId: string }> }
@@ -28,7 +31,12 @@ export async function PUT(req: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { name, platformRole, newPassword, banned } = parsed.data
+  const { name, platformRole, newPassword, banned, revokeSessions: signOutEverywhere } = parsed.data
+  if (newPassword) {
+    const account = await prisma.user.findUnique({ where: { id: userId }, select: { username: true, email: true, name: true } })
+    const weak = account && passwordProblem(newPassword, { ...account, name: name ?? account.name })
+    if (weak) return NextResponse.json({ error: `New password: ${weak}`, field: 'newPassword' }, { status: 400 })
+  }
   if (banned && userId === actor.id) {
     return NextResponse.json({ error: 'You cannot ban yourself' }, { status: 400 })
   }
@@ -51,7 +59,7 @@ export async function PUT(req: Request, { params }: Params) {
       },
     })
     if (newPassword) await setPassword(tx, userId, newPassword)
-    if (newPassword || banned) await revokeSessions(tx, userId)
+    if (newPassword || banned || signOutEverywhere) await revokeSessions(tx, userId)
     return { status: 200 as const, from: existing.role }
   })
   if (result.status === 404) return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -60,7 +68,9 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   await audit({
-    workspaceId: null, actorId: actor.id, action: 'user.updated', entityType: 'user', entityId: userId,
+    workspaceId: null, actorId: actor.id,
+    action: signOutEverywhere && !name && !platformRole && !newPassword && banned === undefined ? 'user.sessions_revoked' : 'user.updated',
+    entityType: 'user', entityId: userId,
     payload: {
       fields: Object.entries({ name, platformRole, banned }).filter(([, v]) => v !== undefined).map(([k]) => k),
       ...(platformRole && platformRole !== result.from ? { platformRole: { from: result.from, to: platformRole } } : {}),

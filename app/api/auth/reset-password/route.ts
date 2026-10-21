@@ -4,10 +4,11 @@ import { requireSessionAllowingReset } from '@/lib/api-auth'
 import { audit } from '@/lib/audit'
 import { checkPassword, revokeSessions, setPassword } from '@/lib/passwords'
 import { z } from 'zod'
+import { passwordProblem } from '@/lib/password-policy'
 
 const resetPasswordSchema = z.object({
   currentPassword: z.string().max(256),
-  newPassword: z.string().min(8).max(256)
+  newPassword: z.string().max(256)
 })
 
 export async function POST(req: NextRequest) {
@@ -21,6 +22,12 @@ export async function POST(req: NextRequest) {
 
     if (!await checkPassword(prisma, currentUser.id, currentPassword)) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
+    }
+    const weak = passwordProblem(newPassword, session.user)
+    if (weak) return NextResponse.json({ error: weak, field: 'newPassword' }, { status: 400 })
+    // Otherwise the forced change could be satisfied with the handed-out password.
+    if (newPassword === currentPassword) {
+      return NextResponse.json({ error: 'Choose a password different from the current one', field: 'newPassword' }, { status: 400 })
     }
 
     // New password, reset flag cleared, and every other session signed out;

@@ -4,9 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { z } from 'zod'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import openapi from '@/lib/contracts/taxomind.openapi.json'
-import { prisma } from '@/lib/prisma'
 import { db } from '@/lib/workspace/db'
-import { wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import { prisma, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
 // The contract test: the monitor and the taxonomy sync against a stub Taxomind
 // on a local port. The stub checks every request classiflow sends, and every

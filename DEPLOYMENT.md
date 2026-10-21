@@ -23,7 +23,8 @@ cd classiflow
 ```bash
 cp .env.example .env
 ```
-Compose refuses to start without `POSTGRES_PASSWORD` and `BETTER_AUTH_SECRET`;
+Compose refuses to start without `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`,
+`APP_DB_USER` and `APP_DB_PASSWORD`;
 there are no built-in fallbacks.
 
 3. Start the stack:
@@ -73,15 +74,20 @@ room for migrations, backups and `psql` below PostgreSQL's `max_connections`
 ## Database roles
 
 `DATABASE_URL` is the schema owner: it applies migrations, and recovery scripts
-run as it. By default the server uses it too. To run the server with row access
-only, set `APP_DB_USER` (a lower-case name different from the owner) and
-`APP_DB_PASSWORD` (16+ characters). On every start `scripts/start.sh` then runs
+run as it. The server itself **must** run as a separate least-privilege role:
+workspace isolation relies on PostgreSQL row-level security, which binds that
+role but not the table owner (docs/security.md "Workspaces"). Set `APP_DB_USER`
+(a lower-case name different from the owner) and `APP_DB_PASSWORD` (16+
+characters); in production `scripts/start.sh` refuses to start without them
+(`ALLOW_OWNER_RUNTIME=true` overrides this, for emergencies only). On every
+start `scripts/start.sh` runs
 `scripts/db-runtime-role.ts`, which creates or updates that role with
 `SELECT/INSERT/UPDATE/DELETE` on the application tables (also tables added by
 later migrations) and nothing else: no DDL, no `TRUNCATE`, no access to the
-migration history. The server and admin bootstrap then connect as that role.
-Changing `APP_DB_PASSWORD` and restarting rotates the password. The CI smoke job
-runs the stack this way. To go back, unset both variables and restart.
+migration history, no bypass of row security. It may also call the narrow
+recovery function for AI jobs. The server and admin bootstrap then connect as
+that role. Changing `APP_DB_PASSWORD` and restarting rotates the password. The
+CI smoke job and the integration tests run this way.
 
 ## Reverse proxy
 

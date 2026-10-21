@@ -1,6 +1,7 @@
 "use client"
 import { workspaceApi } from '@/lib/workspace/urls'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import PageHeader from '@/components/PageHeader'
 import { formatRelativeTime } from '@/lib/utils'
 import { createLatestRequest, isAbortError } from '@/lib/latest-request'
@@ -29,19 +30,42 @@ const ACTION_FILTERS = [
   { value: 'access.denied', label: 'Refused access' },
 ]
 
+// Filters live in the URL (?action=, entityType=, entityId=, actorId=), so
+// links from elsewhere (a member's history on the Team page) open filtered.
+const ENTITY_FILTERS = ['entityType', 'entityId', 'actorId'] as const
+
 export default function AuditLogPage() {
-  const [action, setAction] = useState('')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const action = searchParams.get('action') ?? ''
+  const entityFilters = ENTITY_FILTERS
+    .map(key => [key, searchParams.get(key)] as const)
+    .filter((pair): pair is readonly [typeof ENTITY_FILTERS[number], string] => Boolean(pair[1]))
+  const entityKey = entityFilters.map(([k, v]) => `${k}=${v}`).join('&')
+  const setFilter = (key: string, value: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    router.replace(`${pathname}${next.size ? `?${next}` : ''}`)
+  }
+  const clearEntityFilters = () => {
+    const next = new URLSearchParams(searchParams)
+    ENTITY_FILTERS.forEach(key => next.delete(key))
+    router.replace(`${pathname}${next.size ? `?${next}` : ''}`)
+  }
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const request = useRef(createLatestRequest())
 
-  const load = useCallback(async (cursor: string | null) => {
+  const load = async (cursor: string | null) => {
     const req = request.current.start()
     setLoading(true)
     try {
-      const params = new URLSearchParams({ limit: '50' })
+      const params = new URLSearchParams(entityKey)
+      params.set('limit', '50')
       if (action) params.set('action', action)
       if (cursor) params.set('cursor', cursor)
       const res = await fetch(workspaceApi(`/audit?${params}`), { signal: req.signal })
@@ -57,11 +81,13 @@ export default function AuditLogPage() {
     } finally {
       if (req.isCurrent()) setLoading(false)
     }
-  }, [action])
+  }
 
+  // The first page reloads whenever the filters in the URL change.
+  const loadFirstPage = useEffectEvent(() => load(null))
   useEffect(() => {
-    load(null)
-  }, [load])
+    loadFirstPage()
+  }, [action, entityKey])
 
   return (
     <>
@@ -78,13 +104,22 @@ export default function AuditLogPage() {
             <select
               id="audit-action"
               value={action}
-              onChange={e => setAction(e.target.value)}
+              onChange={e => setFilter('action', e.target.value || null)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {ACTION_FILTERS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
         </div>
+
+        {entityFilters.length > 0 && (
+          <div className="flex items-center gap-3 text-sm text-gray-700">
+            <span>
+              Only entries for {entityFilters.map(([k, v]) => `${k === 'actorId' ? 'actor' : k === 'entityId' ? 'object' : 'type'} ${v}`).join(', ')}
+            </span>
+            <button type="button" onClick={clearEntityFilters} className="underline text-indigo-700">Show all</button>
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="p-4 rounded-lg bg-red-50 text-red-800 border border-red-200 text-sm">
