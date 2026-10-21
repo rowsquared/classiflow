@@ -249,8 +249,10 @@ April 2028) and a committed npm lockfile.
   - `braces`, `micromatch`, `fast-glob` via `eslint-config-next`: lint only.
 - [ ] Next 16 and Prisma 7 upgrades (each its own plan; they clear the accepted
       findings above).
-- [ ] Promote the tested image instead of rebuilding in Coolify (W12). Until
-      then the lockfile and pinned base make a rebuild reproduce CI's graph.
+- [x] ~~Promote the tested image instead of rebuilding in Coolify~~: not
+      wanted (maintainer, 21 Oct 2026); Coolify builds from git. The lockfile
+      and pinned base make a rebuild reproduce CI's graph, and the health
+      release check confirms the commit.
 - [ ] Pin GitHub Actions to commit SHAs (Dependabot then keeps them current).
       Not done here: resolving the SHAs means reading the actions' own
       repositories, which this agent's GitHub scope excludes.

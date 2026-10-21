@@ -1,7 +1,7 @@
 # Modernization plan (October 2026)
 
-**Status:** proposed, nothing implemented. **Baseline:** `staging` at `58bb4c2`,
-checked 21 October 2026. **Owner:** maintainer to assign.
+**Status:** decided 21 October 2026, nothing implemented yet. **Baseline:**
+`staging` at `58bb4c2`. **Owner:** maintainer to assign.
 
 This plan answers one question: which parts of the stack should be upgraded or
 replaced before feature work continues? It picks up where the hardening round
@@ -10,11 +10,24 @@ stopped ([handoff](hardening-handoff.md), [review](../reviews/2026-10-21-review.
 Node 24, a committed lockfile with `npm ci`, Dependabot, a pinned base image,
 Playwright journeys, database leases for AI jobs and a streamed export. This
 plan does not repeat those. Where an item closes an open hardening line, it
-names the W-number. Items are M01–M09.
+names the W-number. Items are M00–M09.
 
 It also has to fit the [user management plan](user-management.md) (U1–U6):
-M04 changes how sessions, deactivation and login throttling work, so decide
-M04 before U3 and U5 are built (see "Order").
+M04 changes how sessions, deactivation and login throttling work, so build
+M04 before U3 and U5 (see "Order").
+
+## Decisions (21 October 2026)
+
+- **Fresh start.** No staging or production deployment exists, and no
+  database holds data that must be kept. Both environments will be set up
+  again from these docs. Schema changes therefore need no data migration
+  until real data goes into production (see M00).
+- **Auth: move to Better Auth** (M04).
+- **Coolify keeps building from git.** No image registry; the lockfile, the
+  digest-pinned base image and the release check in `/api/health` are what
+  tie a deployment to the tested commit (M08).
+- **TanStack Query: adopt it** for the screens that refresh themselves (M06).
+- **PostgreSQL 18 from the start** instead of a later upgrade (M00).
 
 ## Baseline measured on `58bb4c2`
 
@@ -41,9 +54,9 @@ Installed versions against the latest stable releases on 21 October 2026
 | Node.js | 24 (CI, Docker, `engines`) | 24 LTS; 26 becomes LTS end of October | keep 24; move to 26 in 2027 with a Dependabot base-image PR |
 | Next.js | 15.5.28 | 16.4.2 | **16.4** (M01) |
 | React | 19.3.1 | 19.3.1 | keep; add React Compiler 1.0 (M01) |
-| Auth | next-auth 5.0.0-beta.32 | Auth.js is in security-only maintenance; Better Auth 1.7.12 | **Better Auth** (M04, needs a decision) |
+| Auth | next-auth 5.0.0-beta.32 | Auth.js is in security-only maintenance; Better Auth 1.7.12 | **Better Auth** (M04) |
 | Prisma | 6.17.1 | 7.10.1 (8.0 is a release candidate) | **7.10** (M02); not 8 until GA |
-| PostgreSQL | 16 | 18 | **18** (M07) |
+| PostgreSQL | 16 | 18 | **18** (M00) |
 | TypeScript | 5.9.3 | 7.0.2 (native compiler) | 6.0 for the build, trial 7 for `typecheck` (M03) |
 | ESLint | 9.39 via `FlatCompat` | 10.13; `eslint-config-next@16` ships a flat config | **10**, drop `@eslint/eslintrc` (M01) |
 | Vitest | 4.1.12 | 5.0.5 | **5** (M03) |
@@ -66,14 +79,14 @@ the JWT while the API checks the database (M01).
 would mean rewriting every query, including the locking and lease SQL the
 hardening round tested, with no correctness benefit.
 
-**Auth: move to Better Auth, if the maintainer agrees.** next-auth v5 never
+**Auth: move to Better Auth (decided).** next-auth v5 never
 had a stable release. Since September 2025 Auth.js has been maintained by the
 Better Auth team for security fixes only, and they recommend Better Auth for
 new work. classiflow now rebuilds a session system on top of JWTs:
 `sessionVersion`, a database read on every API call, an in-process login
 throttle. Better Auth ships database sessions, session revocation, user bans
 and a database-backed rate limiter, all of which the user management plan
-needs. Details and the fallback are in M04.
+needs. Details are in M04.
 
 **Background jobs: keep the W07 design.** AI jobs now have database leases,
 recovery at server start and poll backoff, and they work across instances.
@@ -88,6 +101,40 @@ extra service.
 ## Workstreams
 
 Effort: S focused change, M several files/areas, L cross-cutting or migration.
+
+### M00 Fresh-start cleanup (P1, M; before real data goes into production)
+
+Code and migrations that exist only to carry old databases forward can go,
+because there are none. Do this after M02 and M04, since both change the
+schema, and before the first production deployment holds real data. A
+staging environment can run earlier: its data is disposable.
+
+- **PostgreSQL 18 everywhere:** both Compose files, the CI service containers,
+  `scripts/restore-drill.sh`, and the "tested version" note in DEPLOYMENT.md.
+  The official 18 image keeps its data under `/var/lib/postgresql/18/docker`;
+  mount `/var/lib/postgresql` as its docs describe.
+- **One baseline migration:** replace the 16 migrations with a single `init`
+  migration generated from the final schema (after M02 and M04). This also
+  drops the `classiflow_backup` duplicate-copy step of the unique-label
+  migration, which has nothing to copy on an empty database. Keep the
+  runtime-role and lease SQL that the integration tests check.
+- **Remove legacy-only code:**
+  - `AIExternalTrainingJob`: kept only to show historical jobs; there are
+    none. Remove the model, its relations on `User`/`Taxonomy` and its reads
+    in the AI job list, active jobs, cancel, user and taxonomy routes.
+  - `TaxonomyNode.isLeaf` becomes required (imports always set it); remove
+    the null fallbacks in `app/api/taxonomies/[key]/nodes/route.ts` and
+    `lib/label-path.ts`.
+  - The `'success'` sync status kept "for backward compatibility" in
+    `app/queue/QueuePageClient.tsx`, if nothing writes it any more.
+  - `scripts/label-integrity-report.sql` checks labels saved before
+    validation existed; with no such data, delete it (or keep it as a
+    sanity check, but drop the backup-table section).
+- **Docs:** drop the "Upgrading an existing Compose deployment" path
+  (old fallback DB password) from DEPLOYMENT.md, and keep one clean
+  first-time setup for staging and production. Setting up the two new
+  environments from DEPLOYMENT.md / COOLIFY_DEPLOYMENT.md is the test of
+  those docs; fix whatever does not match.
 
 ### M01 Next.js 16 (P1, M; closes the `postcss` finding, part of W03 and W04)
 
@@ -153,7 +200,7 @@ Effort: S focused change, M several files/areas, L cross-cutting or migration.
 - **Unused dependencies** (no imports found): `@tanstack/react-query`,
   `zustand`, `next-themes`, `class-variance-authority`, `clsx`,
   `tailwind-merge`, `autoprefixer`. Remove them, or re-add deliberately in
-  M06. Move build-only packages (`@tailwindcss/postcss`, `postcss`,
+  M06 (TanStack Query stays: M06 adopts it). Move build-only packages (`@tailwindcss/postcss`, `postcss`,
   `tailwindcss`) to `devDependencies`; check `prisma` stays where
   `prod-deps` can install it.
 - **Dependabot:** add groups for the framework (`next`, `react`,
@@ -163,7 +210,7 @@ Effort: S focused change, M several files/areas, L cross-cutting or migration.
 - Pin GitHub Actions to commit SHAs (W03 open item; a person or an agent with
   access to the actions' repositories).
 
-### M04 Authentication on Better Auth (P1, L; decision needed)
+### M04 Authentication on Better Auth (P1, L; decided)
 
 **Why:** next-auth v5 is a beta in security-only maintenance. The user
 management plan adds deactivation (U3), "sign out everywhere", lockout
@@ -182,22 +229,22 @@ offers 2FA, passkeys and OIDC/SAML SSO for the open W02 MFA/SSO decision.
   three roles and the supervisor tree in our own schema.
 - Rate limiting with `storage: "database"` replaces `lib/login-throttle.ts`
   (consistent across instances; U5's lockout badge and unlock read it).
-- Keep existing bcrypt hashes: custom password `verify` accepts bcrypt;
-  re-hash on the next successful sign-in. No forced password resets.
+- Use Better Auth's own password hashing. No existing accounts, so no bcrypt
+  compatibility layer; `bcryptjs` goes once `init-admin` and
+  `reset-admin-password` use Better Auth's API to create and reset users.
 - `mustResetPassword` becomes an additional user field, enforced where it is
   today.
 - Keep the `requireSession()` / `requireSessionAllowingReset()` signatures in
   `lib/api-auth.ts`, so route handlers do not change. The access-control,
   audit and labelling integration suites must pass unmodified; that is the
   acceptance gate. Update `docs/security.md` ("Sessions") and AGENTS.md.
-- Migration: add Better Auth's session/account/verification tables, create a
-  credential account per user from `passwordHash`, switch, and drop the old
-  columns in a later release. Everyone signs in once after the switch.
-
-**If not approved:** stay on next-auth beta.32, take security patches as
-Dependabot offers them, and build U3/U5 on `sessionVersion` as the user
-management plan describes. Workable; the maintenance risk and the
-per-instance throttle remain.
+- Schema: add Better Auth's session/account/verification tables and remove
+  `User.passwordHash` and `User.sessionVersion` in the same change. No
+  backfill: there are no accounts to carry over (fresh start), and M00 folds
+  the result into the baseline migration.
+- Update the user management plan where it assumes `sessionVersion` (U3
+  deactivation, U5 "sign out everywhere") and the in-process throttle (U5
+  lockout badge and unlock) to use the Better Auth equivalents.
 
 ### M05 Server data layer instead of self-HTTP (P1, L)
 
@@ -237,12 +284,13 @@ libraries only where new work would otherwise hand-roll them again:
 - **nuqs** for URL-synced filters: queue filters, the U2 Team filters and
   U6's "`/admin/audit` reads its filters from the URL". Back button and shared
   links then work everywhere the same way.
-- **TanStack Query: decide once.** It is installed but unused, and four
-  components run their own `setInterval` polling. Either adopt it for the
-  polling screens (AI jobs, taxonomy admin, job badge, queue stats) and
-  retire the hand-written pause/abort code there, or remove the dependency
-  (M03). Recommended: adopt it together with M05, when those screens'
-  data loading is rewritten anyway.
+- **TanStack Query (decided: adopt).** It is installed but unused, and four
+  components refresh themselves with hand-written `setInterval` loops plus
+  their own abort and hidden-tab code (AI jobs, taxonomy admin, job badge,
+  queue stats). Move those to TanStack Query (`refetchInterval`, which pauses
+  in hidden tabs, request cancellation, one cache) when M05 rewrites their
+  data loading, and delete the hand-written code. New client screens (U2)
+  use it from the start.
 - **Headless primitives** (Radix, already used for the tooltip) for the
   widgets not yet built accessibly: combobox (user/taxonomy pickers), menus,
   select. Keep `Modal.tsx`. shadcn/ui is optional: use it as a source of
@@ -253,13 +301,10 @@ libraries only where new work would otherwise hand-roll them again:
   add `@axe-core/playwright` to the existing journeys so contrast and naming
   regressions fail CI.
 
-### M07 PostgreSQL 18 and search (P2, M; after W12 backups)
+### M07 Search and query tuning (P2, M)
 
-- Upgrade 16 → 18 only once W12's off-host backups exist and a restore drill
-  on a real dump has passed. Dump/restore is simplest at this data size.
-  The official 18 image changed its data directory layout, so the volume
-  mount changes in both Compose files and in `scripts/restore-drill.sh`;
-  update the CI service image and the "tested version" note in DEPLOYMENT.md.
+PostgreSQL 18 itself is part of M00 (no upgrade needed on a fresh start).
+
 - Queue text search uses `contains` with `mode: 'insensitive'` across five
   columns, which cannot use the B-tree index on `field1`. Add `pg_trgm` GIN
   indexes on the searched columns (raw SQL migration), measured with
@@ -268,12 +313,16 @@ libraries only where new work would otherwise hand-roll them again:
   open item).
 - Keep `cuid` IDs.
 
-### M08 Release and observability (P1; closes W03/W12 open items)
+### M08 Release and observability (P1; closes W12 open items)
 
-- **Promote the tested image** (W03 open): CI builds the image once, pushes
-  it to GHCR tagged with the commit, scans it (Trivy) and records an SBOM;
-  Coolify deploys that image by digest instead of rebuilding from git. The
-  `/api/health` release check then compares against the exact tested artifact.
+- **Coolify builds from git (decided).** The W03 "promote the tested image"
+  item is closed as not wanted. What ties a deployment to the tested commit:
+  the committed lockfile and digest-pinned base image (same dependency graph
+  and OS packages), Coolify's "Include Source Commit in Build", and
+  `deploy-prod` waiting until `/api/health` reports the promoted commit
+  (set the repository variable `PROD_HEALTH_URL` when production exists).
+- **Image scan:** run Trivy on the image the CI `smoke` job already builds,
+  failing on fixable critical findings.
 - **Structured logs** (W12 open): pino with JSON output and redaction (no
   record contents, passwords or tokens), a request ID set in `proxy.ts` and
   passed to AI calls and audit entries.
@@ -298,12 +347,13 @@ if Taxomind supports it.
 | Phase | Items | Notes |
 | --- | --- | --- |
 | 1 — upgrade train | M01, M02, M03 | One commit per upgrade (Next 16, ESLint 10, Prisma 7, Vitest 5, Playwright, TS 6). CI fully green after each. Clears the accepted audit findings. |
-| 2 — foundations | M04 decision, M05 | Decide M04 before U3/U5 are built. M05 before U2 so the Team page uses the data layer. U1 can go ahead in parallel (it only touches `checkSession()`). |
-| 3 — features on top | user management U2–U6, M06 | U2 is the first user of TanStack Table and nuqs. |
-| 4 — operations | M08, W12 backups, then M07, M09 | PostgreSQL upgrade only with a tested restore. |
+| 2 — foundations | M04, M05, then M00 | Better Auth before U3/U5. M05 before U2 so the Team page uses the data layer. M00 last, once the schema is final. |
+| 3 — environments | staging, then production | Set both up from the docs on PostgreSQL 18. Real data only after M00. Then W12: backups, restore drill on a real dump. |
+| 4 — features on top | user management U1–U6, M06 | U2 is the first user of TanStack Table, nuqs and TanStack Query. U1 can start in phase 2 if it targets Better Auth's session table. |
+| 5 — later | M07, M08 logs/traces, M09 | Tuning needs representative data. |
 
-Feature work outside auth, data loading and the queue UI can start after
-phase 1.
+A staging environment can be set up at any point for trying things out; its
+database is disposable until M00 lands.
 
 ## Deliberately not doing
 
@@ -314,15 +364,13 @@ phase 1.
 - Edge runtime anywhere.
 - Prisma 8 before general availability.
 - Switching package manager (npm with a lockfile is reproducible now).
+- An image registry or deploy-by-digest; Coolify builds from git.
 
-## Decisions for the maintainer
+## Open points for the maintainer
 
-1. **M04:** move to Better Auth (one forced sign-in for everyone), or stay on
-   next-auth beta.32 and build user management on `sessionVersion`?
-2. **M08:** build the image in CI, push to GHCR and have Coolify deploy it by
-   digest, or keep Coolify building from git?
-3. **M06:** adopt TanStack Query for the polling screens, or remove it?
-4. **M07:** maintenance window and acceptable downtime for PostgreSQL 18.
+- Confirm that no database anywhere (an old Coolify volume, a local copy)
+  holds labels worth keeping before M00 replaces the migration history. If
+  one does, export it to CSV first; it can be re-imported.
 
 ## Sources
 

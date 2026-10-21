@@ -35,7 +35,7 @@ not all of them.
 | --- | --- | --- |
 | W01 access | done | — |
 | W02 sessions | done | MFA/SSO is a product decision |
-| W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image; pin action SHAs |
+| W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); pin action SHAs. Image promotion dropped: Coolify builds from git |
 | W04 HTTP | mostly done | enforce the report-only CSP after watching production; verify live proxy settings |
 | W05 labelling | done | run `scripts/label-integrity-report.sql` on production; decide repairs |
 | W06 import/export | done | — |
@@ -74,6 +74,14 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
   priority table, and commit only your files.
 
 ## Things the maintainer must do outside the code
+
+**Fresh start (decided 21 October 2026):** no staging or production
+deployment exists and no data is kept; both are set up again (see the
+[modernization plan](modernization-2026-10.md), M00). Items below about
+existing databases (the backup-table check, the old fallback DB password,
+running the label-integrity report on production) no longer apply. The
+required variables (`POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`,
+`DEFAULT_ADMIN_PASSWORD`) and the reverse-proxy settings still do.
 
 - Optionally add the new `e2e` CI job as a required check in the `main` ruleset
   (`deploy-prod` already waits for it).
