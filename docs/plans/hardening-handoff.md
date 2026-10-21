@@ -26,7 +26,8 @@ not all of them.
 - Audit trail covers administrative changes and refused access, not individual
   label saves, comments or flags (those rows carry author and time).
 - Node 24 LTS and a committed npm lockfile; Next 16 and Prisma 7 are separate
-  upgrade plans, not part of hardening.
+  upgrade plans, not part of hardening: see the
+  [modernization plan](modernization-2026-10.md).
 
 ## Where things stand
 

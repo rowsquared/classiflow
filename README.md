@@ -87,6 +87,7 @@ Each topic lives in one place:
 | [docs/security.md](docs/security.md) | Who can see and change what (access matrix) |
 | [AGENTS.md](AGENTS.md) | Architecture and conventions for contributors and coding agents |
 | [docs/plans/hardening-handoff.md](docs/plans/hardening-handoff.md) | State of the 2026 hardening work and the [review](docs/reviews/2026-10-21-review.md) behind it |
+| [docs/plans/modernization-2026-10.md](docs/plans/modernization-2026-10.md) | Proposed framework, library and runtime upgrades (Next 16, Prisma 7, auth) |
 
 ## License
 
