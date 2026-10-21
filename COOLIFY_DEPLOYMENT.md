@@ -451,6 +451,8 @@ The two environments are triggered differently, on purpose.
 
 > **Currently (21 October 2026) staging deploys nothing:** no staging
 > environment is updated on push. The table below is the intended setup.
+> CI is also not run on staging pushes for now; start it by hand
+> (`gh workflow run CI --ref staging`) before running `promote-main.mjs`.
 
 | Branch | Coolify auto-deploy | What deploys it |
 | --- | --- | --- |

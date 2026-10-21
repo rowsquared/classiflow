@@ -6,11 +6,18 @@
 # main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger and
 #          runs only after smoke and checks pass, so a broken commit never
 #          reaches prod.
+#
+# Temporarily (21 October 2026) pushes to staging do not run CI, to save
+# Actions minutes while we push often. Before promoting, run it by hand:
+# `gh workflow run CI --ref staging` (or "Run workflow" in the Actions tab),
+# so the commit carries the smoke and checks results the main ruleset needs.
+# To restore, add staging back to push.branches below.
 name: CI
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main]
+  workflow_dispatch:
   pull_request:
     branches: [main, staging]
 
