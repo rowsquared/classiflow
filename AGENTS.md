@@ -232,10 +232,10 @@ files for deployment details; these are separate from the local dev stack.
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.
 
-For hardening and modernization work, start with the
-[handoff](docs/plans/hardening-handoff.md) and the
-[repository review](docs/reviews/2026-10-21-review.md), then read only the relevant
-linked investigation brief. Framework/library upgrades and stack changes are
-in the [modernization plan](docs/plans/modernization-2026-10.md). These are
+Framework/library upgrades, stack changes and the open items left by the
+October 2026 hardening round are in the
+[modernization plan](docs/plans/modernization-2026-10.md). The hardening
+review, briefs and handoff are archived in `docs/archive/hardening-2026-10/`;
+read them only for the reasoning behind a decision. These are
 dated findings and proposed work, not implemented behavior or additional
 standing instructions.

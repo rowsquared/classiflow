@@ -1,5 +1,7 @@
 # Hardening work: handoff
 
+> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../../plans/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+
 **Status:** 21 October 2026. All workstreams are done or mostly done in code; what
 is left needs production data, a decision, or its own upgrade plan (table below).
 **Pushing:** push only with the maintainer's go-ahead.
@@ -9,8 +11,8 @@ deployed or verified on staging; CI's `smoke` job is the only running check of
 the image. When staging deploys again, delete this note.
 
 Start here if you are continuing the hardening work from the
-[review](../reviews/2026-10-21-review.md). Each workstream in the
-[briefs](../reviews/hardening-workstreams.md) has a **Status** block listing what
+[review](2026-10-21-review.md). Each workstream in the
+[briefs](hardening-workstreams.md) has a **Status** block listing what
 is done (with the verifying test) and what remains. Read the brief you work on,
 not all of them.
 
@@ -18,7 +20,7 @@ not all of them.
 
 - Supervisors see and manage their **whole subtree** of the team tree.
 - One human label set per record and taxonomy; saving **replaces** it.
-  Independent double annotation is a wanted future feature: [ideas](../ideas.md).
+  Independent double annotation is a wanted future feature: [ideas](../../ideas.md).
 - Session revocation is **immediate**: `requireSession()` re-reads role, reset
   flag and `sessionVersion` from the database on every API call.
 - Work is committed on `staging`, one commit per meaningful step, and pushed
@@ -27,7 +29,7 @@ not all of them.
   label saves, comments or flags (those rows carry author and time).
 - Node 24 LTS and a committed npm lockfile; Next 16 and Prisma 7 are separate
   upgrade plans, not part of hardening: see the
-  [modernization plan](modernization-2026-10.md).
+  [modernization plan](../../plans/modernization-2026-10.md).
 
 ## Where things stand
 
@@ -53,7 +55,7 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
 - Read `AGENTS.md` first. Shared rules live in: `lib/api-auth.ts` (session),
   `lib/access.ts` (record scope), `lib/label-path.ts` + `lib/annotation-status.ts`
   (labelling), `lib/taxonomy-csv.ts` (taxonomy files), `lib/csv.ts` (export),
-  `lib/ai-results.ts` (AI results). Access matrix: [security](../security.md).
+  `lib/ai-results.ts` (AI results). Access matrix: [security](../../security.md).
 - Checks: `npm run typecheck`, `npm run lint`, `npm test`, the integration
   suite (needs PostgreSQL; see `tests/integration/README.md`) and, for UI
   changes, the browser journeys (`npm run build`, then `npm run test:e2e`; see
@@ -77,7 +79,7 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
 
 **Fresh start (decided 21 October 2026):** no staging or production
 deployment exists and no data is kept; both are set up again (see the
-[modernization plan](modernization-2026-10.md), M00). Items below about
+[modernization plan](../../plans/modernization-2026-10.md), M00). Items below about
 existing databases (the backup-table check, the old fallback DB password,
 running the label-integrity report on production) no longer apply. The
 required variables (`POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`,

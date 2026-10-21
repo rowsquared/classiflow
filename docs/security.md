@@ -85,9 +85,10 @@ password. "In scope" = the record is visible under the table above.
 | `/api/ai-labeling/*`, `/api/ai-jobs/*` | all | admin |
 | `/api/audit` | GET | admin |
 
-## Known gaps (tracked in the hardening review)
+## Known gaps
 
-See [the review](reviews/2026-10-21-review.md) for status. Cross-site mutation
+Open items are in the [modernization plan](plans/modernization-2026-10.md)
+("Carried over from hardening"). Cross-site mutation
 checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.

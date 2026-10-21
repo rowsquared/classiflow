@@ -21,7 +21,7 @@ Borrow the rules and the reasoning, not the code: survey-hub is Django/Nuxt
 with a Celery worker; classiflow is a single Next.js/Prisma app without one.
 
 Read [AGENTS.md](../../AGENTS.md) and the
-[hardening handoff](hardening-handoff.md) first. This plan builds on what the
+[hardening handoff](../archive/hardening-2026-10/hardening-handoff.md) (archived) first. This plan builds on what the
 hardening round finished (W02 sessions, audit log, login throttle) and must not
 undo any of its decisions.
 
@@ -357,7 +357,8 @@ Small items, each borrowed from survey-hub or left open by W02:
   entry or a new nullable `createdById` column. Prefer the audit entry; add
   the column only if the drawer query gets awkward.
 - **Retention:** survey-hub purges expired records daily. The audit-log
-  retention period is already a maintainer decision in the hardening handoff;
+  retention period is already a maintainer decision (modernization plan,
+  "Carried over from hardening");
   do not invent one here. When it is decided, the purge should not delete
   `user.*` entries sooner than the rest. `OutgoingMail` rows (U7a) get their
   own short retention (proposal: 30 days).

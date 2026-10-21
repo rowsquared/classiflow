@@ -1,5 +1,7 @@
 # classiflow hardening investigation briefs
 
+> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../../plans/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+
 Companion to the [21 October 2026 review](2026-10-21-review.md). These are proposed
 assignments, not approved implementation designs or a record of completed fixes.
 All evidence refers to `8c037de`; recheck the current checkout. Taxomind changes
@@ -36,13 +38,13 @@ date; close findings with evidence rather than deleting their history.
 **Priority:** P0. **Dependencies:** coordinate the current-user guard with W02;
 write regression tests immediately, without waiting for broad W10 cleanup.
 
-**Read:** [middleware](../../middleware.ts), the review's
+**Read:** [middleware](../../../middleware.ts), the review's
 [unguarded route inventory](2026-10-21-review.md#1-application-api-access-control-is-incomplete),
-[annotation writes](../../app/api/sentences/[sentenceId]/annotations/route.ts),
-[bulk writes](../../app/api/sentences/bulk-label/route.ts),
-[assignments](../../app/api/sentences/assign/route.ts),
-[user detail](../../app/api/users/[userId]/route.ts), and
-[record detail](../../app/api/sentences/[sentenceId]/route.ts).
+[annotation writes](../../../app/api/sentences/[sentenceId]/annotations/route.ts),
+[bulk writes](../../../app/api/sentences/bulk-label/route.ts),
+[assignments](../../../app/api/sentences/assign/route.ts),
+[user detail](../../../app/api/users/[userId]/route.ts), and
+[record detail](../../../app/api/sentences/[sentenceId]/route.ts).
 
 **Evidence:** unguarded destructive/import/comment routes; comments use the first
 database user as author. Annotation routes lack record visibility checks.
@@ -75,7 +77,7 @@ calls, deep supervisor trees, and missing/deleted users on an isolated database.
 **Suggested split:** urgent missing guards and authorship; shared scope policy
 with parity tests; consistent coverage of remaining read APIs.
 
-**Status (21 Oct 2026): done.** Access matrix in [docs/security.md](../security.md).
+**Status (21 Oct 2026): done.** Access matrix in [docs/security.md](../../security.md).
 
 - [x] Every API handler goes through `requireSession()` (`lib/api-auth.ts`);
       only `/api/health` and Auth.js protocol routes are public.
@@ -106,12 +108,12 @@ and custom routes have an Origin check (W04).
 **Priority:** P0 for default credentials/logging when deployed; P1 for lifecycle
 hardening. **Dependencies:** common guard contract with W01; runtime upgrades W03.
 
-**Read:** [auth config](../../lib/auth.config.ts), [JWT callbacks](../../lib/auth.ts),
-[password reset](../../app/api/auth/reset-password/route.ts),
-[user mutations](../../app/api/users/[userId]/route.ts),
-[bootstrap](../../scripts/init-admin.js),
-[password recovery script](../../scripts/reset-admin-password.ts),
-[queue scope](../../app/api/sentences/route.ts), and [schema](../../prisma/schema.prisma).
+**Read:** [auth config](../../../lib/auth.config.ts), [JWT callbacks](../../../lib/auth.ts),
+[password reset](../../../app/api/auth/reset-password/route.ts),
+[user mutations](../../../app/api/users/[userId]/route.ts),
+[bootstrap](../../../scripts/init-admin.js),
+password recovery script (`scripts/reset-admin-password.ts`, since replaced),
+[queue scope](../../../app/api/sentences/route.ts), and [schema](../../../prisma/schema.prisma).
 
 **Evidence:** bootstrap and recovery scripts print passwords and accept known
 fallbacks. JWT roles/reset flags refresh only on sign-in or explicit session
@@ -172,7 +174,7 @@ does not unexpectedly overwrite existing accounts.
 - [x] Compose no longer supplies a fallback admin password.
 - [x] Deleting a user who authored comments or AI jobs returns 409 with an
       explanation instead of a foreign-key 500 (test added). Deactivation
-      instead of deletion is listed in [ideas](../ideas.md).
+      instead of deletion is listed in [ideas](../../ideas.md).
 - [x] Database fallback password `classiflow_password` in Compose: removed in
       W12 (`POSTGRES_PASSWORD` is required; upgrade path in DEPLOYMENT.md).
 - [ ] Admin MFA/SSO: product decision, not started.
@@ -183,9 +185,9 @@ does not unexpectedly overwrite existing accounts.
 **Dependencies:** W10 CI, W12 release operation. An intentional lockfile-policy
 change belongs in its own plan; do not introduce one incidentally.
 
-**Read:** [manifest](../../package.json), [.npmrc](../../.npmrc),
-[Dockerfile](../../Dockerfile), [CI](../../.github/workflows/ci.yml),
-[release script](../../scripts/promote-main.mjs), and the review's measured baseline.
+**Read:** [manifest](../../../package.json), [.npmrc](../../../.npmrc),
+[Dockerfile](../../../Dockerfile), [CI](../../../.github/workflows/ci.yml),
+[release script](../../../scripts/promote-main.mjs), and the review's measured baseline.
 
 **Evidence:** floating dependency ranges and disabled/ignored lockfiles mean
 separate CI/Coolify builds can resolve different graphs. Docker installs twice
@@ -266,11 +268,11 @@ April 2028) and a committed npm lockfile.
 and ingress settings with W12. Exploitability of proxy/storage findings needs
 deployment verification.
 
-**Read:** [server fetch](../../lib/server-fetch.ts),
-[Next config](../../next.config.ts), [middleware](../../middleware.ts),
-[record import](../../app/api/sentences/import/route.ts),
+**Read:** [server fetch](../../../lib/server-fetch.ts),
+[Next config](../../../next.config.ts), [middleware](../../../middleware.ts),
+[record import](../../../app/api/sentences/import/route.ts),
 historical `app/api/ai-labeling/external-training/{upload,start}/route.ts`,
-[queue API](../../app/api/sentences/route.ts), and [health](../../app/api/health/route.ts).
+[queue API](../../../app/api/sentences/route.ts), and [health](../../../app/api/health/route.ts).
 
 **Evidence:** server-side fetch constructs an origin from request Host/protocol
 headers when no configured base URL exists, then forwards cookies. This creates
@@ -344,10 +346,10 @@ rules and remains out of source control/images.
 **Priority:** P1. **Dependencies:** W01 scope helpers; coordinate migrations with
 W06 and metric definitions with W08.
 
-**Read:** [schema](../../prisma/schema.prisma),
-[individual annotation API](../../app/api/sentences/[sentenceId]/annotations/route.ts),
-[bulk API](../../app/api/sentences/bulk-label/route.ts),
-[constants](../../lib/constants.ts), [labeling UI](../../app/queue/[sentenceId]/page.tsx).
+**Read:** [schema](../../../prisma/schema.prisma),
+[individual annotation API](../../../app/api/sentences/[sentenceId]/annotations/route.ts),
+[bulk API](../../../app/api/sentences/bulk-label/route.ts),
+[constants](../../../lib/constants.ts), [labeling UI](../../../app/queue/[sentenceId]/page.tsx).
 
 **Evidence:** bulk writes set `submitted` without checking all active taxonomies,
 even with no labels. Individual writes trust client leaf/unknown completeness,
@@ -380,7 +382,7 @@ rejected; another taxonomy's labels survive; simultaneous writes have a defined
 outcome; labels, status, counters, and actor metadata stay consistent on failure.
 
 **Status (21 Oct 2026): done.** Decision: one human label set per taxonomy,
-saving replaces it (double annotation recorded in [ideas](../ideas.md); README
+saving replaces it (double annotation recorded in [ideas](../../ideas.md); README
 claims corrected).
 
 - [x] `lib/label-path.ts`: one validator for both endpoints: string codes only
@@ -417,13 +419,13 @@ production access; do not auto-relabel).
 
 **Priority:** P1. **Dependencies:** W01/W04; domain invariants W05.
 
-**Read:** [record importer](../../app/api/sentences/import/route.ts),
-[export](../../app/api/export/route.ts),
-[taxonomy create](../../app/api/taxonomies/route.ts),
-[validate](../../app/api/taxonomies/validate/route.ts),
-[update/delete](../../app/api/taxonomies/[key]/route.ts),
-[existing-taxonomy import](../../app/api/taxonomies/[key]/import/route.ts),
-[restore](../../app/api/taxonomies/[key]/restore/route.ts), and schema relations.
+**Read:** [record importer](../../../app/api/sentences/import/route.ts),
+[export](../../../app/api/export/route.ts),
+[taxonomy create](../../../app/api/taxonomies/route.ts),
+[validate](../../../app/api/taxonomies/validate/route.ts),
+[update/delete](../../../app/api/taxonomies/[key]/route.ts),
+[existing-taxonomy import](../../../app/api/taxonomies/[key]/import/route.ts),
+[restore](../../../app/api/taxonomies/[key]/restore/route.ts), and schema relations.
 
 **Evidence:** similar CSV validation is repeated across handlers. Export escapes
 quotes in selected field/comment values but wraps every cell without centralized
@@ -494,11 +496,11 @@ order). The export is audited once the last row is sent. Integration test with
 **Priority:** P1 when enabled, P2 otherwise. **Dependencies:** W04 storage, W05
 counter semantics, W12 hosting topology. This is classiflow work only.
 
-**Read:** [monitor](../../lib/ai-job-monitor.ts), [HTTP client](../../lib/ai-labeling.ts),
+**Read:** [monitor](../../../lib/ai-job-monitor.ts), [HTTP client](../../../lib/ai-labeling.ts),
 historical `lib/ai-job-queue.ts` and
 `app/api/ai-labeling/external-training/start/route.ts`,
-[active jobs](../../app/api/ai-jobs/active/route.ts),
-[cancel](../../app/api/ai-jobs/[jobId]/cancel/route.ts), and [learning](../../app/api/ai-labeling/learn/route.ts).
+[active jobs](../../../app/api/ai-jobs/active/route.ts),
+[cancel](../../../app/api/ai-jobs/[jobId]/cancel/route.ts), and [learning](../../../app/api/ai-labeling/learn/route.ts).
 
 **Evidence:** process-local monitor sets provide no cross-instance ownership.
 Recovery relies on polling the active-jobs API and covers labeling/learning,
@@ -565,12 +567,12 @@ labeling continues with the AI service absent. No Taxomind source changes needed
 **Priority:** P1 for incorrect metrics, P2 for measured optimization.
 **Dependencies:** W01 visibility and W05 completion semantics must be shared.
 
-**Read:** [queue API](../../app/api/sentences/route.ts),
-[queue stats](../../app/api/sentences/stats/route.ts),
-[progress stats](../../app/api/progress/stats/route.ts),
-[team metrics](../../app/api/progress/team/route.ts),
-[taxonomy nodes](../../app/api/taxonomies/[key]/nodes/route.ts),
-[export](../../app/api/export/route.ts), [health](../../app/api/health/route.ts).
+**Read:** [queue API](../../../app/api/sentences/route.ts),
+[queue stats](../../../app/api/sentences/stats/route.ts),
+[progress stats](../../../app/api/progress/stats/route.ts),
+[team metrics](../../../app/api/progress/team/route.ts),
+[taxonomy nodes](../../../app/api/taxonomies/[key]/nodes/route.ts),
+[export](../../../app/api/export/route.ts), [health](../../../app/api/health/route.ts).
 
 **Evidence:** progress agreement reads `SentenceAnnotation(source='ai')`, while
 current monitors write `SentenceAISuggestion`. Matching uses sentence/level and
@@ -625,12 +627,12 @@ show before/after results at agreed sizes without stale data or scope leakage.
 
 **Priority:** P2. **Dependencies:** stable API contracts from W01/W05/W08.
 
-**Read:** [queue client](../../app/queue/QueuePageClient.tsx),
-[labeling page](../../app/queue/[sentenceId]/page.tsx),
-[taxonomy browser](../../components/TaxonomyBrowser.tsx),
-[assignment modal](../../components/queue/AssignmentModal.tsx),
-[resize panel](../../components/ResizablePanel.tsx),
-[toast](../../components/Toast.tsx), and [job badge](../../components/AIJobStatusBadge.tsx).
+**Read:** [queue client](../../../app/queue/QueuePageClient.tsx),
+[labeling page](../../../app/queue/[sentenceId]/page.tsx),
+[taxonomy browser](../../../components/TaxonomyBrowser.tsx),
+[assignment modal](../../../components/queue/AssignmentModal.tsx),
+[resize panel](../../../components/ResizablePanel.tsx),
+[toast](../../../components/Toast.tsx), and [job badge](../../../components/AIJobStatusBadge.tsx).
 
 **Evidence:** queue requests do not cancel/ignore superseded responses, so a slow
 old request can overwrite a newer filter result. Queue failures become empty
@@ -691,9 +693,9 @@ narrow viewport sizes. Validate through actual browser journeys.
 **Priority:** P1 for regression tests protecting security/data boundaries; P2 for
 broad cleanup. **Dependencies:** run alongside each relevant workstream.
 
-**Read:** [test config](../../vitest.config.ts), [CI](../../.github/workflows/ci.yml),
-[Next config](../../next.config.ts), [lint config](../../eslint.config.mjs),
-[utilities tests](../../lib/utils.test.ts), [AI field tests](../../lib/ai-utils.test.ts),
+**Read:** [test config](../../../vitest.config.ts), [CI](../../../.github/workflows/ci.yml),
+[Next config](../../../next.config.ts), [lint config](../../../eslint.config.mjs),
+[utilities tests](../../../lib/utils.test.ts), [AI field tests](../../../lib/ai-utils.test.ts),
 and the handlers/components being changed.
 
 **Evidence:** seven tests cover two utilities. Lint reports 98 explicit-any
@@ -754,10 +756,10 @@ remove demonstrated duplication while keeping route behavior explicit.
 **Dependencies:** update final runtime, deployment, and auth guidance after their
 workstreams decide behavior; correct existing false instructions immediately.
 
-**Read:** [README](../../README.md), [AGENTS](../../AGENTS.md),
-[development](../../DEVELOPMENT.md), [environment](../../ENV_SETUP.md),
-[deployment](../../DEPLOYMENT.md), [Coolify](../../COOLIFY_DEPLOYMENT.md),
-[env template](../../.env.example), and the scripts they describe.
+**Read:** [README](../../../README.md), [AGENTS](../../../AGENTS.md),
+[development](../../../DEVELOPMENT.md), [environment](../../../ENV_SETUP.md),
+[deployment](../../../DEPLOYMENT.md), [Coolify](../../../COOLIFY_DEPLOYMENT.md),
+[env template](../../../.env.example), and the scripts they describe.
 
 **Confirmed inaccuracies / duplication:**
 
@@ -831,11 +833,11 @@ already carries the architecture and domain rules, and a second copy would drift
 **Priority:** P1. **Dependencies:** W02 secrets, W03 artifacts, W04 ingress, W07
 replica topology. Live hosting controls remain unverified.
 
-**Read:** [Compose](../../docker-compose.yml),
-[development Compose](../../docker-compose.dev.yml),
-[Dockerfile](../../Dockerfile), [CI](../../.github/workflows/ci.yml),
-[health probe](../../app/api/health/route.ts),
-[deployment guide](../../DEPLOYMENT.md), [Coolify guide](../../COOLIFY_DEPLOYMENT.md).
+**Read:** [Compose](../../../docker-compose.yml),
+[development Compose](../../../docker-compose.dev.yml),
+[Dockerfile](../../../Dockerfile), [CI](../../../.github/workflows/ci.yml),
+[health probe](../../../app/api/health/route.ts),
+[deployment guide](../../../DEPLOYMENT.md), [Coolify guide](../../../COOLIFY_DEPLOYMENT.md).
 
 **Evidence:** production Compose supplies fallback DB/admin passwords and uses
 the database bootstrap identity for the application and migrations. The dev DB

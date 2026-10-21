@@ -5,12 +5,14 @@
 
 This plan answers one question: which parts of the stack should be upgraded or
 replaced before feature work continues? It picks up where the hardening round
-stopped ([handoff](hardening-handoff.md), [review](../reviews/2026-10-21-review.md),
-[briefs](../reviews/hardening-workstreams.md)). That round already moved to
+stopped ([handoff](../archive/hardening-2026-10/hardening-handoff.md), [review](../archive/hardening-2026-10/2026-10-21-review.md),
+[briefs](../archive/hardening-2026-10/hardening-workstreams.md), all archived). That round already moved to
 Node 24, a committed lockfile with `npm ci`, Dependabot, a pinned base image,
 Playwright journeys, database leases for AI jobs and a streamed export. This
 plan does not repeat those. Where an item closes an open hardening line, it
-names the W-number. Items are M00–M09.
+names the W-number. Items are M00–M09. Open hardening items that fit none of
+them are listed under "Carried over from hardening"; the archived docs are
+history, not a to-do list.
 
 It also has to fit the [user management plan](user-management.md) (U1–U6):
 M04 changes how sessions, deactivation and login throttling work, so build
@@ -329,7 +331,7 @@ PostgreSQL 18 itself is part of M00 (no upgrade needed on a fresh start).
 - **Traces/metrics:** OpenTelemetry through the existing `instrumentation.ts`
   (Next's built-in support), exported only when an OTLP endpoint is
   configured. Alerts for failed deploys and stuck AI jobs build on these.
-- Read-only root filesystem and limits stay as W12 describes.
+- Read-only root filesystem and limits: see "Carried over from hardening".
 
 ### M09 Taxomind contract (P2, S)
 
@@ -341,6 +343,34 @@ an OpenAPI document, generate types with `openapi-typescript` and call it via
 `tests/integration/ai-job-monitor.test.ts` as the contract test. W07's
 idempotent job start (send `batchId`, let Taxomind deduplicate) belongs here
 if Taxomind supports it.
+
+## Carried over from hardening
+
+Open items from the archived hardening briefs that no M-item covers. Items
+made moot by the fresh start (production label-integrity report, the
+duplicate-label backup table, the old fallback database password) are dropped.
+
+- **Live reverse proxy check** (W04), when staging and production are set up:
+  `Host` forwarded, HSTS, 50 MB body limit, rate limit on
+  `POST /api/auth/callback/credentials` (DEPLOYMENT.md "Reverse proxy").
+- **Taxomind end to end** (W07): run labeling and learning against a real
+  Taxomind; so far only the stub service in
+  `tests/integration/ai-job-monitor.test.ts` has been used.
+- **Release AI job leases on shutdown** (W07): today they expire within
+  2 × poll interval + 60 s after an instance stops.
+- **More browser journeys** (W10): taxonomy admin and bulk labelling (team
+  management comes with the [user management plan](user-management.md)).
+- **Backups** (W12, phase 3): the maintainer sets recovery objectives
+  (tolerated data loss, recovery time); then off-host encrypted dumps on a
+  schedule, retention, an alert on failure, and `scripts/restore-drill.sh` on
+  a real dump.
+- **Read-only root filesystem and limits** (W12): check that the Prisma CLI
+  writes nothing during `migrate deploy`, then add `read_only` with a `/tmp`
+  tmpfs, and memory/CPU limits sized from production usage.
+- **Audit log retention** (W12): the maintainer picks a period; pruning is
+  SQL (DEPLOYMENT.md "Audit log").
+- **Required check** (maintainer): add the `e2e` CI job to the `main`
+  ruleset (`deploy-prod` already waits for it).
 
 ## Order
 
