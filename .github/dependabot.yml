@@ -1,0 +1,33 @@
+# Reviewable dependency updates. PRs target staging (the integration branch);
+# CI runs on them like any other change. Security alerts come from the
+# repository's Dependabot alerts, independent of this schedule.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine bumps; majors arrive one by one so each can be reviewed.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Prisma CLI and client must move together and need a migration plan.
+      - dependency-name: prisma
+        update-types: [version-update:semver-major]
+      - dependency-name: "@prisma/client"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: monthly

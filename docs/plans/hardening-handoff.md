@@ -1,6 +1,7 @@
 # Hardening work: handoff
 
-**Status:** 21 October 2026, after commit `9711fbb` on local `staging`.
+**Status:** 21 October 2026, after the W03 commits on `staging` (Node 24, lockfile,
+dependency triage).
 **Not pushed:** the maintainer reviews before pushing (pushing `staging` deploys it).
 
 Start here if you are continuing the hardening work from the
@@ -25,7 +26,7 @@ not all of them.
 | --- | --- | --- |
 | W01 access | done | audit logging of denials (W12) |
 | W02 sessions | done | DB fallback password in Compose (W12); MFA/SSO is a product decision |
-| W03 dependencies | **open** | Node 20 is EOL in Dockerfile/CI; no lockfile; audit triage |
+| W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image (W12); pin action SHAs |
 | W04 HTTP | mostly done | CSP (report-only first); verify live proxy settings |
 | W05 labelling | done | run `scripts/label-integrity-report.sql` on production; decide repairs |
 | W06 import/export | done | streaming export for large data |
@@ -36,7 +37,7 @@ not all of them.
 | W11 docs | partly | admin docs fixed; canonical doc map, ENV_SETUP/.env.example alignment |
 | W12 ops | open | backups/restore drill, least-privilege DB role, Compose DB password |
 
-Suggested next order: W03 (runtime/lockfile), W12, W07 remainder, W11, W09.
+Suggested next order: W12, W07 remainder, W11, W09.
 
 ## How to work here
 

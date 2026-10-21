@@ -220,6 +220,43 @@ identify the tested artifact; the runtime is supported; reachable high/critical
 findings are fixed or have an owner and justified temporary mitigation; upgrades
 pass auth, migration, import/label/export, and AI-disabled integration checks.
 
+**Status (21 Oct 2026): mostly done.** Decision: Node 24 LTS (supported to
+April 2028) and a committed npm lockfile.
+
+- [x] Runtime: Dockerfile, CI (`.nvmrc`) and `package.json` engines use Node 24 /
+      npm 11. The base image is pinned by digest.
+- [x] Lockfile: `package-lock.json` committed; CI and Docker install with
+      `npm ci`; `legacy-peer-deps` and `package-lock=false` removed from `.npmrc`
+      (the graph resolves without them). Two builds of one commit now use the
+      same dependency graph and base image.
+- [x] Image: one install instead of two; the runner carries production
+      dependencies only. Verified by running the Compose start command on that
+      layout against an empty database (migrations, bootstrap, health, login,
+      forced reset); the CI `smoke` job verifies the Alpine image itself.
+- [x] CI token limited to `contents: read`; Dependabot (`.github/dependabot.yml`)
+      opens weekly npm/Docker and monthly Actions PRs against `staging`.
+- [x] Audit triage. Fixed: next-auth beta.29 → beta.32 (fail-open auth object,
+      malformed Bearer crash, OAuth cookie binding, email normaliser),
+      csv-parse 6 → 7.0.3 (`__proto__` header on the `columns` path, reachable
+      through admin record/taxonomy imports), vitest 3 → 4.1.12 (dev: UI server,
+      mocker, tinypool). `npm audit` went from 17 entries (4 critical) to 11
+      (0 critical, 10 high, 1 moderate). Accepted for now, none reachable from
+      requests:
+  - `postcss` inside `next` (source-map file reads, stringify XSS): only runs
+    at build time on our own CSS. Fix needs Next 16 (major).
+  - `effect`, `deepmerge-ts` via `@prisma/config`: CLI config loading at
+    migrate/generate time, no untrusted input. Fix needs Prisma 7 (major,
+    client/engine migration).
+  - `braces`, `micromatch`, `fast-glob` via `eslint-config-next`: lint only.
+- [ ] Next 16 and Prisma 7 upgrades (each its own plan; they clear the accepted
+      findings above).
+- [ ] Promote the tested image instead of rebuilding in Coolify (W12). Until
+      then the lockfile and pinned base make a rebuild reproduce CI's graph.
+- [ ] Pin GitHub Actions to commit SHAs (Dependabot can then keep them current).
+- [ ] npm 11 warns that dependency install scripts (Prisma engines, esbuild,
+      unrs-resolver) are not listed in `allowScripts`; approve them explicitly
+      before an npm release turns the warning into a refusal.
+
 ## W04 HTTP boundaries and data exposure
 
 **Priority:** P1. **Dependencies:** W01/W02 guards; coordinate uploads with W06/W07
