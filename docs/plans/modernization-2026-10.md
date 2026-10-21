@@ -49,6 +49,13 @@ Still open from this plan:
   them (optional).
 - M06, M07, M08 logs/traces, the open points under M09, and the "Carried over
   from hardening" list.
+- Watch: Prisma 7.10's query interpreter runs the sub-queries of one
+  operation (relation `include`s) in parallel on an interactive
+  transaction's connection, which `pg` 8 reports as a deprecation
+  ("client.query() when the client is already executing a query") and `pg` 9
+  will reject. Our own queries inside a workspace transaction are already
+  queued (`lib/workspace/db.ts`). Do not take `pg` 9 before Prisma's adapter
+  handles this; Dependabot's Prisma group should bring the fix.
 - Setting up staging and production from the docs (phase 3) is the
   maintainer's.
 

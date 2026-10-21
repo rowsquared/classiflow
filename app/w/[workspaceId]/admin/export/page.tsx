@@ -28,7 +28,8 @@ export default function ExportAdminPage() {
         a.href = url
         a.download = `export-${new Date().toISOString()}.csv`
         a.click()
-        window.URL.revokeObjectURL(url)
+        // Revoking at once can leave the browser saving an empty file.
+        setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
         setMessage({ type: 'success', text: 'Export downloaded successfully!' })
       } else {
         const error = await res.json().catch(() => ({ error: 'Export failed' }))

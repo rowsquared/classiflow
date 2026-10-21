@@ -19,6 +19,8 @@ try {
       username: ADMIN.username,
       email: 'e2e-admin@test.local',
       name: 'E2E Admin',
+      // Platform admin too, for the accounts journey.
+      role: 'admin',
       mustResetPassword: false,
       memberships: { create: { workspaceId: ws, role: 'admin' } },
     },

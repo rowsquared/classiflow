@@ -127,8 +127,12 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params }
 
 // DELETE: removes the person from this workspace by suspending the membership.
 // Their labels, comments and history stay; the account itself is untouched.
-export const DELETE = workspaceRoute(['admin'], async (_req, { user: actor, params }) => {
+// Body `{ unassignOpen: true }` also drops their assignments on records that
+// are not submitted, so the work can be given to someone else.
+export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, params }) => {
   const userId = params.userId
+  const body = await req.json().catch(() => ({})) as { unassignOpen?: unknown }
+  const unassignOpen = body?.unassignOpen === true
   if (userId === actor.id) {
     return NextResponse.json({ error: 'You cannot remove yourself' }, { status: 400 })
   }
@@ -146,9 +150,14 @@ export const DELETE = workspaceRoute(['admin'], async (_req, { user: actor, para
     where: { supervisorMembershipId: membership.id },
     data: { supervisorMembershipId: null },
   })
+  const unassigned = unassignOpen
+    ? (await db().sentenceAssignment.deleteMany({
+        where: { membershipId: membership.id, sentence: { status: { not: 'submitted' } } },
+      })).count
+    : 0
   await audit({
     actorId: actor.id, action: 'member.suspended', entityType: 'user', entityId: userId,
-    payload: { role: membership.role, authority: actor.authority },
+    payload: { role: membership.role, authority: actor.authority, unassigned },
   })
   return NextResponse.json({ ok: true })
 })

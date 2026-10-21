@@ -1,593 +1,195 @@
 'use client'
-import { workspaceApi } from '@/lib/workspace/urls'
 
-import { useState, useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import PageHeader from '@/components/PageHeader'
-import Modal from '@/components/Modal'
+import { ToastContainer, type Toast } from '@/components/Toast'
+import CreateMemberModal from '@/components/team/CreateMemberModal'
+import MemberDrawer from '@/components/team/MemberDrawer'
 import { formatRelativeTime } from '@/lib/utils'
+import {
+  filterMembers, nextSort, NO_FILTERS, sortMembers,
+  type Sort, type SortKey, type TeamFilters, type TeamMember,
+} from '@/lib/team-table'
+import { workspaceApi } from '@/lib/workspace/urls'
 
-export type User = {
-  id: string
-  username: string
-  email: string
-  name: string | null
-  role: 'admin' | 'supervisor' | 'labeller'
-  status: 'active' | 'suspended'
-  supervisorId: string | null
-  supervisor: { id: string; name: string | null; email: string } | null
-  labellers: { id: string; name: string | null; email: string }[]
-  mustResetPassword: boolean
-  lastLogin: string | null
-  lastSeenAt: string | null
-  createdAt: string
-  updatedAt: string
-  _count: {
-    assignedSentences: number
-  }
-}
+export type User = TeamMember
 
-type Props = {
-  initialUsers: User[]
-}
+type Props = { initialUsers: User[] }
 
+const select = 'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+
+const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
+  { key: 'username', label: 'Username' },
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'role', label: 'Role' },
+  { key: 'supervisor', label: 'Supervisor' },
+  { key: 'team', label: 'Team' },
+  { key: 'assignments', label: 'Assigned' },
+  { key: 'lastSeenAt', label: 'Last seen', title: 'Last time the app was open in this workspace (background refreshes do not count)' },
+  { key: 'lastLogin', label: 'Last sign-in', title: 'Last time they typed their password; sessions last days, so this can be old for active people' },
+]
+
+/**
+ * Members of this workspace: search, filters and sorting in the browser
+ * (lib/team-table.ts), a drawer per member, and adding members.
+ */
 export default function TeamPageClient({ initialUsers }: Props) {
   const { data: session } = useSession()
-  // Platform admins may add accounts that already exist (in other workspaces).
-  const isPlatformAdmin = useWorkspaceInfo()?.authority === 'platform'
-  const [addExisting, setAddExisting] = useState(false)
-  const [existingUser, setExistingUser] = useState('')
-  const formatLastLoginDate = (date: Date | string | null) => {
-    if (!date) return 'Never'
-    try {
-      const parsed = typeof date === 'string' ? new Date(date) : date
-      if (Number.isNaN(parsed.getTime())) return 'Never'
-      return new Intl.DateTimeFormat('en-GB', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: 'UTC',
-      }).format(parsed)
-    } catch {
-      return 'Never'
-    }
-  }
-  const [users, setUsers] = useState<User[]>(initialUsers)
-  const [loading, setLoading] = useState(false)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    name: '',
-    role: 'labeller' as 'admin' | 'supervisor' | 'labeller',
-    supervisorId: '' as string,
-    tempPassword: '',
-    newPassword: ''
-  })
-  const [error, setError] = useState('')
+  const workspace = useWorkspaceInfo()
+  const [members, setMembers] = useState<User[]>(initialUsers)
+  const [filters, setFilters] = useState<TeamFilters>(NO_FILTERS)
+  const [sort, setSort] = useState<Sort>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(workspaceApi('/users?includeSuspended=true'))
-      if (res.ok) {
-        const data = await res.json()
-        setUsers(data.users)
-      }
-    } catch (error) {
-      console.error('Failed to fetch users:', error)
-    } finally {
-      setLoading(false)
-    }
+  const notify = useCallback((type: Toast['type'], message: string) => {
+    setToasts(t => [...t, { id: `${Date.now()}-${Math.random()}`, type, message }])
   }, [])
+  const closeToast = useCallback((id: string) => setToasts(t => t.filter(x => x.id !== id)), [])
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
+  const reload = useCallback(async () => {
+    const res = await fetch(workspaceApi('/users?includeSuspended=true'))
+    if (res.ok) setMembers((await res.json()).users)
+    else notify('error', 'Could not reload the members.')
+  }, [notify])
 
-    try {
-      const res = await fetch(workspaceApi('/users'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(addExisting
-          ? { existingUser, role: formData.role, supervisorId: formData.supervisorId || null }
-          : {
-              username: formData.username,
-              email: formData.email,
-              name: formData.name,
-              role: formData.role,
-              supervisorId: formData.supervisorId || null,
-              tempPassword: formData.tempPassword
-            })
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to create user')
-        return
-      }
-
-      // Reset form and close modal
-      setFormData({ username: '', email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
-      setShowCreateModal(false)
-      fetchUsers()
-    } catch (error) {
-      console.error('Create user error:', error)
-      setError('An error occurred')
-    }
+  const changed = async (message: string) => {
+    setSelectedId(null)
+    setAdding(false)
+    notify('success', message)
+    await reload()
   }
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedUser) return
-    setError('')
-
-    try {
-      const updatePayload: { name?: string; role: User['role']; supervisorId: string | null; newPassword?: string } = {
-        role: formData.role,
-        supervisorId: formData.supervisorId || null
-      }
-      // The name belongs to the account, which may be shared with other
-      // workspaces; send it only when it changed (the server decides).
-      if (formData.name !== (selectedUser.name || '')) {
-        updatePayload.name = formData.name
-      }
-
-      if (formData.newPassword) {
-        updatePayload.newPassword = formData.newPassword
-      }
-
-      const res = await fetch(workspaceApi(`/users/${selectedUser.id}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatePayload)
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to update user')
-        return
-      }
-
-      // Reset form and close modal
-      setFormData({ username: '', email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
-      setSelectedUser(null)
-      setShowEditModal(false)
-      fetchUsers()
-    } catch (error) {
-      console.error('Update user error:', error)
-      setError('An error occurred')
-    }
-  }
-
-  // Removing suspends the membership: the person loses access to this
-  // workspace, their labels and comments stay, the account is untouched.
-  const handleDelete = async (userId: string, userName: string | null) => {
-    if (!confirm(`Remove ${userName || 'this user'} from this workspace? Their labels and comments are kept, and you can reactivate them later.`)) {
-      return
-    }
-
-    try {
-      const res = await fetch(workspaceApi(`/users/${userId}`), {
-        method: 'DELETE'
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        alert(data.error || 'Failed to remove user')
-        return
-      }
-
-      fetchUsers()
-    } catch (error) {
-      console.error('Delete user error:', error)
-      alert('An error occurred')
-    }
-  }
-
-  const handleReactivate = async (user: User) => {
-    const res = await fetch(workspaceApi(`/users/${user.id}`), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'active' })
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      alert(data.error || 'Failed to reactivate user')
-      return
-    }
-    fetchUsers()
-  }
-
-  const openEditModal = (user: User) => {
-    setSelectedUser(user)
-    setFormData({
-      username: user.username,
-      email: user.email,
-      name: user.name || '',
-      role: user.role,
-      supervisorId: user.supervisorId || '',
-      tempPassword: '',
-      newPassword: ''
-    })
-    setError('')
-    setShowEditModal(true)
-  }
-
-  const openCreateModal = () => {
-    setFormData({ username: '', email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
-    setAddExisting(false)
-    setExistingUser('')
-    setError('')
-    setShowCreateModal(true)
-  }
-
-  // Get list of potential supervisors (admin and supervisor roles)
-  const potentialSupervisors = users.filter(u => u.status === 'active' && (u.role === 'admin' || u.role === 'supervisor'))
-
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'admin': return 'bg-indigo-100 text-indigo-700'
-      case 'supervisor': return 'bg-indigo-100 text-indigo-700'
-      case 'labeller': return 'bg-green-100 text-green-700'
-      default: return 'bg-gray-100 text-gray-700'
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex flex-col h-screen">
-        <PageHeader title="Team Management" />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </div>
-    )
-  }
+  const shown = useMemo(() => sortMembers(filterMembers(members, filters), sort), [members, filters, sort])
+  const supervisors = members.filter(m => m.status === 'active' && (m.role === 'admin' || m.role === 'supervisor'))
+  const selected = members.find(m => m.id === selectedId) ?? null
+  const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS)
+  const setFilter = <K extends keyof TeamFilters>(key: K, value: TeamFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
 
   return (
     <div className="flex flex-col h-screen">
       <PageHeader title="Team Management" />
-      
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        {/* Header with Add User button */}
-        <div className="flex justify-between items-center mb-6">
-          <p className="text-gray-600">
-            Manage users, assign roles, and configure supervision relationships
-          </p>
-          <button
-            onClick={openCreateModal}
-            className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add User
+
+      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-48">
+            <label htmlFor="team-search" className="sr-only">Search members</label>
+            <input
+              id="team-search" type="search" placeholder="Search username, name or email" value={filters.search}
+              onChange={e => setFilter('search', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <label className="sr-only" htmlFor="team-role">Role</label>
+          <select id="team-role" value={filters.role} onChange={e => setFilter('role', e.target.value as TeamFilters['role'])} className={select}>
+            <option value="">All roles</option>
+            <option value="admin">Admins</option>
+            <option value="supervisor">Supervisors</option>
+            <option value="labeller">Labellers</option>
+          </select>
+          <label className="sr-only" htmlFor="team-supervisor">Supervisor</label>
+          <select id="team-supervisor" value={filters.supervisorId} onChange={e => setFilter('supervisorId', e.target.value)} className={select}>
+            <option value="">Any supervisor</option>
+            {supervisors.map(s => <option key={s.id} value={s.id}>Reports to {s.name || s.username}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="team-status">Status</label>
+          <select id="team-status" value={filters.status} onChange={e => setFilter('status', e.target.value as TeamFilters['status'])} className={select}>
+            <option value="active">Active</option>
+            <option value="must-reset">Must reset password</option>
+            <option value="removed">Removed</option>
+            <option value="">Everyone</option>
+          </select>
+          <label className="sr-only" htmlFor="team-activity">Activity</label>
+          <select id="team-activity" value={filters.activity} onChange={e => setFilter('activity', e.target.value as TeamFilters['activity'])} className={select}>
+            <option value="">Any activity</option>
+            <option value="seen-7">Seen in the last 7 days</option>
+            <option value="not-seen-7">Not seen for 7 days</option>
+            <option value="not-seen-30">Not seen for 30 days</option>
+            <option value="never">Never seen here</option>
+          </select>
+          {filtered && (
+            <button type="button" onClick={() => setFilters(NO_FILTERS)} className="px-3 py-2 text-sm text-indigo-700 underline">Clear</button>
+          )}
+          <button type="button" onClick={() => setAdding(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            Add member
           </button>
         </div>
 
-        {/* Users Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <table className="w-full">
+        <p className="text-sm text-gray-600" aria-live="polite">
+          {shown.length} of {members.length} members
+        </p>
+
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+          <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervisor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervises</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Last time the app was open in this workspace (background refreshes do not count)">Last Seen</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Last time they typed their password; sessions last days, so this can be old for active users">Last Login</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                {COLUMNS.map(column => {
+                  const active = sort?.key === column.key
+                  return (
+                    <th key={column.key} scope="col" title={column.title}
+                      aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                      <button type="button" onClick={() => setSort(s => nextSort(s, column.key))} className="uppercase hover:text-gray-800">
+                        {column.label}{active ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}
+                      </button>
+                    </th>
+                  )
+                })}
+                <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {users.map(user => (
-                <tr key={user.id} className={`hover:bg-gray-50 ${user.status === 'suspended' ? 'opacity-60' : ''}`}>
-                  <td className="px-4 py-3 text-sm text-gray-900">
-                    {user.username}
+            <tbody className="divide-y divide-gray-100 text-gray-900">
+              {shown.map(m => (
+                <tr key={m.id} className={`hover:bg-gray-50 ${m.status === 'suspended' ? 'opacity-60' : ''}`}>
+                  <td className="px-4 py-3">
+                    {m.username}
+                    {m.status === 'suspended' && <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs">removed</span>}
+                    {m.mustResetPassword && m.status === 'active' && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-xs">must reset</span>}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{user.name || 'N/A'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${getRoleBadgeColor(user.role)}`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {user.status === 'suspended' ? 'Removed' : 'Active'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {user.supervisor ? user.supervisor.name || user.supervisor.email : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {user.labellers.length > 0 ? user.labellers.length : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {user._count.assignedSentences}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600" title={user.lastSeenAt ? new Date(user.lastSeenAt).toISOString() : undefined}>
-                    {user.lastSeenAt ? formatRelativeTime(user.lastSeenAt) : 'Never'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {formatLastLoginDate(user.lastLogin)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right">
-                    {user.status === 'suspended' ? (
-                      <button onClick={() => handleReactivate(user)} className="text-indigo-600 hover:text-indigo-700">
-                        Reactivate
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => openEditModal(user)}
-                        className="text-indigo-600 hover:text-indigo-700"
-                        title="Edit user"
-                      >
-                        Edit
-                      </button>
-                    )}
+                  <td className="px-4 py-3">{m.name || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{m.email}</td>
+                  <td className="px-4 py-3 capitalize">{m.role}</td>
+                  <td className="px-4 py-3 text-gray-600">{m.supervisor ? m.supervisor.name || m.supervisor.email : '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{m.labellers.length || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{m._count.assignedSentences}</td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastSeenAt ?? undefined}>{m.lastSeenAt ? formatRelativeTime(m.lastSeenAt) : 'Never'}</td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastLogin ?? undefined}>{m.lastLogin ? formatRelativeTime(m.lastLogin) : 'Never'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button type="button" onClick={() => setSelectedId(m.id)} className="text-indigo-600 hover:text-indigo-700">Open</button>
                   </td>
                 </tr>
               ))}
+              {shown.length === 0 && (
+                <tr><td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-gray-500">No members match these filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Create User Modal */}
-      {showCreateModal && (
-        <Modal label="Create new user" onClose={() => setShowCreateModal(false)} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Create New User</h2>
-            
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleCreate} className="space-y-4">
-              {isPlatformAdmin && (
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={addExisting} onChange={e => setAddExisting(e.target.checked)} />
-                  Add an existing account (platform admin)
-                </label>
-              )}
-              {addExisting ? (
-                <div>
-                  <label htmlFor="existing-user" className="block text-sm font-medium text-gray-700 mb-1">Username or email *</label>
-                  <input
-                    id="existing-user"
-                    type="text"
-                    value={existingUser}
-                    onChange={(e) => setExistingUser(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                  />
-                </div>
-              ) : (<>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-                <input
-                  type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-              </div>
-
-              </>)}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as User['role'] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                >
-                  <option value="labeller">Labeller</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor (Optional)</label>
-                <select
-                  value={formData.supervisorId}
-                  onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                >
-                  <option value="">None</option>
-                  {potentialSupervisors.map(supervisor => (
-                    <option key={supervisor.id} value={supervisor.id}>
-                      {supervisor.name || supervisor.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password *</label>
-                <input
-                  type="password"
-                  value={formData.tempPassword}
-                  onChange={(e) => setFormData({ ...formData, tempPassword: e.target.value })}
-                  required
-                  minLength={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-                <p className="mt-1 text-xs text-gray-500">User will be required to change this on first login</p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
-                >
-                  Create User
-                </button>
-              </div>
-            </form>
-          </div>
-        </Modal>
+      {adding && (
+        <CreateMemberModal
+          supervisors={supervisors}
+          canAddExisting={workspace?.authority === 'platform'}
+          onClose={() => setAdding(false)}
+          onCreated={changed}
+        />
       )}
-
-      {/* Edit User Modal */}
-      {showEditModal && selectedUser && (
-        <Modal label="Edit user" onClose={() => { setShowEditModal(false); setSelectedUser(null) }} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit User</h2>
-            
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as User['role'] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                >
-                  <option value="labeller">Labeller</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor (Optional)</label>
-                <select
-                  value={formData.supervisorId}
-                  onChange={(e) => setFormData({ ...formData, supervisorId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                >
-                  <option value="">None</option>
-                  {potentialSupervisors.filter(s => s.id !== selectedUser.id).map(supervisor => (
-                    <option key={supervisor.id} value={supervisor.id}>
-                      {supervisor.name || supervisor.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New Password (Optional)</label>
-                <input
-                  type="password"
-                  value={formData.newPassword}
-                  onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
-                  minLength={10}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                />
-                <p className="mt-1 text-xs text-gray-500">Leave blank to keep current password. User will be required to change it on next login.</p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditModal(false)
-                    setSelectedUser(null)
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
-                >
-                  Update User
-                </button>
-              </div>
-            </form>
-
-            {/* Delete User Section */}
-            {selectedUser.id !== session?.user?.id && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <p className="text-sm text-gray-600 mb-3">
-                  Remove this person from the workspace? Their labels and comments stay; you can reactivate them.
-                </p>
-                <button
-                  onClick={() => {
-                    setShowEditModal(false)
-                    setSelectedUser(null)
-                    handleDelete(selectedUser.id, selectedUser.name)
-                  }}
-                  className="w-full px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
-                >
-                  Remove from workspace
-                </button>
-              </div>
-            )}
-          </div>
-        </Modal>
+      {selected && (
+        <MemberDrawer
+          key={selected.id}
+          member={selected}
+          supervisors={supervisors}
+          isSelf={selected.id === session?.user?.id}
+          onClose={() => setSelectedId(null)}
+          onChanged={changed}
+        />
       )}
+      <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>
   )
 }
-

@@ -150,6 +150,7 @@ test('the export contains the human label with its leading zero', async ({ page 
     page.getByRole('button', { name: 'Export CSV' }).click(),
   ])
   const csv = (await (await download.createReadStream()).toArray()).join('')
+  expect(csv).toContain('primary school teacher')
 
   const records = parse(csv, { columns: true, bom: true }) as Array<Record<string, string>>
   const teacher = records.find(r => r.field_job_title === 'primary school teacher')
@@ -205,4 +206,41 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
   expect(res.status()).toBe(200)
   const { sentences } = await res.json() as { sentences: Array<{ recordKey: string; field1: string }> }
   expect(sentences.map(s => [s.recordKey, s.field1])).toEqual([['0042', 'baker, head']])
+})
+
+test('team: add a member with a generated password, find, sort and remove them', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.goto(pagePath('/admin/team'))
+
+  await page.getByRole('button', { name: 'Add member' }).click()
+  await page.getByLabel('Username', { exact: true }).fill('e2e-new')
+  await page.getByLabel('Email', { exact: true }).fill('e2e-new@test.local')
+  await page.getByLabel('Name', { exact: true }).fill('Nova Member')
+  await page.getByRole('button', { name: 'Generate' }).click()
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.getByRole('heading', { name: 'Member created' })).toBeVisible()
+  await expect(page.getByText(/Username: e2e-new/)).toBeVisible()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await page.getByLabel('Search members').fill('nova')
+  await expect(rows(page)).toHaveCount(1)
+  await page.getByRole('button', { name: 'Last seen' }).click()
+  await expect(page.getByRole('columnheader', { name: /Last seen/ })).toHaveAttribute('aria-sort', 'ascending')
+
+  await rows(page).first().getByRole('button', { name: 'Open' }).click()
+  await page.getByRole('button', { name: 'Remove from workspace' }).click()
+  await page.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(page.getByText('e2e-new removed from this workspace')).toBeVisible()
+  await expect(page.getByText('No members match these filters.')).toBeVisible()
+})
+
+test('platform admins see accounts with their workspaces', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.goto('/accounts')
+  await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible()
+  const admin = page.locator('tbody tr', { hasText: ADMIN.username })
+  await expect(admin).toContainText('Platform admin')
+  await expect(admin).toContainText('E2E workspace: admin')
 })

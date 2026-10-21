@@ -18,7 +18,7 @@ import type { Prisma } from '@/lib/generated/prisma/client'
 
 export type WorkspaceDb = Prisma.TransactionClient
 
-type Scope = { workspaceId: string; tx: WorkspaceDb; afterCommit: Array<() => void> }
+type Scope = { workspaceId: string; tx: WorkspaceDb; afterCommit: Array<() => void>; queue: Promise<unknown> }
 
 const scope = new AsyncLocalStorage<Scope>()
 
@@ -49,10 +49,11 @@ const withOwner = (row: unknown, workspaceId: string) =>
  */
 const scopedClient = prisma.$extends({
   query: {
-    $allModels: {
-      async $allOperations({ model, operation, args, query }) {
-        const current = scope.getStore()
-        if (!current || !WORKSPACE_MODELS.has(model)) return query(args)
+    async $allOperations({ model, operation, args, query }) {
+      const current = scope.getStore()
+      if (!current) return query(args)
+      let scoped = args
+      if (model && WORKSPACE_MODELS.has(model)) {
         const { workspaceId } = current
         const a = { ...(args as Args) }
         if (FILTERED.has(operation)) a.where = { ...a.where, workspaceId }
@@ -60,8 +61,14 @@ const scopedClient = prisma.$extends({
           a.data = Array.isArray(a.data) ? a.data.map(row => withOwner(row, workspaceId)) : withOwner(a.data, workspaceId)
         }
         if (operation === 'upsert') a.create = withOwner(a.create, workspaceId) as Record<string, unknown>
-        return query(a as typeof args)
-      },
+        scoped = a as typeof args
+      }
+      // One transaction is one connection, which runs one query at a time:
+      // queries started together (Promise.all) are queued here rather than in
+      // the pg driver, which no longer accepts overlapping queries.
+      const run = current.queue.then(() => query(scoped))
+      current.queue = run.catch(() => undefined)
+      return run
     },
   },
 })
@@ -105,7 +112,7 @@ export async function withWorkspace<T>(
         SELECT 1 FROM "Workspace" WHERE id = ${workspaceId} AND status = 'active' FOR SHARE`
       if (active.length === 0) throw new WorkspaceArchivedError()
     }
-    return scope.run({ workspaceId, tx, afterCommit }, fn)
+    return scope.run({ workspaceId, tx, afterCommit, queue: Promise.resolve() }, fn)
   }, { timeout: timeoutMs, maxWait: 15_000 })
   for (const callback of afterCommit) callback()
   return result
