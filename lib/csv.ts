@@ -22,19 +22,20 @@ export function csvCell(value: string | number | boolean | null | undefined): st
 
 export type CsvColumn = { header: string; text?: boolean }
 
-export function toCsv(
-  columns: CsvColumn[],
-  rows: Array<Array<string | number | boolean | null | undefined>>,
-  opts: { neutralizeFormulas: boolean }
-): string {
+type CsvValue = string | number | boolean | null | undefined
+
+/** One CSV line (no line break) for a row laid out like `columns`. */
+export function csvLine(columns: CsvColumn[], row: CsvValue[], opts: { neutralizeFormulas: boolean }): string {
+  return row.map((value, i) => {
+    if (opts.neutralizeFormulas && columns[i]?.text && typeof value === 'string') {
+      return csvCell(neutralizeFormula(value))
+    }
+    return csvCell(value)
+  }).join(',')
+}
+
+export function toCsv(columns: CsvColumn[], rows: CsvValue[][], opts: { neutralizeFormulas: boolean }): string {
   const lines = [columns.map(c => csvCell(c.header)).join(',')]
-  for (const row of rows) {
-    lines.push(row.map((value, i) => {
-      if (opts.neutralizeFormulas && columns[i]?.text && typeof value === 'string') {
-        return csvCell(neutralizeFormula(value))
-      }
-      return csvCell(value)
-    }).join(','))
-  }
+  for (const row of rows) lines.push(csvLine(columns, row, opts))
   return lines.join('\n')
 }

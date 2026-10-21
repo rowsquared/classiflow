@@ -90,7 +90,9 @@ describe('audit trail', () => {
     expect((await assignRoute.POST(request('/api/sentences/assign', {
       method: 'POST', body: { sentenceIds: records.map(r => r.id), userIds: [labeller.id] },
     }))).status).toBe(200)
-    expect((await exportRoute.GET(request('/api/export'))).status).toBe(200)
+    const download = await exportRoute.GET(request('/api/export'))
+    expect(download.status).toBe(200)
+    await download.text() // recorded once the whole file was sent
 
     const [assigned] = await entries('assignments.added')
     expect(assigned.payload).toEqual({ records: 2, userIds: [labeller.id] })
@@ -101,7 +103,7 @@ describe('audit trail', () => {
 
   it('lists entries to admins only, newest first, with prefix filter and paging', async () => {
     for (let i = 0; i < 3; i++) await createViaApi()
-    await exportRoute.GET(request('/api/export'))
+    await (await exportRoute.GET(request('/api/export'))).text()
 
     const first = await (await auditRoute.GET(request('/api/audit?action=user.&limit=2'))).json()
     expect(first.entries).toHaveLength(2)

@@ -153,4 +153,45 @@ describe('record import and export', () => {
     const [h2, r2] = parse(await raw.text()) as string[][]
     expect(r2[h2.indexOf('support_region')]).toBe('=SUM(1)')
   })
+
+  it('exports large sets completely, in import order, with columns from every import', async () => {
+    const a = await prisma.taxonomy.create({ data: { key: 'zeta', maxDepth: 1 } })
+    const b = await prisma.taxonomy.create({ data: { key: 'alpha', maxDepth: 2 } })
+    const first = await prisma.sentenceImport.create({ data: { fileName: 'a.csv', totalRows: 1300 } })
+    const second = await prisma.sentenceImport.create({ data: { fileName: 'b.csv', totalRows: 1200 } })
+    const pad = (n: number) => String(n).padStart(5, '0')
+    await prisma.sentence.createMany({ data: Array.from({ length: 1300 }, (_, i) => ({
+      id: `a${pad(i)}`, importId: first.id, importOrder: 1299 - i, field1: `title ${i}`, fieldMapping: { '1': 'title' },
+    })) })
+    await prisma.sentence.createMany({ data: Array.from({ length: 1200 }, (_, i) => ({
+      id: `b${pad(i)}`, importId: second.id, importOrder: i, field1: `desc ${i}`, support1: `r${i}`,
+      fieldMapping: { '1': 'description' }, supportMapping: { '1': 'region' },
+    })) })
+    await prisma.sentenceAnnotation.create({ data: { sentenceId: 'b00005', taxonomyId: a.id, level: 1, nodeCode: '007', source: 'user' } })
+    await prisma.sentenceAISuggestion.create({ data: { sentenceId: 'a00000', taxonomyId: b.id, level: 2, nodeCode: '0110', confidenceScore: 0.5 } })
+
+    const res = await exportRoute.GET(request('/api/export'))
+    expect(res.status).toBe(200)
+    const [header, ...rows] = parse(await res.text()) as string[][]
+
+    expect(header).toEqual([
+      'id', 'field_title', 'field_description', 'support_region',
+      'alpha_1', 'alpha_2', 'zeta_1',
+      'alpha_ai1', 'alpha_ai1c', 'alpha_ai2', 'alpha_ai2c', 'zeta_ai1', 'zeta_ai1c',
+      'status', 'flagged', 'last_editor', 'last_edited', 'comments',
+    ])
+    expect(rows).toHaveLength(2500)
+    const importIds = new Map([[first.id, 'a'], [second.id, 'b']])
+    const expectedOrder = [...importIds.keys()].sort().flatMap(id => importIds.get(id) === 'a'
+      ? Array.from({ length: 1300 }, (_, k) => `a${pad(1299 - k)}`)
+      : Array.from({ length: 1200 }, (_, k) => `b${pad(k)}`))
+    expect(rows.map(r => r[0])).toEqual(expectedOrder)
+    const row = (id: string) => rows.find(r => r[0] === id)!
+    const cell = (id: string, name: string) => row(id)[header.indexOf(name)]
+    expect(cell('b00005', 'zeta_1')).toBe('007')
+    expect(cell('b00005', 'field_description')).toBe('desc 5')
+    expect(cell('b00005', 'field_title')).toBe('')
+    expect(cell('a00000', 'alpha_ai2')).toBe('0110')
+    expect(cell('a00000', 'alpha_ai2c')).toBe('0.5000')
+  })
 })
