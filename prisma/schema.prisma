@@ -1,10 +1,15 @@
+// The client is generated into lib/generated/prisma (git-ignored) by
+// `prisma generate`, which postinstall and `npm run build` run. Imports carry a
+// .ts extension so scripts/*.ts can load it with Node's type stripping.
 generator client {
-  provider = "prisma-client-js"
+  provider            = "prisma-client"
+  output              = "../lib/generated/prisma"
+  importFileExtension = "ts"
 }
 
+// The connection URL is in prisma.config.ts (CLI) and lib/prisma.ts (app).
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -25,31 +30,95 @@ enum AnnotationSource {
   ai
 }
 
+// User, Session, Account, Verification and RateLimit follow Better Auth's
+// schema (lib/auth.ts): core fields plus the username and admin plugins.
+// Passwords live on the "credential" Account row, never on User.
 model User {
   id                String    @id @default(cuid())
-  username          String    @unique
-  email             String    @unique
-  name              String?
-  password          String // Hashed password
+  username          String    @unique // Lower case; what people sign in with
+  displayUsername   String?
+  email             String    @unique // Lower case
+  emailVerified     Boolean   @default(false)
+  name              String
+  image             String?
   role              Role
+  banned            Boolean?  @default(false)
+  banReason         String?
+  banExpires        DateTime?
   supervisorId      String?
   supervisor        User?     @relation("SupervisorToLabellers", fields: [supervisorId], references: [id], onDelete: SetNull)
   labellers         User[]    @relation("SupervisorToLabellers")
   mustResetPassword Boolean   @default(true) // Force password reset on first login
-  sessionVersion    Int       @default(0) // Bumped on password change; older JWTs are rejected
   lastLogin         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  annotations          SentenceAnnotation[]
-  comments             Comment[]
-  auditLogs            AuditLog[]
-  imports              SentenceImport[]
-  editedSentences      Sentence[]              @relation("LastEditor")
-  assignedSentences    SentenceAssignment[]
-  aiLabelingJobs       AILabelingJob[]
-  aiLearningJobs       AILearningJob[]        @relation("LearningJobsUser")
-  externalTrainingJobs AIExternalTrainingJob[] @relation("ExternalTrainingJobs")
+  sessions          Session[]
+  accounts          Account[]
+  annotations       SentenceAnnotation[]
+  comments          Comment[]
+  auditLogs         AuditLog[]
+  imports           SentenceImport[]
+  editedSentences   Sentence[]           @relation("LastEditor")
+  assignedSentences SentenceAssignment[]
+  aiLabelingJobs    AILabelingJob[]
+  aiLearningJobs    AILearningJob[]      @relation("LearningJobsUser")
+}
+
+// One row per signed-in browser. Signing a user out everywhere deletes their rows.
+model Session {
+  id             String   @id @default(cuid())
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// providerId "credential" holds the password hash (lib/passwords.ts).
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// Sign-in rate limits, shared by every app instance.
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
 }
 
 model Taxonomy {
@@ -79,7 +148,6 @@ model Taxonomy {
   aiSuggestions        SentenceAISuggestion[]
   aiLabelingJobs       AILabelingJob[]
   aiLearningJobs       AILearningJob[]        @relation("LearningJobs")
-  externalTrainingJobs AIExternalTrainingJob[] @relation("ExternalTrainingJobs")
 }
 
 model TaxonomySetting {
@@ -99,7 +167,7 @@ model TaxonomyNode {
   parentCode String?
   level      Int
   path       String?
-  isLeaf     Boolean?
+  isLeaf     Boolean
 
   taxonomy Taxonomy          @relation(fields: [taxonomyId], references: [id])
   synonyms TaxonomySynonym[]
@@ -220,13 +288,6 @@ enum AILabelingJobStatus {
   cancelled
 }
 
-enum AIJobType {
-  labeling
-  learning
-  taxonomy_sync
-  external_training
-}
-
 model SentenceAISuggestion {
   id              String   @id @default(cuid())
   sentenceId      String
@@ -293,28 +354,6 @@ model AILearningJob {
 
   createdBy User     @relation("LearningJobsUser", fields: [createdById], references: [id])
   taxonomy  Taxonomy @relation("LearningJobs", fields: [taxonomyId], references: [id])
-
-  @@index([status])
-  @@index([createdById])
-  @@index([taxonomyId])
-  @@index([startedAt])
-}
-
-model AIExternalTrainingJob {
-  id              String              @id @default(cuid())
-  createdById     String
-  taxonomyId      String
-  status          AILabelingJobStatus @default(pending)
-  jobType         AIJobType           @default(external_training)
-  trainingDataUrl String // URL to the JSON file (e.g., /training-data/{jobId}.json)
-  fileName        String // Original CSV file name
-  recordCount     Int // Number of training records
-  startedAt       DateTime            @default(now())
-  completedAt     DateTime?
-  errorMessage    String?
-
-  createdBy User     @relation("ExternalTrainingJobs", fields: [createdById], references: [id])
-  taxonomy  Taxonomy @relation("ExternalTrainingJobs", fields: [taxonomyId], references: [id])
 
   @@index([status])
   @@index([createdById])

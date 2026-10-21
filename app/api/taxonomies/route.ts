@@ -6,6 +6,7 @@ import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
 import { audit } from '@/lib/audit'
+import { listTaxonomiesWithStats } from '@/lib/server/taxonomies'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -14,79 +15,7 @@ export async function GET() {
   if (error) return error
 
   try {
-    // No longer filtering by isActive since we're using hard delete
-    // Keep the parameter for backward compatibility but ignore it
-    const taxonomies = await prisma.taxonomy.findMany({
-      where: {},
-      include: {
-        _count: {
-          select: { 
-            nodes: true,
-            annotations: true
-          }
-        }
-      },
-      orderBy: [
-        { createdAt: 'desc' }
-      ]
-    })
-
-    // Add computed statistics
-    const taxonomiesWithStats = await Promise.all(
-      taxonomies.map(async (taxonomy) => {
-        // Get actual max level from nodes
-        const maxLevelNode = await prisma.taxonomyNode.findFirst({
-          where: { taxonomyId: taxonomy.id },
-          orderBy: { level: 'desc' },
-          select: { level: true }
-        })
-
-        // Get node count per level
-        const nodeCounts = await prisma.taxonomyNode.groupBy({
-          by: ['level'],
-          where: { taxonomyId: taxonomy.id },
-          _count: true,
-          orderBy: { level: 'asc' }
-        })
-
-        const levelCounts = nodeCounts.map(lc => ({
-          level: lc.level,
-          count: lc._count,
-          name: taxonomy.levelNames 
-            ? (taxonomy.levelNames as Record<string, string>)[lc.level.toString()] || `Level ${lc.level}`
-            : `Level ${lc.level}`
-        }))
-
-        // Get last external training date
-        const lastExternalTraining = await prisma.aIExternalTrainingJob.findFirst({
-          where: {
-            taxonomyId: taxonomy.id,
-            status: 'completed'
-          },
-          orderBy: { completedAt: 'desc' },
-          select: { completedAt: true }
-        })
-        const lastExternalTrainingAt = lastExternalTraining?.completedAt?.toISOString() ?? null
-
-        return {
-          ...taxonomy,
-          nodeCount: taxonomy._count.nodes,
-          annotationCount: taxonomy._count.annotations,
-          actualMaxLevel: maxLevelNode?.level || 0,
-          levelCounts,
-          lastExternalTrainingAt,
-          _count: undefined
-        }
-      })
-    )
-
-    const learningThreshold = parseInt(process.env.AI_LEARNING_MIN_NEW_ANNOTATIONS || '500', 10)
-
-    return NextResponse.json({ 
-      ok: true, 
-      learningThreshold,
-      taxonomies: taxonomiesWithStats 
-    })
+    return NextResponse.json(await listTaxonomiesWithStats())
   } catch (error) {
     console.error('Taxonomies API error:', error)
     return NextResponse.json({ ok: false, error: 'Failed to load taxonomies' }, { status: 500 })

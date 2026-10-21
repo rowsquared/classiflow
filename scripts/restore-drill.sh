@@ -1,5 +1,5 @@
 #!/bin/sh
-# Restore drill: restores a backup into a throwaway PostgreSQL 16 container,
+# Restore drill: restores a backup into a throwaway PostgreSQL 18 container,
 # checks it and reports how long the restore took. Touches nothing else; the
 # container is removed afterwards. See "Backups" in DEPLOYMENT.md.
 #
@@ -14,7 +14,7 @@ dump=${1:?usage: scripts/restore-drill.sh <backup.dump>}
 name="classiflow-restore-drill-$$"
 docker run -d --rm --name "$name" \
   -e POSTGRES_USER=classiflow -e POSTGRES_PASSWORD=restore-drill -e POSTGRES_DB=classiflow \
-  postgres:16-alpine >/dev/null
+  postgres:18-alpine >/dev/null
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 
 # Over TCP: the image's first-start init server listens on the socket only.

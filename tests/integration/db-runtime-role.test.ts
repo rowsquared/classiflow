@@ -1,17 +1,17 @@
 import { execFileSync } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
+import type { PrismaClient } from '@/lib/generated/prisma/client'
+import { createPrismaClient, prisma } from '@/lib/prisma'
 import { testDatabaseUrl } from './global-setup'
 import { resetDatabase } from './helpers'
 
-// scripts/db-runtime-role.js as scripts/start.sh runs it: DATABASE_URL is the
+// scripts/db-runtime-role.ts as scripts/start.sh runs it: DATABASE_URL is the
 // schema owner, the server then connects as APP_DB_USER.
 const APP_DB_USER = 'classiflow_runtime_test'
 const PASSWORD = 'runtime-test-password-1'
 
 function runScript(args: string[] = [], env: Record<string, string> = {}) {
-  return execFileSync('node', ['scripts/db-runtime-role.js', ...args], {
+  return execFileSync('node', ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', 'scripts/db-runtime-role.ts', ...args], {
     env: { ...process.env, DATABASE_URL: testDatabaseUrl(), APP_DB_USER, APP_DB_PASSWORD: PASSWORD, ...env },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -25,7 +25,7 @@ let app: PrismaClient
 beforeAll(async () => {
   await resetDatabase()
   runScript()
-  app = new PrismaClient({ datasourceUrl: runScript(['--url']) })
+  app = createPrismaClient(runScript(['--url']))
 })
 
 afterAll(async () => {
@@ -42,7 +42,7 @@ describe('least-privilege runtime database role', () => {
 
   it('reads, writes and locks application rows', async () => {
     const user = await app.user.create({
-      data: { username: 'rt', email: 'rt@test.local', name: 'rt', password: 'x', role: 'labeller' },
+      data: { username: 'rt', email: 'rt@test.local', name: 'rt', role: 'labeller' },
     })
     await app.user.update({ where: { id: user.id }, data: { name: 'renamed' } })
     // Annotation saves lock records with SELECT ... FOR UPDATE.

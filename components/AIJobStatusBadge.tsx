@@ -1,20 +1,18 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession } from '@/lib/auth-client'
 import { Loader2, CheckCircle2, XCircle, Clock, X } from 'lucide-react'
 import Link from 'next/link'
 
 type AIJob = {
   id: string
-  type: 'labeling' | 'learning' | 'taxonomy_sync' | 'external_training'
+  type: 'labeling' | 'learning' | 'taxonomy_sync'
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   taxonomy: string
   totalSentences?: number
   processedSentences?: number
   failedSentences?: number
-  recordCount?: number
-  fileName?: string
   startedAt: string
   completedAt?: string | null
   errorMessage?: string | null
@@ -136,7 +134,7 @@ export default function AIJobStatusBadge() {
 
   const getProgress = (job: AIJob) => {
     if (job.status === 'completed') return 100
-    if (job.type === 'external_training' || job.type === 'taxonomy_sync') {
+    if (job.type === 'taxonomy_sync') {
       return job.status === 'processing' ? 50 : 0
     }
     if (!job.totalSentences || job.totalSentences === 0) return 0
@@ -148,7 +146,6 @@ export default function AIJobStatusBadge() {
       case 'labeling': return 'Labeling'
       case 'learning': return 'Learning'
       case 'taxonomy_sync': return 'Taxonomy Sync'
-      case 'external_training': return 'External Training'
       default: return 'AI Job'
     }
   }
@@ -235,9 +232,7 @@ export default function AIJobStatusBadge() {
                             </span>
                           </div>
                           <div className={`text-xs ${isFinished ? 'text-gray-500' : 'text-gray-600'}`}>
-                            {job.type === 'external_training' ? (
-                              `${job.recordCount || 0} records${job.fileName ? ` (${job.fileName})` : ''}`
-                            ) : (job.type === 'learning' || job.type === 'taxonomy_sync') ? (
+                            {(job.type === 'learning' || job.type === 'taxonomy_sync') ? (
                               job.status === 'failed' ? (job.errorMessage || 'Failed') : 'Processing...'
                             ) : (
                               <>

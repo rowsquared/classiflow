@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Taxonomy, User } from '@prisma/client'
+import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSentences, createTaxonomy, createUser, resetDatabase } from './helpers'
 

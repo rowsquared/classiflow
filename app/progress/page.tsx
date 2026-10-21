@@ -1,6 +1,7 @@
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import { serverFetchJSON } from '@/lib/server-fetch'
+import LoadError from '@/components/LoadError'
+import { asJson } from '@/lib/server/json'
+import { requirePageUser } from '@/lib/server/page-user'
+import { getProgressStats, getProgressTimeline, getTeamProgress } from '@/lib/server/progress'
 import ProgressPageClient, {
   type Stats,
   type Timeline,
@@ -41,35 +42,32 @@ function getDateRange(period: Period, customStart?: string, customEnd?: string) 
   }
 }
 
-type StatsResponse = Stats & { ok: boolean }
-
 export default async function ProgressPage() {
-  const session = await auth()
-  if (!session?.user) {
-    redirect('/login')
-  }
+  const user = await requirePageUser()
 
   const { startDate, endDate } = getDateRange(DEFAULT_PERIOD)
-  const userRole = session.user.role as 'admin' | 'supervisor' | 'labeller'
+  const range = { start: new Date(startDate), end: new Date(endDate) }
 
-  const [statsData, timelineData, teamData] = await Promise.all([
-    serverFetchJSON<StatsResponse>(`/api/progress/stats?startDate=${startDate}&endDate=${endDate}`),
-    serverFetchJSON<{ timeline: Timeline[] }>(
-      `/api/progress/timeline?startDate=${startDate}&endDate=${endDate}&granularity=day`
-    ),
-    userRole === 'admin' || userRole === 'supervisor'
-      ? serverFetchJSON<{ team: TeamMember[] }>(`/api/progress/team?startDate=${startDate}&endDate=${endDate}`)
-      : Promise.resolve(null)
-  ])
+  let data
+  try {
+    const [stats, timeline, team] = await Promise.all([
+      getProgressStats(user, range),
+      getProgressTimeline(user, range, 'day'),
+      user.role === 'admin' || user.role === 'supervisor' ? getTeamProgress(user, range) : null,
+    ])
+    data = asJson({ stats, timeline: timeline.timeline, team: team?.team ?? [] })
+  } catch (error) {
+    console.error('Progress page failed to load:', error)
+    return <LoadError title="Progress" what="the progress figures" />
+  }
 
   return (
     <ProgressPageClient
-      initialStats={statsData?.ok ? statsData : null}
-      initialTimeline={timelineData?.timeline ?? []}
-      initialTeam={teamData?.team ?? []}
-      userRole={userRole}
+      initialStats={data.stats as Stats}
+      initialTimeline={data.timeline as Timeline[]}
+      initialTeam={data.team as TeamMember[]}
+      userRole={user.role}
       defaultPeriod={DEFAULT_PERIOD}
     />
   )
 }
-

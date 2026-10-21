@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
-import type { Role } from '@prisma/client'
+import type { Role } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
+import type { AuthSession } from '@/lib/auth'
 
 let counter = 0
 const uid = (prefix: string) => `${prefix}${++counter}_${Date.now().toString(36)}`
@@ -15,6 +16,10 @@ export async function resetDatabase() {
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} CASCADE`)
 }
 
+/**
+ * A user who is signed in from one browser: the Session row is created with
+ * the user, so signInAs() later finds it unless it was revoked since.
+ */
 export async function createUser(role: Role, opts: { supervisorId?: string | null; mustResetPassword?: boolean } = {}) {
   const username = uid(role)
   return prisma.user.create({
@@ -23,28 +28,35 @@ export async function createUser(role: Role, opts: { supervisorId?: string | nul
       email: `${username}@test.local`,
       name: username,
       role,
-      password: 'not-a-real-hash',
       supervisorId: opts.supervisorId ?? null,
       mustResetPassword: opts.mustResetPassword ?? false,
+      sessions: { create: { token: uid('token'), expiresAt: new Date(Date.now() + 3600_000) } },
     },
   })
 }
 
-type SessionUser = { id: string; role: string; mustResetPassword?: boolean; sessionVersion?: number }
+// Only the id matters: role and reset flag are read from the database, as in
+// production, whatever the test passes here.
+type SessionUser = { id: string; role?: string }
 
-/** Makes auth() return a session for this user (as the JWT would carry it), or none. */
+let currentUserId: string | null = null
+
+/** Makes getSession() return this user's oldest live session, or none. */
 export function signInAs(user: SessionUser | null) {
-  ;(globalThis as { __testSession?: unknown }).__testSession = user
-    ? {
-        user: {
-          id: user.id,
-          role: user.role,
-          mustResetPassword: user.mustResetPassword ?? false,
-          sessionVersion: user.sessionVersion ?? 0,
-        },
-        expires: new Date(Date.now() + 3600_000).toISOString(),
-      }
-    : null
+  currentUserId = user?.id ?? null
+}
+
+/** What lib/auth.ts getSession() returns for the user chosen with signInAs(). */
+export async function sessionFor(): Promise<AuthSession | null> {
+  if (!currentUserId) return null
+  const session = await prisma.session.findFirst({
+    where: { userId: currentUserId, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'asc' },
+    include: { user: true },
+  })
+  if (!session) return null
+  const { user, ...rest } = session
+  return { session: rest, user } as AuthSession
 }
 
 export async function createSentences(count: number, assignTo: string[] = []) {

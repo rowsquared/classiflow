@@ -23,24 +23,34 @@ Browser: React client components
 ```
 
 - One Next.js application, not a monorepo or a separate frontend/backend pair.
-- Stack: Next.js 15, React 19, strict TypeScript, Prisma 6.17.1, PostgreSQL,
-  Auth.js / NextAuth v5 beta, Tailwind CSS v4. Check `package.json` for exact
-  dependency versions; keep Prisma CLI and client versions aligned.
-- Most business logic and database queries are in route handlers. `lib/` contains
-  shared infrastructure and AI integration; there is no general service layer.
-- Many list/dashboard pages are server components that load initial data through
-  `lib/server-fetch.ts` and pass it to a colocated `*Client.tsx` component.
-  Interactive components then use browser `fetch` and React hooks for updates.
-  Some pages, including the individual labeling screen, are entirely client-side.
-- `serverFetchJSON` forwards the current request's cookies, defaults to
-  `cache: 'no-store'`, and returns `null` on failure. Preserve authentication and
-  fallback behavior when changing server-side data loading.
+- Stack: Next.js 16 (Turbopack, React Compiler), React 19, strict TypeScript
+  (6.0 for the build, the native 7.0 compiler for `npm run typecheck`), Prisma 7
+  with the `pg` driver adapter, PostgreSQL 18, Better Auth, Tailwind CSS v4.
+  Check `package.json` for exact versions; keep `prisma`, `@prisma/client` and
+  `@prisma/adapter-pg` on the same version.
+- The Prisma client is generated into `lib/generated/prisma` (git-ignored; import
+  from `@/lib/generated/prisma/client`, not `@prisma/client`). `lib/prisma.ts`
+  owns the shared client and pool size.
+- Data loading for the server pages lives in `lib/server/*` (`import 'server-only'`):
+  `sentences` (queue filters, list, stats), `progress`, `taxonomies`, `users`,
+  `imports`, `ai-jobs`. Each function takes the `CurrentUser` and applies its
+  scope itself. The matching GET route handlers are thin wrappers around the same
+  functions; server pages call them directly, pass the result through `asJson()`
+  (`lib/server/json.ts`, the JSON shape the client components expect) and render
+  `components/LoadError.tsx` when loading fails. Other handlers still hold their
+  business logic; move it to `lib/server/` when you touch it.
+- Query schemas shared by handlers and pages go in `lib/contracts/` (zod 4).
+  Response envelopes vary (`ok`, `success`, bare data); update callers with any
+  handler change.
+- Interactive `*Client.tsx` components then use browser `fetch` and React hooks
+  for updates. Some pages, including the individual labeling screen, are
+  entirely client-side.
 
 ## Where to look
 
 | Area | Entry points and responsibilities |
 | --- | --- |
-| Application shell | `app/layout.tsx`, `components/Sidebar.tsx`, `components/SessionProvider.tsx`; `/` redirects to `/queue` |
+| Application shell | `app/layout.tsx` (CSP nonce), `components/Sidebar.tsx`, `proxy.ts`; `/` redirects to `/queue` |
 | Work queue | `app/queue/page.tsx`, `app/queue/QueuePageClient.tsx`, `components/queue/`; filtering, sorting, pagination, selection, bulk labels, assignments |
 | Individual labeling | `app/queue/[sentenceId]/page.tsx`, `components/TaxonomyBrowser.tsx`; hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/taxonomies/[key]/page.tsx` |
@@ -48,11 +58,11 @@ Browser: React client components
 | Progress | `app/progress/`, `app/api/progress/{stats,timeline,team}/`; counts, timelines, team metrics |
 | Record APIs | `app/api/sentences/`; queue queries, stats, imports, assignment, bulk labels, individual records/annotations/comments/flags |
 | Other data APIs | `app/api/taxonomies/`, `app/api/imports/`, `app/api/users/`, `app/api/export/` |
-| AI APIs | `app/api/ai-labeling/` starts labeling, learning, external training; `app/api/ai-jobs/` provides combined history, active jobs, cancellation |
-| Authentication | `lib/auth.config.ts`, `lib/auth.ts`, `middleware.ts`, `types/next-auth.d.ts`, `app/api/auth/` |
-| Database | `prisma/schema.prisma`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
+| AI APIs | `app/api/ai-labeling/` starts labeling and learning; `app/api/ai-jobs/` provides combined history, active jobs, cancellation |
+| Authentication | `lib/auth.ts` (Better Auth server), `lib/auth-client.ts` (browser), `lib/api-auth.ts`, `lib/passwords.ts`, `proxy.ts`, `app/api/auth/` |
+| Database | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.js`, `init-admin.js`, server; `reset-admin-password.js` for admin recovery; `restore-drill.sh` for backups; `promote-main.mjs`) |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.ts`, `init-admin.ts`, server; `reset-admin-password.ts` for admin recovery; `restore-drill.sh` for backups; `promote-main.mjs`) |
 
 ## Domain model and behavior to preserve
 
@@ -109,18 +119,25 @@ Read `prisma/schema.prisma` before changing data behavior.
 
 ## Authentication and authorization
 
-Credentials login accepts username or email, checks a bcrypt password hash, and
-uses JWT sessions. Session/JWT fields include user ID, role, and
-`mustResetPassword`. `lib/auth.ts` refreshes user fields on session updates.
+Better Auth (`lib/auth.ts`) signs users in with a username or email and a
+password and keeps **database sessions** (`Session` rows). Passwords are hashed
+by Better Auth and stored on the user's `credential` `Account` row; set or check
+them only through `lib/passwords.ts`, and sign users out with
+`revokeSessions()`. Public sign-up and Better Auth's account-changing endpoints
+are disabled (`disabledPaths`); users are created and changed through
+`app/api/users`. The `admin` plugin provides ban/unban and session listing for
+admins; the roles themselves stay our `Role` enum. Usernames and emails are
+stored in lower case.
 
-`middleware.ts` redirects unauthenticated page requests and enforces the initial
-password reset flow. **It explicitly passes API requests through.** API handlers
-must perform their own session and role checks: start every handler with
-`requireSession()` from `lib/api-auth.ts` (any signed-in user) or
-`requireSession('admin')` (listed roles only). It re-reads role, reset flag and
-`sessionVersion` from the database on every call, so use the returned `user`,
-not the JWT role. Do not infer protection from an `/admin` UI, middleware, or
-neighboring endpoint.
+`proxy.ts` checks the session for page requests (sign-in redirect, initial
+password reset) and sets the nonce-based Content-Security-Policy. **It passes
+API requests through** apart from a cross-site check. API handlers must perform
+their own session and role checks: start every handler with `requireSession()`
+from `lib/api-auth.ts` (any signed-in user) or `requireSession('admin')` (listed
+roles only). The session and its user are read from the database on every call,
+so use the returned `user`. Server pages use `requirePageUser()` from
+`lib/server/page-user.ts`. Do not infer protection from an `/admin` UI, the
+proxy, or a neighboring endpoint.
 
 Record-level scoping lives in `lib/access.ts` (admin: all; supervisor: whole
 team subtree; labeller: own assignments). Any handler that reads or writes a
@@ -153,9 +170,6 @@ writes need the same scope as reads. The access matrix is in
   `tests/integration/ai-job-monitor.test.ts` runs the monitor against a stub
   service.
 - Taxonomy sync uses `Taxonomy.lastAISync*` fields and the older monitor helper.
-- External training (uploading a training CSV) was removed; its UI and API are
-  gone. `AIExternalTrainingJob` stays in the schema only so historical jobs still
-  show in the AI jobs list and taxonomy deletes clean them up.
 
 ## Local development and checks
 
@@ -168,27 +182,29 @@ lockfile together. Do not introduce a different package manager.
 2. Copy `.env.example` to `.env` if no local environment exists; configure
    `DATABASE_URL`, auth URL/secret settings, and default-admin settings. See
    `DEVELOPMENT.md` and `ENV_SETUP.md`. Leave AI unconfigured for human-only work.
-3. `npm run db:up` starts the development PostgreSQL 16 container on host port
+3. `npm run db:up` starts the development PostgreSQL 18 container on host port
    **5434**. Point the host app's database URL there, as shown in `DEVELOPMENT.md`.
 4. `npm run db:migrate` applies committed migrations; `npm run db:init-admin`
    (loads `.env` if present) creates a missing admin and leaves existing
-   accounts/passwords unchanged. Plain `node scripts/*.js` does not load `.env`.
+   accounts/passwords unchanged. The scripts are TypeScript run directly by
+   Node (`node scripts/x.ts`, type stripping), so they use relative imports with
+   `.ts` extensions, not `@/`; plain `node` does not load `.env`.
 5. `npm run dev` starts Next.js at `http://localhost:3000`.
 
 | Check | Command / scope |
 | --- | --- |
-| TypeScript | `npm run typecheck` (`tsc --noEmit`) |
+| TypeScript | `npm run typecheck` (TypeScript 7 native compiler, `--noEmit`) |
 | Lint | `npm run lint` |
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
 | Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright; see `tests/e2e/README.md`) |
 | Production build | `npm run build` (Prisma generation + Next build) |
-| New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database; commit generated SQL |
+| New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database and `npx prisma generate`; commit generated SQL. The history starts at one baseline (`20261021120000_init`, fresh start) |
 
-`next build` type-checks but skips ESLint (`next.config.ts`); lint runs in CI.
+`next build` type-checks but does not lint (Next.js 16); lint runs in CI. The
+React Compiler lint rules are warnings for now (see `eslint.config.mjs`).
 Run the checks relevant to a code change and distinguish pre-existing failures
 from regressions.
-`db:seed` is listed in the manifest but currently has no configured Prisma seed.
 
 Production uses Next's standalone output in a Node 24 Alpine image (pinned by
 digest) with production dependencies only. The Compose

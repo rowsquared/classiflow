@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   const { error } = await requireSession()
@@ -43,36 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
     prisma.taxonomyNode.count({ where }),
   ])
 
-  // Use stored isLeaf value, but recompute if null (fallback for legacy data)
-  // A node is a leaf if:
-  // 1. It's at maxDepth, OR
-  // 2. It has no children
-  const enrichedItems = await Promise.all(
-    items.map(async (item) => {
-      let computedIsLeaf = item.isLeaf
-      
-      // If isLeaf is null, compute it (fallback for legacy data or edge cases)
-      if (computedIsLeaf === null) {
-        // Check if at maxDepth
-        if (item.level >= taxonomy.maxDepth) {
-          computedIsLeaf = true
-        } else {
-          // Check if has children
-          const childCount = await prisma.taxonomyNode.count({
-            where: {
-              taxonomyId: taxonomy.id,
-              parentCode: item.code,
-            }
-          })
-          computedIsLeaf = childCount === 0
-        }
-      }
-      
-      return { ...item, isLeaf: computedIsLeaf }
-    })
-  )
-
-  return NextResponse.json({ items: enrichedItems, total, limit, offset })
+  return NextResponse.json({ items, total, limit, offset })
 }
 
 

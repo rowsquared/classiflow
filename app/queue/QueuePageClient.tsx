@@ -180,7 +180,7 @@ export default function QueuePageClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   
   // Auto-refresh State
-  const [lastRefresh, setLastRefresh] = useState(Date.now())
+  const [lastRefresh, setLastRefresh] = useState(() => Date.now())
   
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -213,8 +213,8 @@ export default function QueuePageClient({
       if (filters.userId) params.set('userId', filters.userId)
       if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
       if (filters.lastEditorId) params.set('lastEditorId', filters.lastEditorId)
-      if (filters.dateRange.from) params.set('dateFrom', filters.dateRange.from)
-      if (filters.dateRange.to) params.set('dateTo', filters.dateRange.to)
+      if (filters.dateRange.from) params.set('lastEditedFrom', filters.dateRange.from)
+      if (filters.dateRange.to) params.set('lastEditedTo', filters.dateRange.to)
       if (filters.taxonomyKey) params.set('taxonomyKey', filters.taxonomyKey)
       if (filters.level !== null) params.set('level', String(filters.level))
       if (filters.code !== null) params.set('code', String(filters.code))
@@ -442,13 +442,13 @@ export default function QueuePageClient({
   const someSelected = selectedIds.size > 0
   const isAdmin = currentUser?.role === 'admin'
   const activeTaxonomies = taxonomies.filter(t => t.isActive !== false)
-  // A taxonomy is considered synced if it has status 'completed' or 'success' (for backward compatibility)
+  // A taxonomy is synced once its last AI sync completed
   const syncedTaxonomies = activeTaxonomies.filter(t => 
-    t.lastAISyncStatus === 'completed' || t.lastAISyncStatus === 'success'
+    t.lastAISyncStatus === 'completed'
   )
-  // Show all taxonomies that are not successfully synced (any status other than 'completed' or 'success')
+  // Show all taxonomies that are not successfully synced
   const unsyncedTaxonomies = activeTaxonomies.filter(t => 
-    t.lastAISyncStatus !== 'completed' && t.lastAISyncStatus !== 'success'
+    t.lastAISyncStatus !== 'completed'
   )
 
   const handleSendSelectedToAI = async () => {
@@ -463,7 +463,7 @@ export default function QueuePageClient({
     }
 
     const unsyncedTaxonomies = activeTaxonomies.filter(t =>
-      t.lastAISyncStatus !== 'completed' && t.lastAISyncStatus !== 'success'
+      t.lastAISyncStatus !== 'completed'
     )
     if (unsyncedTaxonomies.length > 0) {
       const names = unsyncedTaxonomies.map(t => t.key).join(', ')

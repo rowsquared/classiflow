@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { forbidden, requireSession } from '@/lib/api-auth'
-import { getVisibleUserIds } from '@/lib/access'
+import { getVisibleUser } from '@/lib/server/users'
 import { isLastAdmin, validateSupervisor } from '@/lib/user-rules'
 import { audit } from '@/lib/audit'
+import { revokeSessions, setPassword } from '@/lib/passwords'
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -26,48 +26,10 @@ export async function GET(
   try {
     const { userId } = await context.params
 
-    const visibleUserIds = await getVisibleUserIds(currentUser)
-    if (visibleUserIds && !visibleUserIds.includes(userId)) {
+    const user = await getVisibleUser(currentUser, userId)
+    if (user === 'forbidden') {
       return forbidden()
     }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        supervisorId: true,
-        supervisor: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        labellers: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-          }
-        },
-        mustResetPassword: true,
-        lastLogin: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            assignedSentences: true,
-            editedSentences: true,
-            annotations: true,
-            comments: true
-          }
-        }
-      }
-    })
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -128,29 +90,33 @@ export async function PUT(
     // An admin-set password is temporary: the user must change it, and every
     // session signed in with the old password ends.
     if (newPassword) {
-      updateData.password = await bcrypt.hash(newPassword, 10)
       updateData.mustResetPassword = true
-      updateData.sessionVersion = { increment: 1 }
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        supervisorId: true,
-        mustResetPassword: true,
-        updatedAt: true
+    const user = await prisma.$transaction(async tx => {
+      if (newPassword) {
+        await setPassword(tx, userId, newPassword)
+        await revokeSessions(tx, userId)
       }
+      return tx.user.update({
+        where: { id: userId },
+        data: updateData,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          supervisorId: true,
+          mustResetPassword: true,
+          updatedAt: true
+        }
+      })
     })
 
     await audit({
       actorId: actor.id, action: 'user.updated', entityType: 'user', entityId: userId,
       payload: {
-        fields: Object.keys(updateData).filter(k => k !== 'mustResetPassword' && k !== 'sessionVersion'),
+        fields: Object.keys(updateData).filter(k => k !== 'mustResetPassword'),
         ...(role !== undefined && role !== existing.role ? { role: { from: existing.role, to: role } } : {}),
         ...(supervisorId !== undefined && supervisorId !== existing.supervisorId
           ? { supervisor: { from: existing.supervisorId, to: supervisorId } } : {}),
@@ -196,7 +162,6 @@ export async function DELETE(
       prisma.$transaction([
         prisma.aILabelingJob.count({ where: { createdById: userId } }),
         prisma.aILearningJob.count({ where: { createdById: userId } }),
-        prisma.aIExternalTrainingJob.count({ where: { createdById: userId } }),
       ]).then(counts => counts.reduce((a, b) => a + b, 0)),
     ])
     if (comments > 0 || aiJobs > 0) {

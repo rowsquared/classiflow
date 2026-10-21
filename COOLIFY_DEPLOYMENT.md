@@ -43,9 +43,9 @@ POSTGRES_USER=classiflow
 POSTGRES_PASSWORD=generate-a-secure-password-here  # required: the deploy fails without it
 POSTGRES_DB=classiflow
 
-# NextAuth Configuration
-NEXTAUTH_URL=https://your-domain.com
-NEXTAUTH_SECRET=your-generated-secret-here
+# Authentication (Better Auth)
+BETTER_AUTH_URL=https://your-domain.com
+BETTER_AUTH_SECRET=your-generated-secret-here
 
 # Default Admin User
 DEFAULT_ADMIN_EMAIL=admin@example.com
@@ -53,10 +53,6 @@ DEFAULT_ADMIN_PASSWORD=<a long random password>  # required for the first start;
 DEFAULT_ADMIN_NAME=Admin User
 DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 ```
-
-Existing deployments that never set `POSTGRES_PASSWORD` ran on the old fallback
-`classiflow_password`; see "Upgrading an existing Compose deployment" in
-[DEPLOYMENT.md](DEPLOYMENT.md) before the first deploy of the new Compose file.
 
 #### Recommended
 
@@ -87,15 +83,15 @@ AI_JOB_POLL_TIMEOUT_MS=600000
 AI_SOURCE_SLUG=classiflow-app-rowsquared
 ```
 
-### 3. Generate NEXTAUTH_SECRET
+### 3. Generate BETTER_AUTH_SECRET
 
-Generate a secure secret for NextAuth:
+Generate a secure secret for signing session cookies:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Use the output as your `NEXTAUTH_SECRET` value.
+Use the output as your `BETTER_AUTH_SECRET` value.
 
 ### 4. Configure Volumes (Important!)
 
@@ -204,9 +200,9 @@ In your Coolify dashboard:
 # Database (use the connection string from the separate database)
 DATABASE_URL=postgresql://classiflow:your-password@classiflow-db:5432/classiflow?schema=public
 
-# NextAuth Configuration
-NEXTAUTH_URL=https://your-domain.com
-NEXTAUTH_SECRET=your-generated-secret-here
+# Authentication (Better Auth)
+BETTER_AUTH_URL=https://your-domain.com
+BETTER_AUTH_SECRET=your-generated-secret-here
 
 # Default Admin User
 DEFAULT_ADMIN_EMAIL=admin@example.com
@@ -223,7 +219,7 @@ In Coolify, set the start command to run migrations and initialize admin:
 sh scripts/start.sh
 ```
 
-**Note**: The `init-admin.js` script creates the default admin only while the database has no admin, using the environment variables you configured. If it cannot (for example no or a placeholder password), it exits with an error and the container does not start.
+**Note**: The `init-admin.ts` script creates the default admin only while the database has no admin, using the environment variables you configured. If it cannot (for example no or a placeholder password), it exits with an error and the container does not start.
 
 ### 5. Deploy
 
@@ -294,7 +290,7 @@ Container names are generated per deployment (the compose file sets none, so
 production and staging can share a host). Find the Postgres container first:
 
 ```bash
-docker ps --filter "ancestor=postgres:16-alpine" --format '{{.Names}}'
+docker ps --filter "ancestor=postgres:18-alpine" --format '{{.Names}}'
 
 # Backup (--no-owner keeps the dump restorable under a different role)
 docker exec <postgres-container> pg_dump --no-owner -U classiflow classiflow > backup.sql
@@ -323,15 +319,15 @@ To scale the application:
 1. Go to your application settings
 2. Adjust **Replicas** count (requires load balancer)
 3. Read "Running more than one instance" in [DEPLOYMENT.md](DEPLOYMENT.md) first
-   (login throttle, database connections)
+   (database connection budget)
 
 ## Troubleshooting
 
 ### Build Fails
 
 **Issue**: ESLint errors during build
-- **Solution**: The `next.config.ts` is configured with `eslint.ignoreDuringBuilds: true`,
-  so lint never breaks a deploy build. Lint is enforced in CI instead (`checks` job).
+- **Solution**: Next.js 16 no longer lints during `next build`, so lint never
+  breaks a deploy build. Lint is enforced in CI instead (`checks` job).
 
 **Issue**: `npm ci` fails during the image build
 - **Cause**: `package.json` and `package-lock.json` disagree (a dependency was
@@ -340,14 +336,10 @@ To scale the application:
   The image installs exactly the lockfile, so every rebuild of a commit gets the
   same dependency graph as CI tested.
 
-**Issue**: Prisma client generation fails
-- **Solution**: Ensure all Prisma schema files are properly copied
-- The build process generates Prisma client before building Next.js
-
-**Issue**: Prisma schema not found during install
-- **Solution**: The Dockerfile now copies the prisma directory before running npm install
-- **Reason**: The postinstall script needs the schema to generate the Prisma client
-- **Note**: This is why we copy `prisma` folder early in the build process
+**Issue**: Prisma client generation fails, or the schema is not found during install
+- **Cause**: `npm ci` runs `prisma generate` (postinstall), which needs
+  `prisma/` and `prisma.config.ts`; the Dockerfile copies both before installing.
+  The client is generated into `lib/generated/prisma` (git-ignored).
 
 ### Runtime Issues
 
@@ -390,7 +382,7 @@ To scale the application:
 
 ### Production Recommendations
 
-1. Use long random values for `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
+1. Use long random values for `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
 2. Set `APP_DB_USER`/`APP_DB_PASSWORD` so the server runs with row access only
 3. Enable database backups and run `scripts/restore-drill.sh` on one (DEPLOYMENT.md "Backups")
 4. Configure SSL/TLS (handled by Coolify)
@@ -426,7 +418,7 @@ The docker-compose files are configured for Coolify deployment by default (ports
 
 2. **Run locally**:
 ```bash
-# Copy environment file, then set POSTGRES_PASSWORD, NEXTAUTH_SECRET and
+# Copy environment file, then set POSTGRES_PASSWORD, BETTER_AUTH_SECRET and
 # DEFAULT_ADMIN_PASSWORD (ENV_SETUP.md)
 cp .env.example .env
 

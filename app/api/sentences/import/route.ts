@@ -4,7 +4,7 @@ import { parse } from 'csv-parse/sync'
 import { requireSession } from '@/lib/api-auth'
 import { readUpload } from '@/lib/upload'
 import type { CaughtError, CsvRow } from '@/lib/utils'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { audit } from '@/lib/audit'
 
 const BATCH_SIZE = 1000

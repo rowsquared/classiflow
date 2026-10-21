@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'

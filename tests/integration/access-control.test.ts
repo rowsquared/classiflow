@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { Sentence, User } from '@prisma/client'
+import type { Sentence, User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 
@@ -204,7 +204,7 @@ describe('session lifecycle', () => {
 
   it('a demoted admin loses admin APIs immediately', async () => {
     const formerAdmin = await createUser('labeller')
-    signInAs({ id: formerAdmin.id, role: 'admin' }) // JWT still says admin
+    signInAs({ id: formerAdmin.id, role: 'admin' }) // the caller still thinks they are admin
     expect((await exportRoute.GET(request('/api/export'))).status).toBe(403)
   })
 
@@ -216,7 +216,7 @@ describe('session lifecycle', () => {
       params({ userId: user.id })
     )
     expect(res.status).toBe(200)
-    signInAs(user) // token from before the reset: sessionVersion 0
+    signInAs(user) // the session from before the reset
     expect((await queueRoute.GET(request('/api/sentences'))).status).toBe(401)
   })
 

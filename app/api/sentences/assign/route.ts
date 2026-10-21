@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { forbidden, requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible, getVisibleUserIds } from '@/lib/access'
 import { audit } from '@/lib/audit'

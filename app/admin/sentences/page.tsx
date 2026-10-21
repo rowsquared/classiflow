@@ -1,16 +1,18 @@
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import SentenceAdminClient, { type SentenceImport } from './SentenceAdminClient'
-import { serverFetchJSON } from '@/lib/server-fetch'
+import LoadError from '@/components/LoadError'
+import { listImports } from '@/lib/server/imports'
+import { requirePageUser } from '@/lib/server/page-user'
+import SentenceAdminClient from './SentenceAdminClient'
 
 export default async function SentenceAdminPage() {
-  const session = await auth()
-  if (!session?.user || session.user.role !== 'admin') {
-    redirect('/queue')
+  await requirePageUser('admin')
+
+  let data
+  try {
+    data = await listImports()
+  } catch (error) {
+    console.error('Record imports page failed to load:', error)
+    return <LoadError title="Sentences" what="the record imports" />
   }
 
-  const importsData = await serverFetchJSON<{ ok: boolean; imports: SentenceImport[] }>('/api/imports')
-  const initialImports = importsData?.imports ?? []
-  return <SentenceAdminClient initialImports={initialImports} />
+  return <SentenceAdminClient initialImports={data.imports} />
 }
-

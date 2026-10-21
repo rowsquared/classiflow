@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 20
     env:
       COMPOSE_PROJECT_NAME: classiflow-ci
-      NEXTAUTH_SECRET: ci-only-not-a-real-secret
+      BETTER_AUTH_SECRET: ci-only-not-a-real-secret-0123456789
       DEFAULT_ADMIN_EMAIL: admin@classiflow.local
       DEFAULT_ADMIN_PASSWORD: ci-password
       POSTGRES_PASSWORD: ci-only-db-password
@@ -47,7 +47,7 @@ jobs:
       APP_DB_PASSWORD: ci-only-app-db-password
       SOURCE_COMMIT: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build and start the stack
         # --wait blocks until every healthcheck passes, including the app's
         # own /api/health probe, and fails if one goes unhealthy.
@@ -75,6 +75,14 @@ jobs:
           [ "$count" = "1" ]
       - name: Login page renders
         run: docker compose exec -T app wget -qO /dev/null http://localhost:3000/login
+      - name: Scan the image for fixable critical vulnerabilities
+        # The image Coolify would build from this commit (same Dockerfile).
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: classiflow-ci-app
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
       - name: Logs
         if: failure()
         run: docker compose logs --no-color
@@ -88,8 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -109,7 +117,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: classiflow
           POSTGRES_PASSWORD: classiflow_password
@@ -124,8 +132,8 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://classiflow:classiflow_password@localhost:5432/classiflow_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -140,7 +148,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: classiflow
           POSTGRES_PASSWORD: classiflow_password
@@ -155,8 +163,8 @@ jobs:
     env:
       E2E_DATABASE_URL: postgresql://classiflow:classiflow_password@localhost:5432/classiflow_e2e_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -167,7 +175,7 @@ jobs:
         run: npm run test:e2e
       - name: Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: |

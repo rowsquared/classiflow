@@ -25,11 +25,10 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       DATABASE_URL: process.env.E2E_DATABASE_URL || '',
-      NEXTAUTH_SECRET: 'e2e-only-not-a-real-secret',
-      AUTH_URL: baseURL,
-      NEXTAUTH_URL: baseURL,
-      AUTH_TRUST_HOST: 'true',
-      INTERNAL_APP_URL: baseURL,
+      BETTER_AUTH_SECRET: 'e2e-only-not-a-real-secret-0123456789',
+      BETTER_AUTH_URL: baseURL,
+      // The journeys sign in more often than a person would.
+      SIGN_IN_RATE_LIMIT: '1000',
     },
   },
 })

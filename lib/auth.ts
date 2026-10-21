@@ -1,48 +1,94 @@
-import NextAuth from 'next-auth'
-import { authConfig } from './auth.config'
-import { prisma } from './prisma'
+import { betterAuth } from 'better-auth'
+import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { nextCookies } from 'better-auth/next-js'
+import { admin, username } from 'better-auth/plugins'
+import { headers } from 'next/headers'
+import { prisma } from '@/lib/prisma'
+import { USERNAME_PATTERN } from '@/lib/passwords'
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
-  // Allow localhost/preview hosts when explicitly trusted via env or in non-prod
-  trustHost: process.env.AUTH_TRUST_HOST === 'true' || process.env.NODE_ENV !== 'production',
-  callbacks: {
-    ...authConfig.callbacks,
-    async jwt({ token, user, trigger }) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-        token.mustResetPassword = user.mustResetPassword
-        token.sessionVersion = user.sessionVersion ?? 0
-      }
-      
-      // Handle session update trigger - fetch fresh data from DB.
-      // sessionVersion is deliberately not refreshed here: a revoked session must
-      // not be able to revive itself by asking for an update.
-      if (trigger === 'update' && token.id) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          select: { mustResetPassword: true, role: true, name: true, email: true }
-        })
-        
-        if (dbUser) {
-          token.mustResetPassword = dbUser.mustResetPassword
-          token.role = dbUser.role
-          token.name = dbUser.name
-          token.email = dbUser.email
-        }
-      }
-      
-      return token
+// Sign-in attempts per client IP per minute (ENV_SETUP.md).
+const SIGN_IN_LIMIT = { window: 60, max: Number(process.env.SIGN_IN_RATE_LIMIT) || 10 }
+
+/**
+ * Better Auth: database sessions (one Session row per browser), passwords on
+ * the "credential" Account row. Users are created and changed by the app's own
+ * admin API (app/api/users), not by Better Auth's sign-up or admin endpoints,
+ * so those are switched off below. BETTER_AUTH_SECRET and BETTER_AUTH_URL come
+ * from the environment (ENV_SETUP.md).
+ */
+export const auth = betterAuth({
+  appName: 'classiflow',
+  database: prismaAdapter(prisma, { provider: 'postgresql' }),
+  emailAndPassword: {
+    enabled: true,
+    disableSignUp: true,
+    minPasswordLength: 8,
+    maxPasswordLength: 256,
+  },
+  user: {
+    additionalFields: {
+      // Set for new users and admin-set passwords; proxy.ts and
+      // lib/api-auth.ts allow only the reset page until it is cleared.
+      mustResetPassword: { type: 'boolean', defaultValue: true, input: false },
     },
-    async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.mustResetPassword = token.mustResetPassword as boolean
-        session.user.sessionVersion = Number(token.sessionVersion ?? 0)
-      }
-      return session
-    }
-  }
+  },
+  rateLimit: {
+    // Counted per client IP in the database, so every instance shares them.
+    // Better Auth enables rate limiting in production only.
+    storage: 'database',
+    customRules: {
+      '/sign-in/email': SIGN_IN_LIMIT,
+      '/sign-in/username': SIGN_IN_LIMIT,
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async session => {
+          await prisma.user.update({ where: { id: session.userId }, data: { lastLogin: new Date() } })
+        },
+      },
+    },
+  },
+  plugins: [
+    username({
+      minUsernameLength: 3,
+      maxUsernameLength: 100,
+      usernameValidator: name => USERNAME_PATTERN.test(name),
+    }),
+    // Ban/unban and per-user session listing and revocation for admins; the
+    // roles stay ours (Role enum), and only "admin" may call these endpoints.
+    admin({ defaultRole: 'labeller', adminRoles: ['admin'] }),
+    nextCookies(),
+  ],
+  // Account changes go through app/api/users and app/api/auth/reset-password,
+  // which apply the team rules and write the audit log.
+  disabledPaths: [
+    '/update-user',
+    '/change-email',
+    '/change-password',
+    '/set-password',
+    '/delete-user',
+    '/request-password-reset',
+    '/reset-password',
+    '/is-username-available',
+    '/admin/create-user',
+    '/admin/update-user',
+    '/admin/set-role',
+    '/admin/set-user-password',
+    '/admin/remove-user',
+    '/admin/impersonate-user',
+    '/admin/stop-impersonating',
+  ],
 })
+
+export type AuthSession = typeof auth.$Infer.Session
+
+/**
+ * The current request's session, read from the database (no cookie cache), or
+ * null. Server components and lib/api-auth.ts use this; integration tests
+ * replace it (tests/integration/setup.ts).
+ */
+export async function getSession(): Promise<AuthSession | null> {
+  return auth.api.getSession({ headers: await headers() })
+}

@@ -8,14 +8,12 @@ import Modal from '@/components/Modal'
 
 export type AIJob = {
   id: string
-  type: 'labeling' | 'learning' | 'taxonomy_sync' | 'external_training'
+  type: 'labeling' | 'learning' | 'taxonomy_sync'
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   taxonomy: string
   totalSentences?: number
   processedSentences?: number
   failedSentences?: number
-  recordCount?: number
-  fileName?: string
   startedAt: string
   completedAt: string | null
   errorMessage: string | null
@@ -124,7 +122,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   }
 
   const getProgress = (job: AIJob) => {
-    if (job.type === 'external_training' || job.type === 'learning' || job.type === 'taxonomy_sync') {
+    if (job.type === 'learning' || job.type === 'taxonomy_sync') {
       // These jobs don't have detailed progress tracking
       if (job.status === 'completed') return 100
       if (job.status === 'processing') return 50
@@ -143,8 +141,6 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
         return 'Learning'
       case 'taxonomy_sync':
         return 'Taxonomy Sync'
-      case 'external_training':
-        return 'External Training'
       default:
         return 'AI Job'
     }
@@ -271,16 +267,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {job.type === 'external_training' ? (
-                          <div>
-                            <div>{job.recordCount || 0} records</div>
-                            {job.fileName && (
-                              <div className="text-xs text-gray-500 truncate max-w-[200px]" title={job.fileName}>
-                                {job.fileName}
-                              </div>
-                            )}
-                          </div>
-                        ) : job.type === 'learning' || job.type === 'taxonomy_sync' ? (
+                        {job.type === 'learning' || job.type === 'taxonomy_sync' ? (
                           <span className="text-gray-500">-</span>
                         ) : (
                           <>
@@ -415,16 +402,6 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                     </div>
                   </div>
                 </>
-              )}
-
-              {selectedJob.type === 'external_training' && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Training Data</label>
-                  <p className="text-sm text-gray-900">{selectedJob.recordCount || 0} records</p>
-                  {selectedJob.fileName && (
-                    <p className="text-sm text-gray-600 mt-1">File: {selectedJob.fileName}</p>
-                  )}
-                </div>
               )}
 
               <div>

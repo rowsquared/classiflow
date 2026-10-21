@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { signOut, signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
@@ -44,24 +43,9 @@ export default function ResetPasswordPage() {
         return
       }
 
-      // Sign out to clear old JWT token
-      await signOut({ redirect: false })
-      
-      // Sign back in with new password to get fresh JWT
-      const result = await signIn('credentials', {
-        email: data.email,
-        password: newPassword,
-        redirect: false
-      })
-
-      if (result?.ok) {
-        // Redirect to queue after successful re-authentication
-        router.push('/queue')
-        router.refresh()
-      } else {
-        setError('Password updated but re-login failed. Please login again.')
-        setLoading(false)
-      }
+      // This browser's session stays signed in; the server ended all others.
+      router.push('/queue')
+      router.refresh()
     } catch (error) {
       console.error('Password reset error:', error)
       setError('An error occurred. Please try again.')

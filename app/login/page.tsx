@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { signInWithIdentifier } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
@@ -18,22 +18,18 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false
-      })
+      const { error: signInError } = await signInWithIdentifier(email, password)
 
-      if (result?.error) {
-        setError('Invalid email or password')
+      if (signInError) {
+        setError(signInError.status === 429
+          ? 'Too many sign-in attempts. Please wait a minute and try again.'
+          : 'Invalid email or password')
         setLoading(false)
         return
       }
 
-      if (result?.ok) {
-        router.push('/queue')
-        router.refresh()
-      }
+      router.push('/queue')
+      router.refresh()
     } catch (error) {
       console.error('Login error:', error)
       setError('An error occurred. Please try again.')

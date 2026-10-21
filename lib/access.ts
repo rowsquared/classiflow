@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { forbidden, type CurrentUser } from '@/lib/api-auth'
 import { audit } from '@/lib/audit'

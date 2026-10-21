@@ -4,19 +4,15 @@ import QueuePageClient, {
   type Taxonomy,
   type QueueUser
 } from './QueuePageClient'
-import { auth } from '@/lib/auth'
-import { redirect } from 'next/navigation'
-import { serverFetchJSON } from '@/lib/server-fetch'
-
-function defaultStats(): Stats {
-  return { total: 0, pending: 0, submitted: 0, skipped: 0, flagged: 0, progress: 0 }
-}
+import LoadError from '@/components/LoadError'
+import { asJson } from '@/lib/server/json'
+import { requirePageUser } from '@/lib/server/page-user'
+import { getQueueStats, listQueue } from '@/lib/server/sentences'
+import { listActiveTaxonomies } from '@/lib/server/taxonomies'
+import { getVisibleUser, listVisibleUsers } from '@/lib/server/users'
 
 export default async function QueuePage() {
-  const session = await auth()
-  if (!session?.user) {
-    redirect('/login')
-  }
+  const user = await requirePageUser()
 
   const queueParams = new URLSearchParams({
     page: '1',
@@ -26,43 +22,35 @@ export default async function QueuePage() {
     status: 'pending'
   })
 
-  const [queueData, statsData, taxonomiesData, usersData, supervisorData] = await Promise.all([
-    serverFetchJSON<QueueResponse>(`/api/sentences?${queueParams.toString()}`),
-    serverFetchJSON<{ ok: boolean; stats: Stats }>(`/api/sentences/stats`),
-    serverFetchJSON<{ ok: boolean; taxonomies: Taxonomy[] }>(`/api/taxonomies/active`),
-    session.user.role === 'admin' || session.user.role === 'supervisor'
-      ? serverFetchJSON<{ users: QueueUser[] }>(`/api/users`, {}, { silent: true })
-      : Promise.resolve(null),
-    session.user.role === 'supervisor'
-      ? serverFetchJSON<{ user?: { labellers?: Array<{ id: string }> } }>(`/api/users/${session.user.id}`, {}, { silent: true })
-      : Promise.resolve(null)
-  ])
-
-  const statsOk = Boolean(statsData?.ok)
-  const stats = statsData?.ok ? statsData.stats : defaultStats()
-  const taxonomies = taxonomiesData?.ok ? taxonomiesData.taxonomies : []
-  const users: QueueUser[] =
-    usersData?.users?.map((u) => ({
-      id: u.id,
-      username: u.username,
-      name: u.name ?? null
-    })) ?? []
-
-  let canAssign = session.user.role === 'admin'
-  if (!canAssign && session.user.role === 'supervisor') {
-    canAssign = Boolean(supervisorData?.user?.labellers?.length)
+  let data
+  try {
+    const [queue, stats, taxonomies, users, self] = await Promise.all([
+      listQueue(user, queueParams),
+      getQueueStats(user, new URLSearchParams()),
+      listActiveTaxonomies(),
+      user.role === 'admin' || user.role === 'supervisor' ? listVisibleUsers(user) : null,
+      user.role === 'supervisor' ? getVisibleUser(user, user.id) : null,
+    ])
+    data = asJson({ queue, stats: stats.stats, taxonomies: taxonomies.taxonomies, users: users?.users ?? [], self })
+  } catch (error) {
+    console.error('Queue page failed to load:', error)
+    return <LoadError title="Queue" what="the queue" />
   }
+
+  const users: QueueUser[] = data.users.map(u => ({ id: u.id, username: u.username, name: u.name }))
+  // Supervisors assign only when they have labellers below them.
+  const canAssign = user.role === 'admin' ||
+    (data.self !== null && data.self !== 'forbidden' && data.self.labellers.length > 0)
 
   return (
     <QueuePageClient
-      initialQueue={queueData}
-      initialStats={stats}
-      initialTaxonomies={taxonomies}
+      initialQueue={data.queue as QueueResponse}
+      initialStats={data.stats as Stats}
+      initialTaxonomies={data.taxonomies as Taxonomy[]}
       initialUsers={users}
       initialCanAssign={canAssign}
-      initialStatsPrefetched={statsOk}
-      currentUser={{ id: session.user.id, role: session.user.role as 'admin' | 'supervisor' | 'labeller' }}
+      initialStatsPrefetched
+      currentUser={user}
     />
   )
 }
-

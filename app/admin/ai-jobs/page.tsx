@@ -1,24 +1,19 @@
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import { serverFetchJSON } from '@/lib/server-fetch'
+import LoadError from '@/components/LoadError'
+import { listAIJobs } from '@/lib/server/ai-jobs'
+import { asJson } from '@/lib/server/json'
+import { requirePageUser } from '@/lib/server/page-user'
 import AIJobsClient, { type AIJob } from './AIJobsClient'
 
 export default async function AIJobsPage() {
-  const session = await auth()
-  if (!session?.user || session.user.role !== 'admin') {
-    redirect('/queue')
+  await requirePageUser('admin')
+
+  let data
+  try {
+    data = asJson(await listAIJobs({ statusParams: [], page: 1, limit: 20 }))
+  } catch (error) {
+    console.error('AI jobs page failed to load:', error)
+    return <LoadError title="AI Jobs" what="the AI jobs" />
   }
 
-  const data = await serverFetchJSON<{
-    jobs: AIJob[]
-    pagination: { page: number; limit: number; total: number; pages: number }
-  }>('/api/ai-jobs?page=1&limit=20')
-
-  return (
-    <AIJobsClient
-      initialJobs={data?.jobs ?? []}
-      initialPagination={data?.pagination ?? { page: 1, limit: 20, total: 0, pages: 0 }}
-    />
-  )
+  return <AIJobsClient initialJobs={data.jobs as AIJob[]} initialPagination={data.pagination} />
 }
-

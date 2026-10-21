@@ -1,16 +1,9 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
     ignores: [
       "node_modules/**",
@@ -18,12 +11,22 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "lib/generated/**",
+      "playwright-report/**",
+      "test-results/**",
     ],
   },
   {
-    // Plain CommonJS scripts run directly by node (init-admin.js runs on container start)
-    files: ["scripts/**/*.js"],
-    rules: { "@typescript-eslint/no-require-imports": "off" },
+    // React Compiler rules (eslint-plugin-react-hooks 7). Components that break
+    // them are skipped by the compiler, not miscompiled. The remaining cases
+    // (state synced in effects, refs read during render) sit in the queue,
+    // labelling and taxonomy browser components that the modernization plan
+    // (M06) splits up; fix them there and then make these errors again.
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/purity": "warn",
+    },
   },
 ];
 

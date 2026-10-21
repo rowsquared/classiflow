@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { ADMIN, RECORDS } from './global-setup'
+import { ADMIN, RECORDS } from './fixtures'
 
 // The tests share one seeded database and run in this order: the labelling
 // journey changes a record, which the export journey then reads.
@@ -15,8 +15,8 @@ async function signIn(page: Page, password = ADMIN.password) {
 
 const rows = (page: Page) => page.locator('tbody tr')
 
-// The Content-Security-Policy is report-only (next.config.ts); any violation is
-// logged to the console and fails the journey, so enforcing it stays safe.
+// The Content-Security-Policy is enforced (proxy.ts); any violation is logged
+// to the console and fails the journey.
 let cspReports: string[] = []
 test.beforeEach(({ page }) => {
   cspReports = []

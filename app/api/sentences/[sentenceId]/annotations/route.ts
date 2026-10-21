@@ -5,7 +5,7 @@ import { requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const annotationSchema = z.object({

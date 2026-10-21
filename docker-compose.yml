@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-classiflow}
@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:-classiflow}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 images keep their data in /var/lib/postgresql/18/docker;
+      # mounting the parent lets a later major version sit next to it.
+      - postgres_data:/var/lib/postgresql
     # Port mapping removed for Coolify compatibility - PostgreSQL is only accessible internally
     # Uncomment the next 2 lines for local development if you need direct database access
     # ports:
@@ -44,13 +46,14 @@ services:
       APP_DB_USER: ${APP_DB_USER:-}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-}
 
-      # NextAuth
-      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
-      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?}
+      # Authentication (Better Auth, lib/auth.ts)
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      SIGN_IN_RATE_LIMIT: ${SIGN_IN_RATE_LIMIT:-10}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
 
       # Default Admin User
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
       # Required on first start (no admin yet); ignored once an admin exists.
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}

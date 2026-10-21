@@ -14,7 +14,7 @@ export async function POST(
     if (authError) return authError
 
     const body = await req.json()
-    const { type } = body as { type: 'labeling' | 'learning' | 'taxonomy_sync' | 'external_training' }
+    const { type } = body as { type: 'labeling' | 'learning' | 'taxonomy_sync' }
     const { jobId } = await params
 
     // Handle different job types
@@ -53,33 +53,6 @@ export async function POST(
 
       await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: `ai_job.${type}`, entityId: jobId, payload: { status: isStuck ? 'failed' : 'cancelled' } })
       return NextResponse.json({ ok: true, status: isStuck ? 'failed' : 'cancelled' })
-    }
-
-    if (type === 'external_training') {
-      const job = await prisma.aIExternalTrainingJob.findUnique({
-        where: { id: jobId },
-        select: { status: true }
-      })
-
-      if (!job) {
-        return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-      }
-
-      if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-        return NextResponse.json({ ok: true, status: job.status })
-      }
-
-      // External training jobs don't store a remote job id, so only the local record can be cancelled
-      await prisma.aIExternalTrainingJob.update({
-        where: { id: jobId },
-        data: {
-          status: 'cancelled',
-          completedAt: new Date()
-        }
-      })
-
-      await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: `ai_job.${type}`, entityId: jobId, payload: { status: 'cancelled' } })
-      return NextResponse.json({ ok: true, status: 'cancelled' })
     }
 
     if (type === 'learning') {

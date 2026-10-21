@@ -1,8 +1,8 @@
 "use client"
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useSession, signOut } from '@/lib/auth-client'
 import Image from 'next/image'
 import { Tags } from 'lucide-react'
 
@@ -29,6 +29,7 @@ export default function Sidebar() {
   const [showLogoutMenu, setShowLogoutMenu] = useState(false)
   const initializedRef = useRef(false)
   const pathname = usePathname()
+  const router = useRouter()
   const { data: session } = useSession()
 
   // Read from data attribute and sync state, then remove CSS override
@@ -93,7 +94,9 @@ export default function Sidebar() {
   }
 
   const handleLogout = async () => {
-    await signOut({ callbackUrl: '/login' })
+    await signOut()
+    router.push('/login')
+    router.refresh()
   }
 
   const navItems = [

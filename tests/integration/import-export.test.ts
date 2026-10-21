@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { NextRequest } from 'next/server'
 import { parse } from 'csv-parse/sync'
-import type { User } from '@prisma/client'
+import type { User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSentences, createUser, params, request, resetDatabase, signInAs } from './helpers'
 

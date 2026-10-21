@@ -12,27 +12,28 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `DATABASE_URL` | yes (app outside Compose; Compose builds it) | none | yes | PostgreSQL URL of the **schema owner**: runs migrations and recovery scripts. Local dev: `postgresql://classiflow:classiflow_password@localhost:5434/classiflow?schema=public` |
-| `POSTGRES_PASSWORD` | yes, with `docker-compose.yml` | none (Compose refuses to start) | yes | Password of the Compose PostgreSQL service. PostgreSQL keeps the password it was initialised with; see DEPLOYMENT.md "Upgrading an existing Compose deployment" |
+| `POSTGRES_PASSWORD` | yes, with `docker-compose.yml` | none (Compose refuses to start) | yes | Password of the Compose PostgreSQL service. PostgreSQL keeps the password it was initialised with: changing it later needs `ALTER ROLE` as well |
 | `POSTGRES_USER`, `POSTGRES_DB` | no | `classiflow` | no | Compose PostgreSQL user and database |
+| `DATABASE_POOL_SIZE` | no | `10` | no | Connections per app instance (`pg` pool, `lib/prisma.ts`). See DEPLOYMENT.md "Running more than one instance" |
 | `APP_DB_USER`, `APP_DB_PASSWORD` | no (recommended in production) | unset: the server uses `DATABASE_URL` | password: yes | Least-privilege role the server runs as; created by `scripts/start.sh`. See DEPLOYMENT.md "Database roles" |
 
 ## Authentication
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
-| `NEXTAUTH_SECRET` | yes | none (Compose refuses to start) | yes | Signs session tokens. Changing it signs everyone out |
-| `AUTH_URL` / `NEXTAUTH_URL` | yes in production | `http://localhost:3000` in Compose | no | Public URL of the app (Auth.js reads `AUTH_URL`, falls back to `NEXTAUTH_URL`) |
-| `AUTH_TRUST_HOST` | no | `true` in Compose; outside production always trusted | no | Trust the `Host` header for auth URLs. Keep `true` behind a reverse proxy that sets `Host` |
+| `BETTER_AUTH_SECRET` | yes | none (Compose refuses to start; the server refuses Better Auth's default in production) | yes | Signs session cookies. At least 32 characters. Changing it signs everyone out |
+| `BETTER_AUTH_URL` | yes in production | `http://localhost:3000` in Compose | no | Public URL of the app (`https://…`, no trailing path). Better Auth trusts this origin for sign-in requests |
+| `SIGN_IN_RATE_LIMIT` | no | `10` | no | Sign-in attempts per client IP per minute, shared by all instances (production only). The IP comes from `X-Forwarded-For` |
 
 ## First admin
 
-Used by `scripts/init-admin.js` only while the database has **no admin**;
+Used by `scripts/init-admin.ts` only while the database has **no admin**;
 changing them later does nothing. To recover access see DEPLOYMENT.md "Admin User".
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `DEFAULT_ADMIN_PASSWORD` | on the first start | none | yes | At least 8 characters; well-known placeholders are refused in production. Must be changed at first sign-in |
-| `DEFAULT_ADMIN_USERNAME` | no | `admin` | no | Sign-in name |
+| `DEFAULT_ADMIN_USERNAME` | no | `admin` | no | Sign-in name: letters, digits, `.`, `_`, `-`; stored in lower case |
 | `DEFAULT_ADMIN_EMAIL` | no | `admin@classiflow.local` (`admin@example.com` in Compose) | no | Sign-in email |
 | `DEFAULT_ADMIN_NAME` | no | `System Administrator` (`Admin User` in Compose) | no | Display name |
 
@@ -57,13 +58,12 @@ labelling; AI features stay disabled. They are set together or not at all.
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `SOURCE_COMMIT` | no (build argument) | empty | no | Commit being built; reported by `/api/health` as `release`. Coolify sets it with "Include Source Commit in Build" |
-| `INTERNAL_APP_URL` | no | `http://127.0.0.1:$PORT` | no | Where server-rendered pages call the app's own API. Only set it if the server does not listen on loopback |
 | `PORT`, `HOSTNAME` | no | `3000`, `0.0.0.0` in the image | no | Listen address of `server.js` |
-| `NODE_ENV` | no | `production` in the image | no | Enables production checks (admin password placeholders, trusted hosts) |
+| `NODE_ENV` | no | `production` in the image | no | Enables production checks (admin password placeholders, auth secret) and the sign-in rate limit |
 
 ## Scripts and tests only
 
 | Variable | Used by | Purpose |
 | --- | --- | --- |
-| `NEW_PASSWORD` | `scripts/reset-admin-password.js` | Temporary password to set (DEPLOYMENT.md "Admin User") |
+| `NEW_PASSWORD` | `scripts/reset-admin-password.ts` | Temporary password to set (DEPLOYMENT.md "Admin User") |
 | `TEST_DATABASE_URL` | `npm run test:integration` | Disposable database whose name ends in `_test` |

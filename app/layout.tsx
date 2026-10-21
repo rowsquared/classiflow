@@ -1,8 +1,8 @@
 import '../styles/globals.css'
 import type { ReactNode } from 'react'
 import Script from 'next/script'
+import { headers } from 'next/headers'
 import Sidebar from '@/components/Sidebar'
-import SessionProvider from '@/components/SessionProvider'
 import { Inter } from 'next/font/google'
 
 const inter = Inter({
@@ -27,12 +27,17 @@ export const metadata = {
   },
 }
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Per-request CSP nonce from proxy.ts. Reading headers also renders every
+  // page per request, which a nonce-based policy needs.
+  const nonce = (await headers()).get('x-nonce') ?? undefined
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans bg-gray-50 text-gray-900 antialiased overflow-hidden`}>
         <Script
           id="sidebar-state-init"
+          nonce={nonce}
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
@@ -48,14 +53,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             `,
           }}
         />
-        <SessionProvider>
-          <div className="flex h-screen">
-            <Sidebar />
-            <main className="flex-1 overflow-auto bg-white">
-              {children}
-            </main>
-          </div>
-        </SessionProvider>
+        <div className="flex h-screen">
+          <Sidebar />
+          <main className="flex-1 overflow-auto bg-white">
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   )

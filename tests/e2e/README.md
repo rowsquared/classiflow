@@ -3,8 +3,10 @@
 Playwright drives a production build in Chromium against a disposable
 database: sign-in, queue search (debounce, superseded requests, error banner and
 retry), dialog keyboard behaviour, labelling with the keyboard, and the CSV
-export. `global-setup.ts` migrates the database, empties it and seeds an admin,
-a two-level taxonomy and three records.
+export. `global-setup.ts` migrates the database, then runs `seed.ts` with plain
+Node (Prisma 7's client is ES modules) to empty it and seed an admin, a
+two-level taxonomy and three records. The Content-Security-Policy is enforced,
+and any violation fails a journey.
 
 ```bash
 createdb classiflow_e2e_test          # once; the name must end in _test

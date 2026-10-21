@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@/lib/generated/prisma/client'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
 
 /**
@@ -69,7 +69,7 @@ export function checkLabelPath(labels: LabelInput[], nodes: Map<string, PathNode
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-/** Loads the nodes a path refers to (resolving legacy null isLeaf from children) and checks it. */
+/** Loads the nodes a path refers to and checks it. */
 export async function validateLabelPath(
   db: Db,
   taxonomy: { id: string; maxDepth: number },
@@ -81,23 +81,7 @@ export async function validateLabelPath(
     select: { code: true, level: true, parentCode: true, isLeaf: true },
   })
 
-  const unresolved = rows.filter(r => r.isLeaf === null).map(r => r.code)
-  const withChildren = new Set<string>()
-  if (unresolved.length > 0) {
-    const children = await db.taxonomyNode.findMany({
-      where: { taxonomyId: taxonomy.id, parentCode: { in: unresolved } },
-      select: { parentCode: true },
-      distinct: ['parentCode'],
-    })
-    children.forEach(c => c.parentCode && withChildren.add(c.parentCode))
-  }
-
-  const nodes = new Map<string, PathNode>(rows.map(r => [r.code, {
-    code: r.code,
-    level: r.level,
-    parentCode: r.parentCode,
-    isLeaf: r.isLeaf ?? !withChildren.has(r.code),
-  }]))
+  const nodes = new Map<string, PathNode>(rows.map(r => [r.code, r]))
   return checkLabelPath(labels, nodes, taxonomy.maxDepth)
 }
 

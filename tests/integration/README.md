@@ -1,9 +1,11 @@
 # Integration tests
 
 Route handlers are imported and called directly against a real PostgreSQL
-database. `auth()` is mocked; `signInAs(user)` in `helpers.ts` chooses the caller,
-the way the JWT would carry it. Everything else (Prisma, transactions, access
-rules) is the production code.
+database. `getSession()` from `lib/auth.ts` is replaced (`setup.ts`): users made
+with `createUser()` get a `Session` row, `signInAs(user)` chooses the caller, and
+the session is read from the database the way Better Auth reads it, so revoked
+sessions and deleted users really are signed out. Everything else (Prisma,
+transactions, access rules, `lib/server/*`) is the production code.
 
 ```bash
 docker exec classiflow-dev-postgres createdb -U classiflow classiflow_test   # once

@@ -1,7 +1,49 @@
 # Modernization plan (October 2026)
 
-**Status:** decided 21 October 2026, nothing implemented yet. **Baseline:**
-`staging` at `58bb4c2`. **Owner:** maintainer to assign.
+**Status:** decided 21 October 2026; phases 1 and 2 implemented the same day
+(see "Implementation status" below). **Baseline:** `staging` at `58bb4c2`.
+
+## Implementation status (21 October 2026)
+
+Done, verified with typecheck, lint (0 errors), 42 unit tests, 57 integration
+tests (PostgreSQL 16 locally; CI uses 18), 10 browser journeys against a
+production build, and `npm audit --omit=dev` (0 findings):
+
+- **M01** Next 16.4 (`proxy.ts`, Turbopack), React Compiler, ESLint 10 flat
+  config, CSP enforced with per-request nonces. The page guard reads the
+  database session. The React Compiler lint rules found 18 effect/ref patterns in
+  the queue, labelling and taxonomy browser components; they are warnings until
+  M06 splits those components.
+- **M02** Prisma 7.10 with `@prisma/adapter-pg`, client in `lib/generated/prisma`,
+  `prisma.config.ts`, explicit pool size (`DATABASE_POOL_SIZE`), scripts in
+  TypeScript (`node scripts/*.ts`), no `openssl` or engine install scripts. The
+  "restored copy of a populated database" test is moot (fresh start).
+- **M03** (partly) Vitest 5, Playwright 1.64, TypeScript 6.0 for the build and
+  the native 7.0 compiler for `npm run typecheck` (same results, about twice as
+  fast), lucide-react 1.x, unused dependencies removed, build-only packages in
+  `devDependencies`, Dependabot groups, Actions pinned to commit SHAs.
+- **M04** Better Auth 1.7: database sessions, username and admin plugins,
+  database rate limit, `mustResetPassword` as an additional field;
+  `requireSession()` signatures unchanged. The integration suites pass; the only
+  test changes are the harness (`setup.ts`, `helpers.ts`: real `Session` rows)
+  and fields that no longer exist.
+- **M05** Server pages read through `lib/server/*`; queue list and stats share
+  one filter parser (`queueWhere`); `lib/contracts/progress.ts`; error state
+  instead of empty data; `lib/server-fetch.ts` deleted.
+- **M00** PostgreSQL 18 everywhere, one baseline migration, external-training
+  model and the `isLeaf` / `'success'` fallbacks removed, label-integrity report
+  deleted, upgrade path dropped from the docs.
+- **M08** (partly) Trivy scan of the smoke image in CI.
+
+Still open from this plan:
+
+- M03: `noUncheckedIndexedAccess` (149 findings, 83 in tests); a formatter
+  with a single reformat commit.
+- M01: remove hand-written `useMemo`/`useCallback` where the compiler covers
+  them (optional).
+- M06, M07, M08 logs/traces, M09, and the "Carried over from hardening" list.
+- Setting up staging and production from the docs (phase 3) is the
+  maintainer's.
 
 This plan answers one question: which parts of the stack should be upgraded or
 replaced before feature work continues? It picks up where the hardening round

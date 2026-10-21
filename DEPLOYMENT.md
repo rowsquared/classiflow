@@ -5,7 +5,7 @@ This guide covers production deployment for classiflow. The app provides the UI 
 ## Prerequisites
 
 - Docker (and Docker Compose) or a container platform
-- PostgreSQL 16 (the version CI and the Compose file use; others are untested)
+- PostgreSQL 18 (the version CI and the Compose files use; others are untested)
 - A domain with HTTPS (recommended for production)
 - Environment variables (see below)
 
@@ -23,8 +23,8 @@ cd classiflow
 ```bash
 cp .env.example .env
 ```
-Compose refuses to start without `POSTGRES_PASSWORD` and `NEXTAUTH_SECRET`; there
-are no built-in fallbacks.
+Compose refuses to start without `POSTGRES_PASSWORD` and `BETTER_AUTH_SECRET`;
+there are no built-in fallbacks.
 
 3. Start the stack:
 ```bash
@@ -54,16 +54,21 @@ The default Dockerfile runs `node server.js` only, so you must override the star
 ## Environment Variables
 
 See [ENV_SETUP.md](ENV_SETUP.md) for every variable. Required in production:
-`DATABASE_URL` (or `POSTGRES_PASSWORD` with Compose), `NEXTAUTH_SECRET`,
-`AUTH_URL`/`NEXTAUTH_URL`, and `DEFAULT_ADMIN_PASSWORD` for the first start.
+`DATABASE_URL` (or `POSTGRES_PASSWORD` with Compose), `BETTER_AUTH_SECRET`,
+`BETTER_AUTH_URL`, and `DEFAULT_ADMIN_PASSWORD` for the first start.
 
 ## Running more than one instance
 
 Several app containers can share one database. AI jobs are safe: each job is
 held by one instance through a database lease and taken over if that instance
-dies (see AGENTS.md "Optional AI integration"). The built-in login throttle is
-per instance, so rate-limit `POST /api/auth/callback/credentials` at the proxy.
-Size the database's `max_connections` for Prisma's pool per instance.
+dies (see AGENTS.md "Optional AI integration"). Sessions and the sign-in rate
+limit live in the database, so they are shared too.
+
+Connection budget: each instance opens up to `DATABASE_POOL_SIZE` connections
+(default 10; Prisma 7 uses the `pg` driver's pool, `lib/prisma.ts`), and the
+start scripts briefly one more each. Keep instances × `DATABASE_POOL_SIZE` plus
+room for migrations, backups and `psql` below PostgreSQL's `max_connections`
+(100 by default).
 
 ## Database roles
 
@@ -71,33 +76,18 @@ Size the database's `max_connections` for Prisma's pool per instance.
 run as it. By default the server uses it too. To run the server with row access
 only, set `APP_DB_USER` (a lower-case name different from the owner) and
 `APP_DB_PASSWORD` (16+ characters). On every start `scripts/start.sh` then runs
-`scripts/db-runtime-role.js`, which creates or updates that role with
+`scripts/db-runtime-role.ts`, which creates or updates that role with
 `SELECT/INSERT/UPDATE/DELETE` on the application tables (also tables added by
 later migrations) and nothing else: no DDL, no `TRUNCATE`, no access to the
 migration history. The server and admin bootstrap then connect as that role.
 Changing `APP_DB_PASSWORD` and restarting rotates the password. The CI smoke job
 runs the stack this way. To go back, unset both variables and restart.
 
-## Upgrading an existing Compose deployment
-
-Earlier versions of `docker-compose.yml` fell back to the public password
-`classiflow_password` when `POSTGRES_PASSWORD` was unset. PostgreSQL keeps the
-password it was initialised with, so set `POSTGRES_PASSWORD` to the password the
-database actually has (`classiflow_password` if it was never set) before
-deploying, then rotate it:
-
-```bash
-docker compose exec -T postgres psql -U classiflow -d classiflow \
-  -c "ALTER ROLE classiflow PASSWORD 'the-new-password'"
-```
-
-and set `POSTGRES_PASSWORD` to the new value and redeploy.
-
 ## Reverse proxy
 
 - Terminate TLS at the proxy and forward `Host` (or `X-Forwarded-Host`) unchanged: state-changing API calls whose browser `Origin` does not match are refused (403).
-- Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files), and a rate limit on `POST /api/auth/callback/credentials`: the built-in login throttle is per process only.
-- Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and a report-only `Content-Security-Policy` (see `next.config.ts`; switch it to enforcing once browser consoles in production show no reports).
+- Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files). The app rate-limits sign-in per client IP itself (`SIGN_IN_RATE_LIMIT`), reading the IP from `X-Forwarded-For`, so the proxy must set that header (and strip any value the client sent). A proxy rate limit on `POST /api/auth/sign-in/*` is still a sensible second layer.
+- Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (`next.config.ts`) and an enforced, nonce-based `Content-Security-Policy` (`proxy.ts`).
 
 ## Health Check
 
@@ -115,15 +105,15 @@ to deploy; with the repository variable `PROD_HEALTH_URL` set, the CI
 
 ## Admin User
 
-On every start, `scripts/init-admin.js` creates an admin from `DEFAULT_ADMIN_USERNAME` (default `admin`), `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` **only if the database has no admin yet**. The password must be changed at first sign-in. In production the script refuses a missing or well-known placeholder password and stops startup with an error, so set a real one before the first deploy. It never prints the password.
+On every start, `scripts/init-admin.ts` creates an admin from `DEFAULT_ADMIN_USERNAME` (default `admin`), `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` **only if the database has no admin yet**. The password must be changed at first sign-in. In production the script refuses a missing or well-known placeholder password and stops startup with an error, so set a real one before the first deploy. It never prints the password.
 
 Changing `DEFAULT_ADMIN_PASSWORD` later does **not** change an existing account. To recover a lost admin password, set a temporary one from the server:
 
 ```bash
-docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/reset-admin-password.js admin
+docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/reset-admin-password.ts admin
 ```
 
-The account must change it at next sign-in, and its existing sessions are signed out. Other users are reset by an admin on the Team page.
+The account must change it at next sign-in, its existing sessions are signed out, and a ban on it is lifted. Other users are reset by an admin on the Team page.
 
 ## Audit log
 
@@ -153,7 +143,7 @@ the host, encrypted, and restore one regularly:
 # Backup, from the project directory (or the Coolify server)
 docker compose exec -T postgres pg_dump -U classiflow -Fc classiflow > classiflow-$(date +%F).dump
 
-# Restore drill: restores into a throwaway PostgreSQL 16 container, prints the
+# Restore drill: restores into a throwaway PostgreSQL 18 container, prints the
 # latest migration and row counts, and how long the restore took.
 scripts/restore-drill.sh classiflow-2026-10-21.dump
 ```

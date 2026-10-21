@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession } from '@/lib/auth-client'
 import PageHeader from '@/components/PageHeader'
 import Modal from '@/components/Modal'
 
@@ -15,9 +15,9 @@ export type User = {
   supervisor: { id: string; name: string | null; email: string } | null
   labellers: { id: string; name: string | null; email: string }[]
   mustResetPassword: boolean
-  lastLogin: Date | null
-  createdAt: Date
-  updatedAt: Date
+  lastLogin: string | null
+  createdAt: string
+  updatedAt: string
   _count: {
     assignedSentences: number
   }

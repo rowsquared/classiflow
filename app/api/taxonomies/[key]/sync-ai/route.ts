@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { startAIJob, monitorAIJob } from '@/lib/ai-labeling'
 import { AI_SOURCE_SLUG } from '@/lib/constants'
 import type { CaughtError } from '@/lib/utils'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { audit } from '@/lib/audit'
 
 export async function POST(
@@ -75,7 +75,7 @@ export async function POST(
           definition: node.definition ?? '',
           examples: node.examples ?? '',
           parentCode: node.parentCode,
-          isLeaf: node.isLeaf ?? undefined
+          isLeaf: node.isLeaf
         })),
         synonyms: synonyms.map(s => ({
           nodeCode: s.node.code,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Taxonomy, User } from '@prisma/client'
+import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
 

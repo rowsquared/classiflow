@@ -1,22 +1,24 @@
-import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import { serverFetchJSON } from '@/lib/server-fetch'
+import LoadError from '@/components/LoadError'
+import { asJson } from '@/lib/server/json'
+import { requirePageUser } from '@/lib/server/page-user'
+import { listTaxonomiesWithStats } from '@/lib/server/taxonomies'
 import TaxonomyAdminClient, { type Taxonomy } from './TaxonomyAdminClient'
 
 export default async function TaxonomyAdminPage() {
-  const session = await auth()
-  if (!session?.user || session.user.role !== 'admin') {
-    redirect('/queue')
-  }
+  await requirePageUser('admin')
 
-  const data = await serverFetchJSON<{ ok: boolean; taxonomies: Taxonomy[]; learningThreshold?: number }>(
-    '/api/taxonomies?includeDeleted=true'
-  )
+  let data
+  try {
+    data = asJson(await listTaxonomiesWithStats())
+  } catch (error) {
+    console.error('Taxonomy page failed to load:', error)
+    return <LoadError title="Taxonomies" what="the taxonomies" />
+  }
 
   return (
     <TaxonomyAdminClient
-      initialTaxonomies={data?.taxonomies ?? []}
-      initialLearningThreshold={data?.learningThreshold ?? 500}
+      initialTaxonomies={data.taxonomies as Taxonomy[]}
+      initialLearningThreshold={data.learningThreshold}
     />
   )
 }

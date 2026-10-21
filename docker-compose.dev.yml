@@ -6,7 +6,7 @@ name: classiflow-dev
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: classiflow-dev-postgres
     restart: unless-stopped
     environment:
@@ -17,7 +17,7 @@ services:
       # Loopback only: the dev password is public, so keep the port off the network.
       - "127.0.0.1:5434:5432"
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_dev_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U classiflow"]
       interval: 5s

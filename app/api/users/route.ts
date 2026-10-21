@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
-import { getVisibleUserIds } from '@/lib/access'
+import { listVisibleUsers } from '@/lib/server/users'
 import { validateSupervisor } from '@/lib/user-rules'
-import bcrypt from 'bcryptjs'
+import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
 
 const createUserSchema = z.object({
-  username: z.string().min(3).max(100),
-  email: z.string().email().max(254),
+  // Sign-in names are case-insensitive: stored in lower case (Better Auth's username plugin).
+  username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen')
+    .transform(u => u.toLowerCase()),
+  email: z.string().email().max(254).transform(e => e.toLowerCase()),
   name: z.string().min(1).max(200),
   role: z.enum(['admin', 'supervisor', 'labeller']),
   supervisorId: z.string().optional().nullable(),
@@ -22,47 +24,7 @@ export async function GET() {
   if (error) return error
 
   try {
-    const teamUserIds = await getVisibleUserIds(currentUser)
-    const users = await prisma.user.findMany({
-      where: teamUserIds ? { id: { in: teamUserIds } } : undefined,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        name: true,
-        role: true,
-        supervisorId: true,
-        supervisor: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        labellers: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        mustResetPassword: true,
-        lastLogin: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            assignedSentences: true
-          }
-        }
-      },
-      orderBy: [
-        { role: 'asc' },
-        { name: 'asc' }
-      ]
-    })
-
-    return NextResponse.json({ users })
+    return NextResponse.json(await listVisibleUsers(currentUser))
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -109,30 +71,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: supervisorError }, { status: 400 })
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(tempPassword, 10)
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        username,
-        email,
-        name,
-        role,
-        password: hashedPassword,
-        supervisorId: supervisorId || null,
-        mustResetPassword: true
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        name: true,
-        role: true,
-        supervisorId: true,
-        mustResetPassword: true,
-        createdAt: true
-      }
+    // The user and their temporary password (a Better Auth credential account).
+    const user = await prisma.$transaction(async tx => {
+      const created = await tx.user.create({
+        data: {
+          username,
+          displayUsername: validation.data.username,
+          email,
+          name,
+          role,
+          supervisorId: supervisorId || null,
+          mustResetPassword: true
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          name: true,
+          role: true,
+          supervisorId: true,
+          mustResetPassword: true,
+          createdAt: true
+        }
+      })
+      await setPassword(tx, created.id, tempPassword)
+      return created
     })
 
     await audit({

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
-import type { AILabelingJobStatus } from '@prisma/client'
+import type { AILabelingJobStatus } from '@/lib/generated/prisma/client'
 import { ensureJobsMonitored } from '@/lib/ai-job-monitor'
 
 // How long recently finished jobs are included in the response
@@ -21,7 +21,7 @@ export async function GET() {
 
     const recentCutoff = new Date(Date.now() - RECENT_WINDOW_MS)
 
-    // Same shape for all three job models (they share the AILabelingJobStatus enum)
+    // Same shape for both job models (they share the AILabelingJobStatus enum)
     const activeOrRecent: {
       OR: Array<{ status: { in: AILabelingJobStatus[] }; completedAt?: { gte: Date } }>
     } = {
@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     // Get all active + recently finished jobs across all types
-    const [labelingJobs, learningJobs, trainingJobs, syncJobs] = await Promise.all([
+    const [labelingJobs, learningJobs, syncJobs] = await Promise.all([
       prisma.aILabelingJob.findMany({
         where: activeOrRecent,
         include: {
@@ -42,14 +42,6 @@ export async function GET() {
         orderBy: { startedAt: 'desc' }
       }),
       prisma.aILearningJob.findMany({
-        where: activeOrRecent,
-        include: {
-          taxonomy: { select: { key: true } },
-          createdBy: { select: { id: true, name: true, email: true } }
-        },
-        orderBy: { startedAt: 'desc' }
-      }),
-      prisma.aIExternalTrainingJob.findMany({
         where: activeOrRecent,
         include: {
           taxonomy: { select: { key: true } },
@@ -88,21 +80,10 @@ export async function GET() {
     const allJobs = [
       ...labelingJobs.map(j => formatSentenceJob(j, 'labeling')),
       ...learningJobs.map(j => formatSentenceJob(j, 'learning')),
-      ...trainingJobs.map(job => ({
-        id: job.id,
-        type: 'external_training' as const,
-        status: job.status,
-        taxonomy: job.taxonomy.key,
-        recordCount: job.recordCount,
-        fileName: job.fileName,
-        startedAt: job.startedAt.toISOString(),
-        completedAt: job.completedAt?.toISOString() || null,
-        createdBy: job.createdBy
-      })),
       ...syncJobs.map(taxonomy => ({
         id: taxonomy.lastAISyncJobId || `sync-${taxonomy.id}`,
         type: 'taxonomy_sync' as const,
-        status: taxonomy.lastAISyncStatus === 'success' ? 'completed' : (taxonomy.lastAISyncStatus || 'pending'),
+        status: taxonomy.lastAISyncStatus || 'pending',
         taxonomy: taxonomy.key,
         startedAt: taxonomy.lastAISyncAt?.toISOString() || new Date().toISOString(),
         errorMessage: taxonomy.lastAISyncError || null

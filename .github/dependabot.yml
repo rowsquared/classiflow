@@ -10,15 +10,22 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR for routine bumps; majors arrive one by one so each can be reviewed.
+      # Packages that must move together arrive as one PR, majors included.
+      framework:
+        patterns: [next, react, react-dom, eslint-config-next, "@types/react", "@types/react-dom"]
+      prisma:
+        patterns: [prisma, "@prisma/client", "@prisma/adapter-pg"]
+      # One PR for other routine bumps; other majors arrive one by one.
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Prisma CLI and client must move together and need a migration plan.
+      # Prisma 8 only after general availability (docs/plans/modernization-2026-10.md).
       - dependency-name: prisma
-        update-types: [version-update:semver-major]
+        versions: [">=8.0.0-0"]
       - dependency-name: "@prisma/client"
-        update-types: [version-update:semver-major]
+        versions: [">=8.0.0-0"]
+      - dependency-name: "@prisma/adapter-pg"
+        versions: [">=8.0.0-0"]
 
   - package-ecosystem: docker
     directory: /

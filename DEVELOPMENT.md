@@ -25,10 +25,10 @@ and commit `package.json` and `package-lock.json` together.
 cp .env.example .env
 ```
 The template's `DATABASE_URL` already points at the dev database (port 5434).
-Set `NEXTAUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`; leave the AI variables
+Set `BETTER_AUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`; leave the AI variables
 commented out unless you run Taxomind. Every variable is in `ENV_SETUP.md`.
 
-3. Start the database (Postgres 16 on port 5434, data kept in a Docker volume):
+3. Start the database (PostgreSQL 18 on port 5434, data kept in a Docker volume):
 ```bash
 npm run db:up
 ```
@@ -45,7 +45,7 @@ npm run db:init-admin
 npm run dev
 ```
 
-Open http://localhost:3000 and log in with `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` from `.env`.
+Open http://localhost:3000 and sign in with `DEFAULT_ADMIN_USERNAME` (or `DEFAULT_ADMIN_EMAIL`) and `DEFAULT_ADMIN_PASSWORD` from `.env`.
 
 ## Everyday commands
 
@@ -54,9 +54,9 @@ Open http://localhost:3000 and log in with `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMI
 | `npm run dev` | Next.js dev server with hot reload |
 | `npm test` / `npm run test:watch` | Unit tests (Vitest, `*.test.ts` next to the code) |
 | `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript check (`next build` skips type errors, so run this) |
+| `npm run typecheck` | TypeScript check with the native TypeScript 7 compiler (fast; the build uses TypeScript 6) |
 | `npm run db:up` / `npm run db:down` | Start / stop the dev database |
-| `npx prisma migrate dev --name <change>` | Create a migration after editing `prisma/schema.prisma` |
+| `npx prisma migrate dev --name <change>` | Create a migration after editing `prisma/schema.prisma`; then `npx prisma generate` (Prisma 7 no longer regenerates the client by itself) |
 | `npx prisma studio` | Browse the database in the browser |
 
 To wipe the dev database: `docker compose -f docker-compose.dev.yml down -v`, then `npm run db:up` and rerun the migrations.

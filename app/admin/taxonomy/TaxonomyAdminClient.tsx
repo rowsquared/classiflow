@@ -31,7 +31,6 @@ export type Taxonomy = {
   lastLearningStatus?: string | null
   lastLearningError?: string | null
   newAnnotationsSinceLastLearning: number
-  lastExternalTrainingAt?: string | null
 }
 
 type Props = {
@@ -399,7 +398,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
   }
 
   function isSyncedWithAI(taxonomy: Taxonomy) {
-    return taxonomy.lastAISyncStatus === 'completed' || taxonomy.lastAISyncStatus === 'success'
+    return taxonomy.lastAISyncStatus === 'completed'
   }
 
   async function handleSyncAI(taxonomy: Taxonomy) {

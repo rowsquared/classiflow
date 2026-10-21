@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/lib/generated/prisma/client'
 import { AI_SOURCE_SLUG, UNKNOWN_NODE_CODES } from '@/lib/constants'
 import { requireSession } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
@@ -221,7 +221,6 @@ export async function DELETE(
       // Finished AI job history for this taxonomy (every job table references it)
       await tx.aILabelingJob.deleteMany({ where: { taxonomyId } })
       await tx.aILearningJob.deleteMany({ where: { taxonomyId } })
-      await tx.aIExternalTrainingJob.deleteMany({ where: { taxonomyId } })
 
       await tx.taxonomy.delete({
         where: { id: taxonomyId }

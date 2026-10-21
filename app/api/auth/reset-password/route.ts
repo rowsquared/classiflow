@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSessionAllowingReset } from '@/lib/api-auth'
 import { audit } from '@/lib/audit'
-import bcrypt from 'bcryptjs'
+import { checkPassword, revokeSessions, setPassword } from '@/lib/passwords'
 import { z } from 'zod'
 
 const resetPasswordSchema = z.object({
@@ -12,53 +12,34 @@ const resetPasswordSchema = z.object({
 
 export async function POST(req: NextRequest) {
   // The one business endpoint open to users who still have to change their password.
-  const { user: currentUser, error } = await requireSessionAllowingReset()
+  const { session, user: currentUser, error } = await requireSessionAllowingReset()
   if (error) return error
 
   try {
     const body = await req.json()
     const { currentPassword, newPassword } = resetPasswordSchema.parse(body)
 
-    // Get user with password
-    const user = await prisma.user.findUnique({
-      where: { id: currentUser.id }
-    })
-
-    if (!user || !user.password) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    // Verify current password
-    const passwordMatch = await bcrypt.compare(currentPassword, user.password)
-    if (!passwordMatch) {
+    if (!await checkPassword(prisma, currentUser.id, currentPassword)) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
     }
 
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10)
-
-    // Update password and reset flag. Bumping sessionVersion signs out every other
-    // session; the reset page signs this browser back in with the new password.
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashedPassword,
-        mustResetPassword: false,
-        sessionVersion: { increment: 1 }
-      }
+    // New password, reset flag cleared, and every other session signed out;
+    // this browser stays signed in.
+    await prisma.$transaction(async tx => {
+      await setPassword(tx, currentUser.id, newPassword)
+      await tx.user.update({ where: { id: currentUser.id }, data: { mustResetPassword: false } })
+      await revokeSessions(tx, currentUser.id, session.session.id)
     })
 
-    // Return success with user email for re-authentication
-    await audit({ actorId: user.id, action: 'user.password_changed', entityType: 'user', entityId: user.id })
-    return NextResponse.json({ ok: true, email: user.email })
+    await audit({ actorId: currentUser.id, action: 'user.password_changed', entityType: 'user', entityId: currentUser.id })
+    return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Password reset error:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })
     }
-    
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

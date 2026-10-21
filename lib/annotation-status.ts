@@ -1,4 +1,4 @@
-import { Prisma, type SentenceStatus } from '@prisma/client'
+import { Prisma, type SentenceStatus } from '@/lib/generated/prisma/client'
 
 /**
  * Record status rules, shared by the single-record and bulk annotation endpoints.

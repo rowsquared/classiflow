@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/api-auth'
-import { Prisma, SentenceStatus } from '@prisma/client'
+import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
 import { exportStream } from '@/lib/export-csv'
 import { audit } from '@/lib/audit'
 

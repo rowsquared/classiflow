@@ -5,29 +5,41 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
 
 ## Authentication and sessions
 
-- Credentials login (username or email + bcrypt password), JWT sessions (Auth.js v5).
-- `middleware.ts` only guards **pages**. It lets every `/api` request through, so
-  every API handler starts with `requireSession()` / `requireSession('admin', …)`
-  from `lib/api-auth.ts`. Public exceptions: `/api/health` and the Auth.js
-  protocol routes under `/api/auth/[...nextauth]`.
-- The JWT only proves who signed in. On every API call `requireSession()` reads
-  the user's current `role`, `mustResetPassword` and `sessionVersion` from the
-  database, so:
-  - a **deleted** user gets 401 on the next request;
-  - a **demoted or promoted** user is checked against the new role immediately;
-  - a **password change** (self-service reset or admin-set password) increments
-    `sessionVersion`, which signs out every session issued before it (401);
+- Credentials sign-in with a username or an email address and a password,
+  handled by Better Auth (`lib/auth.ts`, endpoints under `/api/auth/*`).
+  Passwords are hashed by Better Auth (scrypt) and stored on the user's
+  `credential` row in `Account`, never on `User`. Public sign-up and Better
+  Auth's own account-changing endpoints are switched off (`disabledPaths`);
+  accounts are created and changed only through `app/api/users` and
+  `POST /api/auth/reset-password`.
+- Sessions are **database rows** (`Session`), identified by an HTTP-only
+  cookie. Every check reads the session and its user from the database (no
+  cookie cache), so:
+  - a **deleted** user gets 401 on the next request (their sessions are
+    deleted with them);
+  - a **demoted or promoted** user is checked against the new role immediately,
+    by pages and API alike;
+  - an **admin-set password** deletes all of that user's sessions; a
+    **self-service password change** deletes all of their other sessions;
+  - a **banned** user (Better Auth admin plugin, admins only) cannot sign in and
+    loses their sessions;
   - a user who **must reset their password** gets 403 `PASSWORD_RESET_REQUIRED`
     everywhere except `POST /api/auth/reset-password`.
-- Page-level role checks (admin pages) still read the JWT role. A demoted admin
-  may see an admin page shell until they sign in again, but every API behind it
-  refuses them.
-- Failed logins are throttled per identifier: 5 failures in 15 minutes lock that
-  identifier for 15 minutes (`lib/login-throttle.ts`). This state is in process
-  memory (reset on restart, not shared between instances); put a rate limit on
-  the reverse proxy for public deployments. Unknown usernames are compared
-  against a dummy hash so timing does not reveal which accounts exist. Login logs
-  do not include the identifier.
+- `proxy.ts` guards **pages** with the same database-backed session (sign-in
+  redirect, password-reset redirect) and sets the Content-Security-Policy. It
+  lets every `/api` request through apart from a cross-site check, so every API
+  handler starts with `requireSession()` / `requireSession('admin', …)` from
+  `lib/api-auth.ts`. Public exceptions: `/api/health` and Better Auth's routes
+  under `/api/auth/[...all]` (sign-in, sign-out, session).
+- Server pages under `app/` load data through `lib/server/*`, which apply the
+  caller's scope the same way the API does; admin pages redirect other roles
+  (`lib/server/page-user.ts`).
+- Sign-in is rate limited per client IP: `SIGN_IN_RATE_LIMIT` attempts a minute
+  (default 10), counted in the `RateLimit` table so every instance shares it.
+  Better Auth enables it in production only. Unknown usernames are still hashed
+  against, so timing does not reveal which accounts exist.
+- Content-Security-Policy is enforced with a per-request nonce for scripts
+  (`proxy.ts`); styles allow `'unsafe-inline'` for React style attributes.
 
 ## Record visibility
 
@@ -57,7 +69,7 @@ password. "In scope" = the record is visible under the table above.
 | Endpoint | Methods | Who |
 | --- | --- | --- |
 | `/api/health` | GET | public (DB connectivity only) |
-| `/api/auth/[...nextauth]` | * | public (Auth.js protocol) |
+| `/api/auth/[...all]` | * | public (Better Auth: sign-in, sign-out, session; admin-plugin endpoints need the admin role) |
 | `/api/auth/reset-password` | POST | signed in, including users who must reset |
 | `/api/sentences` | GET | any; results limited to scope |
 | `/api/sentences/stats` | GET | any; counts limited to scope |
