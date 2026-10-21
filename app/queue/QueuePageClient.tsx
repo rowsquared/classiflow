@@ -157,6 +157,7 @@ export default function QueuePageClient({
   // Data State
   const [queue, setQueue] = useState<QueueResponse | null>(initialQueue)
   const [stats, setStats] = useState<Stats>(initialStats)
+  const [statsStale, setStatsStale] = useState(false)
   const [taxonomies] = useState<Taxonomy[]>(initialTaxonomies)
   const [loading, setLoading] = useState(false)
   // Set when the last queue request failed; the previous results stay visible.
@@ -235,17 +236,18 @@ export default function QueuePageClient({
       })
       
       const res = await fetch(`/api/sentences/stats?${params}`, { signal: request.signal })
-      if (!res.ok) {
-        // Silently ignore transient failures — stats will refresh on next cycle
-        return
-      }
-      const data = await res.json()
-      if (data.ok && request.isCurrent()) {
+      const data = res.ok ? await res.json() : null
+      if (!request.isCurrent()) return
+      if (data?.ok) {
         setStats(data.stats)
+        setStatsStale(false)
+      } else {
+        // Keep the last numbers but say so; the next refresh may recover.
+        setStatsStale(true)
       }
-    } catch {
-      // Network errors during polling are expected (e.g. during deploys)
-      // Don't log to avoid console noise
+    } catch (error) {
+      // Network errors during polling are expected (e.g. during deploys).
+      if (!isAbortError(error) && request.isCurrent()) setStatsStale(true)
     }
   }, [searchQuery, filters])
 
@@ -554,6 +556,7 @@ export default function QueuePageClient({
           {/* Toolbar */}
           <QueueToolbar
             searchQuery={searchInput}
+            statsStale={statsStale}
             onSearchChange={handleSearch}
             stats={stats}
             onToggleFilters={toggleFilterPanel}

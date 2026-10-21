@@ -11,6 +11,8 @@ interface QueueToolbarProps {
     pending: number
     progress: number
   }
+  /** The last statistics refresh failed: the numbers shown are older. */
+  statsStale?: boolean
   onToggleFilters: () => void
   activeFilterCount: number
 }
@@ -19,6 +21,7 @@ export default function QueueToolbar({
   searchQuery,
   onSearchChange,
   stats,
+  statsStale = false,
   onToggleFilters,
   activeFilterCount
 }: QueueToolbarProps) {
@@ -56,6 +59,7 @@ export default function QueueToolbar({
                 onClick={() => onSearchChange('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100"
                 title="Clear search"
+                aria-label="Clear search"
               >
                 ✕
               </button>
@@ -68,6 +72,9 @@ export default function QueueToolbar({
           <span className="font-medium text-gray-900">{stats.submitted.toLocaleString()}</span> of{' '}
           <span className="font-medium text-gray-900">{stats.total.toLocaleString()}</span> labeled
           <span className="text-gray-500 ml-2">({stats.progress}%)</span>
+          {statsStale && (
+            <span className="ml-2 text-amber-700" role="status">· could not refresh, may be out of date</span>
+          )}
         </div>
       </div>
     </div>

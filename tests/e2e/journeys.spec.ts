@@ -14,6 +14,19 @@ async function signIn(page: Page, password = ADMIN.password) {
 }
 
 const rows = (page: Page) => page.locator('tbody tr')
+
+// The Content-Security-Policy is report-only (next.config.ts); any violation is
+// logged to the console and fails the journey, so enforcing it stays safe.
+let cspReports: string[] = []
+test.beforeEach(({ page }) => {
+  cspReports = []
+  page.on('console', msg => {
+    if (msg.text().includes('Content Security Policy')) cspReports.push(msg.text())
+  })
+})
+test.afterEach(() => {
+  expect(cspReports).toEqual([])
+})
 const isQueueRequest = (url: string) => new URL(url).pathname === '/api/sentences'
 
 test('sign-in refuses a wrong password and admits the right one', async ({ page }) => {
@@ -69,15 +82,19 @@ test.describe('queue', () => {
 
   test('a failed refresh says so and keeps the last results; Retry recovers', async ({ page }) => {
     const queueUrl = (url: URL) => isQueueRequest(url.toString())
+    const statsUrl = (url: URL) => url.pathname === '/api/sentences/stats'
     await page.route(queueUrl, route => route.fulfill({ status: 500, body: '{}' }))
+    await page.route(statsUrl, route => route.fulfill({ status: 500, body: '{}' }))
 
     await page.getByRole('textbox', { name: 'Search records' }).fill('developer')
 
     const banner = page.getByRole('alert').filter({ hasText: 'Could not load records' })
     await expect(banner).toBeVisible()
     await expect(rows(page)).toHaveCount(RECORDS.length) // not an empty "no records" list
+    await expect(page.getByText('could not refresh, may be out of date')).toBeVisible()
 
     await page.unroute(queueUrl)
+    await page.unroute(statsUrl)
     await page.getByRole('button', { name: 'Retry' }).click()
     await expect(banner).toHaveCount(0)
     await expect(rows(page)).toHaveCount(1)
@@ -134,4 +151,14 @@ test('the export contains the human label with its leading zero', async ({ page 
   const records = parse(csv, { columns: true, bom: true }) as Array<Record<string, string>>
   const teacher = records.find(r => r.field_job_title === 'primary school teacher')
   expect(teacher).toMatchObject({ ISCO_1: '01', ISCO_2: '011', status: 'submitted' })
+})
+
+test('the audit log lists the export and can be filtered', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.getByRole('link', { name: 'Audit Log' }).click()
+
+  await expect(page.getByRole('cell', { name: 'export.downloaded' })).toBeVisible()
+  await page.getByLabel('Show').selectOption({ label: 'Users' })
+  await expect(page.getByRole('cell', { name: 'export.downloaded' })).toHaveCount(0)
 })
