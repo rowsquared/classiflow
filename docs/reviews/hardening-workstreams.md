@@ -142,7 +142,7 @@ sessions according to policy; business APIs cannot bypass initial reset; no
 password appears in captured setup/recovery logs; bootstrap is idempotent and
 does not unexpectedly overwrite existing accounts.
 
-**Status (21 Oct 2026): in progress.**
+**Status (21 Oct 2026): done for classiflow code;** two items depend on hosting (W12).
 
 - [x] Immediate revocation: `requireSession()` reads role, `mustResetPassword`
       and the new `User.sessionVersion` from the database on every API call.
@@ -159,11 +159,24 @@ does not unexpectedly overwrite existing accounts.
 - [x] Supervisor links validated (no self, no cycles, supervisor must be admin
       or supervisor); last admin cannot be demoted; self-deletion was already
       blocked.
-- [ ] Bootstrap/recovery scripts: stop printing passwords, require explicit
-      secrets outside development, exit non-zero on failure.
-- [ ] Remove known fallback passwords from Compose (with W12).
-- [ ] User deletion with comments/annotations: define reassignment or refusal
-      (currently fails on foreign keys with a 500).
+- [x] `scripts/init-admin.js`: idempotent (skips when any admin exists, never
+      touches existing accounts), never prints the password, requires
+      `DEFAULT_ADMIN_PASSWORD` only when creating, refuses placeholders in
+      production, exits non-zero on failure (startup stops). Tested all paths
+      against the test database.
+- [x] Recovery: `scripts/reset-admin-password.js` (plain Node, runs in the
+      container) replaces the TypeScript script that could not run there. Takes
+      the password from `NEW_PASSWORD`, admins only, forces reset, bumps
+      `sessionVersion`, prints no secret. DEPLOYMENT/COOLIFY docs corrected (they
+      claimed changing the env var resets an existing admin).
+- [x] Compose no longer supplies a fallback admin password.
+- [x] Deleting a user who authored comments or AI jobs returns 409 with an
+      explanation instead of a foreign-key 500 (test added). Deactivation
+      instead of deletion is listed in [ideas](../ideas.md).
+- [ ] Database fallback password `classiflow_password` in Compose: changing it
+      breaks existing volumes initialised with it; handle with W12 (verify the
+      Coolify environment first).
+- [ ] Admin MFA/SSO: product decision, not started.
 
 ## W03 Dependencies and reproducible releases
 

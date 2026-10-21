@@ -52,7 +52,7 @@ Browser: React client components
 | Authentication | `lib/auth.config.ts`, `lib/auth.ts`, `middleware.ts`, `types/next-auth.d.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`init-admin.js` runs on every start, `reset-admin-password.ts`, `promote-main.mjs`) |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`init-admin.js` runs on every start, `reset-admin-password.js` for admin recovery, `promote-main.mjs`) |
 
 ## Domain model and behavior to preserve
 
@@ -173,7 +173,7 @@ introduce a different package manager or lockfile incidentally.
 | TypeScript | `npm run typecheck` (`tsc --noEmit`) |
 | Lint | `npm run lint` |
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
-| Integration tests | `TEST_DATABASE_URL=…/classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
+| Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Production build | `npm run build` (Prisma generation + Next build) |
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database; commit generated SQL |
 

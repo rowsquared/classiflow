@@ -258,3 +258,19 @@ describe('user administration rules', () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: admin.id } })).role).toBe('admin')
   })
 })
+
+describe('user deletion', () => {
+  it('refuses to delete a comment author with 409 and deletes others', async () => {
+    const author = await createUser('labeller')
+    const [record] = await createSentences(1, [author.id])
+    await prisma.comment.create({ data: { sentenceId: record.id, authorId: author.id, body: 'kept' } })
+    const plain = await createUser('labeller')
+
+    signInAs(admin)
+    const del = (userId: string) => userRoute.DELETE(request(`/api/users/${userId}`, { method: 'DELETE' }), params({ userId }))
+    expect((await del(author.id)).status).toBe(409)
+    expect(await prisma.user.count({ where: { id: author.id } })).toBe(1)
+    expect((await del(plain.id)).status).toBe(200)
+    expect(await prisma.user.count({ where: { id: plain.id } })).toBe(0)
+  })
+})

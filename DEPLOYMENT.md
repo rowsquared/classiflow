@@ -81,7 +81,15 @@ GET /api/health
 
 ## Admin User
 
-On first start, the default admin user is created from the environment variables. You must change the password after the first login. To reset, update `DEFAULT_ADMIN_PASSWORD` and restart the app.
+On every start, `scripts/init-admin.js` creates an admin from `DEFAULT_ADMIN_USERNAME` (default `admin`), `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` **only if the database has no admin yet**. The password must be changed at first sign-in. In production the script refuses a missing or well-known placeholder password and stops startup with an error, so set a real one before the first deploy. It never prints the password.
+
+Changing `DEFAULT_ADMIN_PASSWORD` later does **not** change an existing account. To recover a lost admin password, set a temporary one from the server:
+
+```bash
+docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/reset-admin-password.js admin
+```
+
+The account must change it at next sign-in, and its existing sessions are signed out. Other users are reset by an admin on the Team page.
 
 ## Backups
 

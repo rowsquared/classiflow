@@ -178,7 +178,25 @@ export async function DELETE(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Delete user (cascade will handle related records)
+    // Comments and AI jobs keep their author (restrict foreign keys), so a user
+    // who has any cannot be deleted without losing that history.
+    const [comments, aiJobs] = await Promise.all([
+      prisma.comment.count({ where: { authorId: userId } }),
+      prisma.$transaction([
+        prisma.aILabelingJob.count({ where: { createdById: userId } }),
+        prisma.aILearningJob.count({ where: { createdById: userId } }),
+        prisma.aIExternalTrainingJob.count({ where: { createdById: userId } }),
+      ]).then(counts => counts.reduce((a, b) => a + b, 0)),
+    ])
+    if (comments > 0 || aiJobs > 0) {
+      return NextResponse.json({
+        error: `This user wrote ${comments} comment(s) and started ${aiJobs} AI job(s), which keep their author. ` +
+          'Remove their assignments and change their password instead of deleting the account.'
+      }, { status: 409 })
+    }
+
+    // Delete user: assignments cascade; their annotations, imports and last-edit
+    // markers keep the data but lose the user reference (set null).
     await prisma.user.delete({
       where: { id: userId }
     })

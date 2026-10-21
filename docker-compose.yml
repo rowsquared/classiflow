@@ -42,7 +42,8 @@ services:
 
       # Default Admin User
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
-      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-ChangeMe123!}
+      # Required on first start (no admin yet); ignored once an admin exists.
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
       DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Admin User}
 
       # AI Labeling (Optional)

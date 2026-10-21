@@ -16,3 +16,10 @@ per-assignment completion state, an adjudicated "final" label set that export
 and learning use, agreement metrics on the progress page, and a queue filter for
 records awaiting adjudication. Needs a migration of the unique constraint and
 changes to completion rules, export columns and AI learning input.
+
+## Deactivate users instead of deleting them
+
+Users who wrote comments or started AI jobs cannot be deleted (their authorship
+is kept), and deleting a labeller drops the attribution of their labels. A
+`deactivatedAt` flag that blocks sign-in and hides the user from pickers, while
+keeping history, would cover people who leave a project.

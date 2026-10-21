@@ -49,9 +49,9 @@ NEXTAUTH_SECRET=your-generated-secret-here
 
 # Default Admin User
 DEFAULT_ADMIN_EMAIL=admin@example.com
-DEFAULT_ADMIN_PASSWORD=ChangeMe123!
+DEFAULT_ADMIN_PASSWORD=<a long random password>  # required for the first start; placeholders are refused
 DEFAULT_ADMIN_NAME=Admin User
-DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to username extracted from email if not set
+DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 ```
 
 #### Optional AI Labeling Variables
@@ -122,15 +122,15 @@ Expected response:
 The default admin user is **automatically created** on first deployment using the environment variables you set:
 
 - **Email**: Value from `DEFAULT_ADMIN_EMAIL`
-- **Username**: Value from `DEFAULT_ADMIN_USERNAME` (or extracted from email if not set)
+- **Username**: Value from `DEFAULT_ADMIN_USERNAME` (default `admin`)
 - **Password**: Value from `DEFAULT_ADMIN_PASSWORD`
 - **Name**: Value from `DEFAULT_ADMIN_NAME`
 
 **Important Notes:**
-- The admin user is only created if it doesn't already exist
+- The admin user is only created if the database has no admin yet; existing accounts are never changed
 - You can login with either the **username** or **email** address
 - You **must change the password** on first login (forced password reset)
-- If you need to reset the admin password, update `DEFAULT_ADMIN_PASSWORD` and restart the container
+- Changing `DEFAULT_ADMIN_PASSWORD` later has no effect. To recover a lost admin password, see "Admin User" in [DEPLOYMENT.md](DEPLOYMENT.md#admin-user)
 
 ---
 
@@ -194,9 +194,9 @@ NEXTAUTH_SECRET=your-generated-secret-here
 
 # Default Admin User
 DEFAULT_ADMIN_EMAIL=admin@example.com
-DEFAULT_ADMIN_PASSWORD=ChangeMe123!
+DEFAULT_ADMIN_PASSWORD=<a long random password>  # required for the first start; placeholders are refused
 DEFAULT_ADMIN_NAME=Admin User
-DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to username extracted from email if not set
+DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 ```
 
 ### 4. Add Start Command
@@ -207,7 +207,7 @@ In Coolify, set the start command to run migrations and initialize admin:
 sh -c "npx prisma migrate deploy && node scripts/init-admin.js && node server.js"
 ```
 
-**Note**: The `init-admin.js` script automatically creates the default admin user if it doesn't exist, using the environment variables you configured.
+**Note**: The `init-admin.js` script creates the default admin only while the database has no admin, using the environment variables you configured. If it cannot (for example no or a placeholder password), it exits with an error and the container does not start.
 
 ### 5. Deploy
 
