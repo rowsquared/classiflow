@@ -10,6 +10,7 @@
 // by an admin in the Team page). The password is never logged.
 import { connect } from './lib/db.ts'
 import { revokeSessions, setPassword } from '../lib/passwords.ts'
+import { passwordProblem } from '../lib/password-policy.ts'
 
 const prisma = connect()
 
@@ -20,8 +21,8 @@ async function resetAdminPassword() {
   if (!identifier) {
     throw new Error('Usage: NEW_PASSWORD=… node scripts/reset-admin-password.ts <username-or-email>')
   }
-  if (newPassword.length < 8) {
-    throw new Error('Set NEW_PASSWORD (at least 8 characters) in the environment')
+  if (!newPassword) {
+    throw new Error('Set NEW_PASSWORD in the environment')
   }
 
   const user = await prisma.user.findFirst({
@@ -31,6 +32,8 @@ async function resetAdminPassword() {
   if (!user) {
     throw new Error(`No user "${identifier}". To create the first admin, run scripts/init-admin.ts`)
   }
+  const weak = passwordProblem(newPassword, { username: user.username })
+  if (weak) throw new Error(`NEW_PASSWORD is not acceptable: ${weak}`)
   if (user.role !== 'admin') {
     throw new Error(`"${user.username}" is not an admin; reset it from the Team page instead`)
   }

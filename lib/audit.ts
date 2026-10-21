@@ -22,7 +22,7 @@ import { currentWorkspaceId, db, withWorkspace } from '@/lib/workspace/db'
  */
 
 export type AuditAction =
-  | 'user.created' | 'user.updated' | 'user.deleted' | 'user.password_changed'
+  | 'user.created' | 'user.updated' | 'user.deleted' | 'user.password_changed' | 'user.sessions_revoked'
   | 'workspace.created' | 'workspace.updated' | 'workspace.archived' | 'workspace.reopened'
   | 'member.added' | 'member.updated' | 'member.suspended' | 'member.reactivated'
   | 'taxonomy.created' | 'taxonomy.updated' | 'taxonomy.deleted' | 'taxonomy.imported'

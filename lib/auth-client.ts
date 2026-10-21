@@ -7,7 +7,7 @@ export const authClient = createAuthClient({
   plugins: [usernameClient(), adminClient(), inferAdditionalFields<typeof auth>()],
 })
 
-export const { useSession, signOut } = authClient
+export const { useSession, signOut, revokeOtherSessions } = authClient
 
 /** Signs in with a username or an email address, whichever was typed. */
 export function signInWithIdentifier(identifier: string, password: string) {

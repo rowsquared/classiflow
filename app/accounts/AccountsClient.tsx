@@ -170,7 +170,7 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
         {field('username', 'Username')}
         {field('email', 'Email', 'email')}
         {field('name', 'Name')}
-        {field('tempPassword', 'Temporary password (min. 8)', 'password')}
+        {field('tempPassword', 'Temporary password (min. 10)', 'password')}
         <div>
           <label htmlFor="new-platform-role" className="block text-sm font-medium text-gray-700 mb-1">Platform role</label>
           <select id="new-platform-role" value={form.platformRole} className={input}
@@ -205,10 +205,11 @@ function EditAccount({ account, isSelf, onClose, onSave, onDelete }: {
     ...(newPassword ? { newPassword } : {}),
   }))
   const ban = useSubmit(() => onSave({ banned: !account.banned }))
+  const signOutEverywhere = useSubmit(() => onSave({ revokeSessions: true }))
   const remove = useSubmit(async () => {
     if (confirm(`Delete the account ${account.username}? This cannot be undone.`)) await onDelete()
   })
-  const error = save.error || ban.error || remove.error
+  const error = save.error || ban.error || remove.error || signOutEverywhere.error
   return (
     <Modal label={`Edit ${account.username}`} onClose={onClose} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
@@ -229,7 +230,7 @@ function EditAccount({ account, isSelf, onClose, onSave, onDelete }: {
           </div>
           <div>
             <label htmlFor="edit-password" className="block text-sm font-medium text-gray-700 mb-1">New temporary password</label>
-            <input id="edit-password" type="password" minLength={8} value={newPassword}
+            <input id="edit-password" type="password" minLength={10} value={newPassword}
               onChange={e => setNewPassword(e.target.value)} className={input} placeholder="Leave empty to keep" />
             <p className="mt-1 text-xs text-gray-500">The person must change it at next sign-in; all their sessions end.</p>
           </div>
@@ -239,7 +240,10 @@ function EditAccount({ account, isSelf, onClose, onSave, onDelete }: {
           </div>
         </form>
         {!isSelf && (
-          <div className="pt-4 border-t border-gray-200 flex gap-3">
+          <div className="pt-4 border-t border-gray-200 flex flex-wrap gap-3">
+            <button onClick={signOutEverywhere.run} disabled={signOutEverywhere.busy} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+              Sign out everywhere
+            </button>
             <button onClick={ban.run} disabled={ban.busy} className="flex-1 px-4 py-2 border border-amber-300 text-amber-800 rounded-lg hover:bg-amber-50">
               {account.banned ? 'Lift ban' : 'Ban (sign out everywhere)'}
             </button>

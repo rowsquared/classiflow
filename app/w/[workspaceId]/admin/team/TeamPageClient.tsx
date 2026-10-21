@@ -445,7 +445,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                   value={formData.tempPassword}
                   onChange={(e) => setFormData({ ...formData, tempPassword: e.target.value })}
                   required
-                  minLength={8}
+                  minLength={10}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 />
                 <p className="mt-1 text-xs text-gray-500">User will be required to change this on first login</p>
@@ -540,7 +540,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                   type="password"
                   value={formData.newPassword}
                   onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
-                  minLength={8}
+                  minLength={10}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 />
                 <p className="mt-1 text-xs text-gray-500">Leave blank to keep current password. User will be required to change it on next login.</p>

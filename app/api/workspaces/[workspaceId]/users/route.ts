@@ -4,6 +4,7 @@ import { forbidden, workspaceRoute } from '@/lib/api-auth'
 import { listVisibleUsers, resolveSupervisor } from '@/lib/server/users'
 import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
+import { passwordProblem } from '@/lib/password-policy'
 import { db } from '@/lib/workspace/db'
 
 // Members of one workspace. The API speaks user ids (supervisorId is the
@@ -19,7 +20,7 @@ const createSchema = z.object({
   name: z.string().min(1).max(200),
   role: roleSchema,
   supervisorId: z.string().optional().nullable(),
-  tempPassword: z.string().min(8).max(256),
+  tempPassword: z.string().max(256),
 })
 
 // Adding an account that already exists elsewhere: platform admins only, until
@@ -79,6 +80,8 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
   const { email, name, role, supervisorId, tempPassword } = parsed.data
   const displayUsername = parsed.data.username
   const username = displayUsername.toLowerCase()
+  const weak = passwordProblem(tempPassword, { username, email, name })
+  if (weak) return NextResponse.json({ error: `Temporary password: ${weak}`, field: 'tempPassword' }, { status: 400 })
 
   const taken = await db().user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
   if (taken) {
