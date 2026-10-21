@@ -1,8 +1,8 @@
 # Hardening work: handoff
 
-**Status:** 21 October 2026, after the W03 commits on `staging` (Node 24, lockfile,
-dependency triage).
-**Not pushed:** the maintainer reviews before pushing (pushing `staging` deploys it).
+**Status:** 21 October 2026, after the W03 (Node 24, lockfile, dependency triage)
+and W12 (Compose secrets, runtime DB role, release health, restore drill) commits.
+**Pushing:** pushing `staging` deploys it; push only with the maintainer's go-ahead.
 
 Start here if you are continuing the hardening work from the
 [review](../reviews/2026-10-21-review.md). Each workstream in the
@@ -17,15 +17,15 @@ not all of them.
   Independent double annotation is a wanted future feature: [ideas](../ideas.md).
 - Session revocation is **immediate**: `requireSession()` re-reads role, reset
   flag and `sessionVersion` from the database on every API call.
-- Work is committed locally on `staging`, one commit per meaningful step, and
-  not pushed.
+- Work is committed on `staging`, one commit per meaningful step, and pushed
+  only when the maintainer says so.
 
 ## Where things stand
 
 | WS | State | Remaining |
 | --- | --- | --- |
 | W01 access | done | audit logging of denials (W12) |
-| W02 sessions | done | DB fallback password in Compose (W12); MFA/SSO is a product decision |
+| W02 sessions | done | MFA/SSO is a product decision |
 | W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image (W12); pin action SHAs |
 | W04 HTTP | mostly done | CSP (report-only first); verify live proxy settings |
 | W05 labelling | done | run `scripts/label-integrity-report.sql` on production; decide repairs |
@@ -35,9 +35,9 @@ not all of them.
 | W09 UI | open | queue request races, error vs empty states, accessibility |
 | W10 tests/CI | partly | integration harness exists; browser journeys and more suites still missing |
 | W11 docs | partly | admin docs fixed; canonical doc map, ENV_SETUP/.env.example alignment |
-| W12 ops | open | backups/restore drill, least-privilege DB role, Compose DB password |
+| W12 ops | in progress | backup schedule/objectives (maintainer), audit events, upgrade test from a real dump, container limits |
 
-Suggested next order: W12, W07 remainder, W11, W09.
+Suggested next order: W07 remainder, W11, W09, then W12 audit events.
 
 ## How to work here
 
@@ -73,3 +73,11 @@ Suggested next order: W12, W07 remainder, W11, W09.
 - Before the first deploy of these commits, make sure production has a real
   `DEFAULT_ADMIN_PASSWORD` if the database could ever start without an admin;
   placeholders now stop startup.
+- **Before deploying the W12 commit** (staging and production): set
+  `POSTGRES_PASSWORD` and `NEXTAUTH_SECRET` in Coolify, or the deploy fails. If
+  the database was created with the old fallback, set `classiflow_password`
+  first and then rotate it (DEPLOYMENT.md "Upgrading an existing Compose
+  deployment"). Recommended: `APP_DB_USER`/`APP_DB_PASSWORD`, Coolify's
+  "Include Source Commit in Build", and the repository variable `PROD_HEALTH_URL`.
+- Decide backup objectives and schedule off-host encrypted dumps; run
+  `scripts/restore-drill.sh` on a real dump.

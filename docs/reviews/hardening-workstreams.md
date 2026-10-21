@@ -778,3 +778,35 @@ objectives; an upgrade works from a populated older schema; production defaults
 fail safely; runtime DB privileges are demonstrated; deployment health identifies
 the intended release; alerts detect a failed deploy/stuck job/failed backup; audit
 events record actor, action, target, and time with appropriate access controls.
+
+**Status (21 Oct 2026): code side partly done;** hosting items need the maintainer.
+
+- [x] Production defaults fail safely: Compose requires `POSTGRES_PASSWORD` and
+      `NEXTAUTH_SECRET` (`${VAR:?}`, no fallbacks); `.env.example` lists them.
+      Upgrade path for databases initialised with the old fallback in
+      DEPLOYMENT.md. The dev database binds to `127.0.0.1:5434` only.
+- [x] Least-privilege runtime DB access (opt-in): with `APP_DB_USER` /
+      `APP_DB_PASSWORD`, `scripts/start.sh` runs migrations as the owner, then
+      `scripts/db-runtime-role.js` grants the app role row access only (default
+      privileges cover future migrations) and the server runs as it.
+      Demonstrated by `tests/integration/db-runtime-role.test.ts` (no DDL, no
+      TRUNCATE, no migration history, non-superuser; fails without the revoke /
+      default privileges), by the CI smoke job (checks the server's connections
+      use that role), and by a local run of the start command (login and
+      password change as the app role).
+- [x] Health identifies the release: the image takes `SOURCE_COMMIT` and
+      `/api/health` reports it as `release`; the smoke job checks it equals the
+      built commit; `deploy-prod` waits until production reports the promoted
+      commit when the repository variable `PROD_HEALTH_URL` is set.
+- [x] Backup and restore procedure: custom-format dumps, `scripts/restore-drill.sh`
+      restores into a throwaway PostgreSQL 16 container, prints latest migration,
+      row counts and duration; fails on a damaged dump. Tested locally.
+- [ ] Recovery objectives, off-host encrypted schedule, retention and backup
+      alerts: maintainer decisions, then a first drill against a real dump.
+- [ ] Upgrade test from a populated older schema (needs a production-like dump;
+      the restore drill plus `start.sh` is the procedure).
+- [ ] Audit events (roles, deletions, imports/exports, assignments, labels) and
+      denial logging (W01); structured logs with correlation IDs; alerts for a
+      failed deploy or stuck AI job.
+- [ ] Resource limits, capability dropping, read-only root filesystem.
+- [ ] Verify live: GitHub rulesets, Coolify auto-deploy settings, ingress (W04).
