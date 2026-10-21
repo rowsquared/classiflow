@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { cancelAIJob } from '@/lib/ai-labeling'
 import type { CaughtError } from '@/lib/utils'
@@ -9,10 +9,8 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const body = await req.json()
     const { type } = body as { type: 'labeling' | 'learning' | 'taxonomy_sync' | 'external_training' }

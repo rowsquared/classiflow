@@ -1,65 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@prisma/client'
 import { parseEnum, type CaughtError } from '@/lib/utils'
 
 export async function GET(req: NextRequest) {
   try {
-    // Get authenticated session
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
 
     const { searchParams } = new URL(req.url)
 
-    // Build base visibility filter based on role
-    let visibilityFilter: Prisma.SentenceWhereInput = {}
-    
-    if (session.user.role === 'labeller') {
-      // Labellers can only see sentences assigned to them
-      visibilityFilter = {
-        assignments: {
-          some: {
-            userId: session.user.id
-          }
-        }
-      }
-    } else if (session.user.role === 'supervisor') {
-      // Supervisors can see sentences assigned to themselves and their team
-      const supervisor = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        include: {
-          labellers: {
-            include: {
-              labellers: true // Nested - get labellers of supervised supervisors
-            }
-          }
-        }
-      })
-
-      if (supervisor) {
-        const visibleUserIds = new Set<string>([session.user.id])
-        supervisor.labellers.forEach(labeller => {
-          visibleUserIds.add(labeller.id)
-          // Add nested labellers
-          labeller.labellers.forEach(nestedLabeller => {
-            visibleUserIds.add(nestedLabeller.id)
-          })
-        })
-
-        visibilityFilter = {
-          assignments: {
-            some: {
-              userId: { in: Array.from(visibleUserIds) }
-            }
-          }
-        }
-      }
-    }
-    // Admins see all sentences (no filter)
+    // Base visibility filter based on role (admins: no filter)
+    const visibilityFilter = await sentenceVisibilityFilter(user)
 
     // Build additional filters from query params
     const AND: Prisma.SentenceWhereInput[] = []

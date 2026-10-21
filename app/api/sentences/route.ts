@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@prisma/client'
 import { parseEnum, type CaughtError } from '@/lib/utils'
 
@@ -16,12 +17,8 @@ type AISuggestionView = {
 
 export async function GET(request: Request) {
   try {
-    // Get authenticated session
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
 
     const { searchParams } = new URL(request.url)
     
@@ -48,9 +45,10 @@ export async function GET(request: Request) {
     const hasAISuggestions = searchParams.get('hasAISuggestions') || ''
     const importId = searchParams.get('importId') || ''
     const sort = searchParams.get('sort') || 'createdAt'
-    const order = searchParams.get('order') || 'asc'
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = parseInt(searchParams.get('limit') || '20', 10)
+    const order: 'asc' | 'desc' = searchParams.get('order') === 'desc' ? 'desc' : 'asc'
+    // The UI offers page sizes up to 10000 ("all"); anything else is clamped.
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1)
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 10000)
 
     // Build where clause
     const and: Prisma.SentenceWhereInput[] = []
@@ -82,54 +80,8 @@ export async function GET(request: Request) {
       }
     }
     
-    // Visibility filtering based on role and assignments
-    if (session.user.role === 'labeller') {
-      // Labellers can only see sentences assigned to them
-      and.push({
-        assignments: {
-          some: {
-            userId: session.user.id
-          }
-        }
-      })
-    } else if (session.user.role === 'supervisor') {
-      // Supervisors can see:
-      // 1. Sentences assigned to themselves
-      // 2. Sentences assigned to users they supervise (including nested)
-      
-      // Get all users this supervisor can see
-      const supervisor = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        include: {
-          labellers: {
-            include: {
-              labellers: true // Nested - get labellers of supervised supervisors
-            }
-          }
-        }
-      })
-
-      if (supervisor) {
-        const visibleUserIds = new Set<string>([session.user.id])
-        supervisor.labellers.forEach(labeller => {
-          visibleUserIds.add(labeller.id)
-          // Add nested labellers
-          labeller.labellers.forEach(nestedLabeller => {
-            visibleUserIds.add(nestedLabeller.id)
-          })
-        })
-
-        // Filter to sentences assigned to visible users
-        and.push({
-          assignments: {
-            some: {
-              userId: { in: Array.from(visibleUserIds) }
-            }
-          }
-        })
-      }
-    }
-    // Admins see all sentences (no filter)
+    // Visibility filtering based on role and assignments (admins: no filter)
+    and.push(await sentenceVisibilityFilter(user))
 
     // Additional user filter (for admins/supervisors to filter by specific user)
     if (userId) {
@@ -305,21 +257,21 @@ export async function GET(request: Request) {
     let orderBy: Prisma.SentenceOrderByWithRelationInput[]
     if (sort === 'lastEditedAt') {
       orderBy = [
-        { lastEditedAt: order as 'asc' | 'desc' },
+        { lastEditedAt: order },
         { importOrder: 'asc' } // Secondary sort by import order
       ]
     } else if (sort === 'createdAt') {
       orderBy = [
-        { createdAt: order as 'asc' | 'desc' },
+        { createdAt: order },
         { importOrder: 'asc' } // Secondary sort by import order
       ]
     } else if (sort === 'status') {
       orderBy = [
-        { status: order as 'asc' | 'desc' },
+        { status: order },
         { importOrder: 'asc' } // Secondary sort by import order
       ]
     } else {
-      orderBy = [{ id: order as 'asc' | 'desc' }]
+      orderBy = [{ id: order }]
     }
 
     // Fetch sentences + total count in parallel

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import type { AILabelingJobStatus } from '@prisma/client'
 import { ensureJobsMonitored } from '@/lib/ai-job-monitor'
@@ -9,10 +9,8 @@ const RECENT_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
 
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     // Trigger recovery for any orphaned jobs (rate-limited internally)
     try {

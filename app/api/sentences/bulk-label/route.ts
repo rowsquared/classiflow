@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
+import { denyUnlessSentencesVisible } from '@/lib/access'
 import { z } from 'zod'
 import { isUnknownNodeCode } from '@/lib/constants'
 import type { CaughtError } from '@/lib/utils'
 import { Prisma } from '@prisma/client'
 
 const bulkLabelSchema = z.object({
-  sentenceIds: z.array(z.string()).min(1),
+  sentenceIds: z.array(z.string()).min(1).max(10000),
   taxonomyKey: z.string().min(1),
   annotations: z.array(z.object({
     level: z.number().int().min(1).max(5),
@@ -20,14 +21,8 @@ const bulkLabelSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Check authentication
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Unauthorized' 
-      }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
 
     const body = await req.json()
     
@@ -41,6 +36,10 @@ export async function POST(req: NextRequest) {
     }
     
     const { sentenceIds, taxonomyKey, annotations, flagged, comment, labelingStartedAt } = validation.data
+
+    // All-or-nothing: one record outside the caller's scope rejects the request.
+    const denied = await denyUnlessSentencesVisible(user, sentenceIds)
+    if (denied) return denied
     const normalizedAnnotations = annotations?.map(ann => ({
       ...ann,
       nodeCode: String(ann.nodeCode)
@@ -82,8 +81,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Get current user ID from session
-    const userId = session.user.id
+    const userId = user.id
     
     // Parse start time
     const startTime = labelingStartedAt ? new Date(labelingStartedAt) : null

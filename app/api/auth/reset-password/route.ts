@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSessionAllowingReset } from '@/lib/api-auth'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
 const resetPasswordSchema = z.object({
-  currentPassword: z.string(),
-  newPassword: z.string().min(8)
+  currentPassword: z.string().max(256),
+  newPassword: z.string().min(8).max(256)
 })
 
 export async function POST(req: NextRequest) {
-  try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  // The one business endpoint open to users who still have to change their password.
+  const { user: currentUser, error } = await requireSessionAllowingReset()
+  if (error) return error
 
+  try {
     const body = await req.json()
     const { currentPassword, newPassword } = resetPasswordSchema.parse(body)
 
     // Get user with password
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id }
+      where: { id: currentUser.id }
     })
 
     if (!user || !user.password) {
@@ -38,12 +36,14 @@ export async function POST(req: NextRequest) {
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10)
 
-    // Update password and reset flag
+    // Update password and reset flag. Bumping sessionVersion signs out every other
+    // session; the reset page signs this browser back in with the new password.
     await prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
-        mustResetPassword: false
+        mustResetPassword: false,
+        sessionVersion: { increment: 1 }
       }
     })
 

@@ -1,21 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
+import { denyUnlessSentencesVisible } from '@/lib/access'
+
+const MAX_COMMENT_LENGTH = 10_000
+
+// Comment access follows record access: anyone who can see the record can read,
+// add and resolve its comments. Only the author or an admin may delete one.
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
-  const { session, error } = await requireSession()
+  const { user, error } = await requireSession()
   if (error) return error
 
   try {
     const { sentenceId } = await params
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
+
     const { body } = await req.json()
 
-    if (!body || body.trim() === '') {
+    if (typeof body !== 'string' || body.trim() === '') {
       return NextResponse.json(
         { ok: false, error: 'Comment body is required' },
+        { status: 400 }
+      )
+    }
+    if (body.length > MAX_COMMENT_LENGTH) {
+      return NextResponse.json(
+        { ok: false, error: `Comment is longer than ${MAX_COMMENT_LENGTH} characters` },
         { status: 400 }
       )
     }
@@ -28,7 +43,7 @@ export async function POST(
           connect: { id: sentenceId }
         },
         author: {
-          connect: { id: session.user.id }
+          connect: { id: user.id }
         }
       },
       include: {
@@ -55,11 +70,13 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
-  const { error } = await requireSession()
+  const { user, error } = await requireSession()
   if (error) return error
 
   try {
     const { sentenceId } = await params
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
     const { searchParams } = new URL(req.url)
     const includeResolved = searchParams.get('includeResolved') === 'true'
 
@@ -101,11 +118,13 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
-  const { error } = await requireSession()
+  const { user, error } = await requireSession()
   if (error) return error
 
   try {
     const { sentenceId } = await params
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
     const { commentId, resolved } = await req.json()
 
     if (!commentId || typeof resolved !== 'boolean') {
@@ -157,11 +176,14 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
-  const { session, error } = await requireSession()
+  const { user, error } = await requireSession()
   if (error) return error
 
   try {
     const { sentenceId } = await params
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
+
     const { commentId } = await req.json()
 
     if (!commentId) {
@@ -183,7 +205,7 @@ export async function DELETE(
       )
     }
 
-    if (comment.authorId !== session.user.id && session.user.role !== 'admin') {
+    if (comment.authorId !== user.id && user.role !== 'admin') {
       return NextResponse.json(
         { ok: false, error: 'Only the author or an admin can delete a comment' },
         { status: 403 }

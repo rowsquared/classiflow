@@ -1,27 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { forbidden, requireSession } from '@/lib/api-auth'
+import { denyUnlessSentencesVisible, getVisibleUserIds } from '@/lib/access'
+
+// Admins assign anything to anyone. Supervisors only touch records they can see
+// and only assign to / unassign from themselves and users below them.
+
+const MAX_IDS = 10000
 
 const assignSchema = z.object({
-  sentenceIds: z.array(z.string()).min(1),
-  userIds: z.array(z.string()).min(1)
+  sentenceIds: z.array(z.string()).min(1).max(MAX_IDS),
+  userIds: z.array(z.string()).min(1).max(1000)
+})
+
+const unassignSchema = z.object({
+  sentenceIds: z.array(z.string()).min(1).max(MAX_IDS),
+  userIds: z.array(z.string()).max(1000).optional()
 })
 
 // GET - Fetch current assignments for given sentence IDs
 export async function GET(req: NextRequest) {
+  const { user, error } = await requireSession('admin', 'supervisor')
+  if (error) return error
+
   try {
-    const session = await auth()
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    if (session.user.role !== 'admin' && session.user.role !== 'supervisor') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const sentenceIdsParam = req.nextUrl.searchParams.get('sentenceIds')
     if (!sentenceIdsParam) {
       return NextResponse.json({ error: 'sentenceIds parameter required' }, { status: 400 })
@@ -31,9 +35,19 @@ export async function GET(req: NextRequest) {
     if (sentenceIds.length === 0) {
       return NextResponse.json({ error: 'No sentence IDs provided' }, { status: 400 })
     }
+    if (sentenceIds.length > MAX_IDS) {
+      return NextResponse.json({ error: `At most ${MAX_IDS} sentence IDs` }, { status: 400 })
+    }
 
+    const denied = await denyUnlessSentencesVisible(user, sentenceIds)
+    if (denied) return denied
+
+    const teamUserIds = await getVisibleUserIds(user)
     const assignments = await prisma.sentenceAssignment.findMany({
-      where: { sentenceId: { in: sentenceIds } },
+      where: {
+        sentenceId: { in: sentenceIds },
+        ...(teamUserIds ? { userId: { in: teamUserIds } } : {})
+      },
       select: {
         sentenceId: true,
         userId: true
@@ -57,96 +71,45 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const { user, error } = await requireSession('admin', 'supervisor')
+  if (error) return error
+
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Only admins and supervisors can assign sentences
-    if (session.user.role !== 'admin' && session.user.role !== 'supervisor') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const body = await req.json()
-    const validation = assignSchema.safeParse(body)
-    
+    const validation = assignSchema.safeParse(await req.json())
     if (!validation.success) {
-      return NextResponse.json({ 
-        error: 'Invalid request data'
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })
     }
 
     const { sentenceIds, userIds } = validation.data
 
-    // For supervisors, verify they can only assign to users they supervise
-    if (session.user.role === 'supervisor') {
-      // Get all users this supervisor can assign to (direct labellers + supervised supervisors' labellers)
-      const supervisor = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        include: {
-          labellers: {
-            include: {
-              labellers: true // Nested - get labellers of supervised supervisors
-            }
-          }
-        }
-      })
+    const denied = await denyUnlessSentencesVisible(user, sentenceIds)
+    if (denied) return denied
 
-      if (!supervisor) {
-        return NextResponse.json({ error: 'Supervisor not found' }, { status: 404 })
-      }
-
-      // Build list of assignable user IDs
-      const assignableUserIds = new Set<string>([session.user.id]) // Can assign to self
-      supervisor.labellers.forEach(labeller => {
-        assignableUserIds.add(labeller.id)
-        // Add nested labellers (if this labeller is also a supervisor)
-        labeller.labellers.forEach(nestedLabeller => {
-          assignableUserIds.add(nestedLabeller.id)
-        })
-      })
-
-      // Check all requested userIds are assignable
-      const invalidUsers = userIds.filter(id => !assignableUserIds.has(id))
-      if (invalidUsers.length > 0) {
-        return NextResponse.json({ 
-          error: 'Cannot assign to users you do not supervise' 
-        }, { status: 403 })
+    const teamUserIds = await getVisibleUserIds(user)
+    if (teamUserIds) {
+      const team = new Set(teamUserIds)
+      if (userIds.some(id => !team.has(id))) {
+        return forbidden('Cannot assign to users you do not supervise')
       }
     }
 
-    // Create assignments (using upsert to handle duplicates gracefully)
-    const assignments = []
+    const existingUsers = await prisma.user.count({ where: { id: { in: userIds } } })
+    if (existingUsers !== new Set(userIds).size) {
+      return NextResponse.json({ error: 'Unknown user' }, { status: 400 })
+    }
+
+    const assignments: Prisma.SentenceAssignmentCreateManyInput[] = []
     for (const sentenceId of sentenceIds) {
       for (const userId of userIds) {
-        assignments.push({
-          sentenceId,
-          userId,
-          assignedBy: session.user.id
-        })
+        assignments.push({ sentenceId, userId, assignedBy: user.id })
       }
     }
 
-    // Use transaction to create all assignments
-    await prisma.$transaction(
-      assignments.map(assignment =>
-        prisma.sentenceAssignment.upsert({
-          where: {
-            sentenceId_userId: {
-              sentenceId: assignment.sentenceId,
-              userId: assignment.userId
-            }
-          },
-          create: assignment,
-          update: {} // If exists, do nothing
-        })
-      )
-    )
+    // Existing (sentence, user) pairs are left as they are.
+    await prisma.sentenceAssignment.createMany({ data: assignments, skipDuplicates: true })
 
-    return NextResponse.json({ 
-      ok: true, 
+    return NextResponse.json({
+      ok: true,
       assigned: assignments.length,
       sentences: sentenceIds.length,
       users: userIds.length
@@ -159,44 +122,46 @@ export async function POST(req: NextRequest) {
 
 // DELETE - Unassign sentences
 export async function DELETE(req: NextRequest) {
+  const { user, error } = await requireSession('admin', 'supervisor')
+  if (error) return error
+
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Only admins and supervisors can unassign
-    if (session.user.role !== 'admin' && session.user.role !== 'supervisor') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const body = await req.json()
-    const { sentenceIds, userIds } = body as { sentenceIds: string[], userIds?: string[] }
-
-    if (!sentenceIds || sentenceIds.length === 0) {
+    const validation = unassignSchema.safeParse(await req.json())
+    if (!validation.success) {
       return NextResponse.json({ error: 'No sentences provided' }, { status: 400 })
     }
+    const { sentenceIds, userIds } = validation.data
 
-    // If userIds provided, only unassign from those users
-    // Otherwise, unassign from all users
+    const denied = await denyUnlessSentencesVisible(user, sentenceIds)
+    if (denied) return denied
+
+    const teamUserIds = await getVisibleUserIds(user)
+    if (teamUserIds && userIds?.length) {
+      const team = new Set(teamUserIds)
+      if (userIds.some(id => !team.has(id))) {
+        return forbidden('Cannot unassign users you do not supervise')
+      }
+    }
+
+    // With userIds, only unassign those users. Without, unassign everyone the
+    // caller may manage (all users for admins, their team for supervisors).
     const where: Prisma.SentenceAssignmentWhereInput = {
       sentenceId: { in: sentenceIds }
     }
-
     if (userIds && userIds.length > 0) {
       where.userId = { in: userIds }
+    } else if (teamUserIds) {
+      where.userId = { in: teamUserIds }
     }
 
     const deleted = await prisma.sentenceAssignment.deleteMany({ where })
 
-    return NextResponse.json({ 
-      ok: true, 
-      unassigned: deleted.count 
+    return NextResponse.json({
+      ok: true,
+      unassigned: deleted.count
     })
   } catch (error) {
     console.error('Error unassigning sentences:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

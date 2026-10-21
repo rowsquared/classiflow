@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { startAIJob, monitorAIJob } from '@/lib/ai-labeling'
 import { AI_SOURCE_SLUG } from '@/lib/constants'
@@ -11,10 +11,8 @@ export async function POST(
   { params }: { params: Promise<{ key: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const { key } = await params
     const taxonomy = await prisma.taxonomy.findUnique({

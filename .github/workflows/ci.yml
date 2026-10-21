@@ -75,9 +75,39 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  integration:
+    # Route handlers against a real PostgreSQL: access control, labelling rules,
+    # imports. See tests/integration/README.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: classiflow
+          POSTGRES_PASSWORD: classiflow_password
+          POSTGRES_DB: classiflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U classiflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://classiflow:classiflow_password@localhost:5432/classiflow_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Integration tests
+        run: npm run test:integration
+
   deploy-prod:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [smoke, checks]
+    needs: [smoke, checks, integration]
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-prod

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
+import { getVisibleUserIds } from '@/lib/access'
 import { Prisma } from '@prisma/client'
 
 /**
@@ -10,10 +11,8 @@ import { Prisma } from '@prisma/client'
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
 
     const searchParams = req.nextUrl.searchParams
     const startDate = searchParams.get('startDate')
@@ -28,51 +27,18 @@ export async function GET(req: NextRequest) {
 
     const start = new Date(startDate)
     const end = new Date(endDate)
-
-    // Determine which sentences the user can see based on role
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true }
-    })
-
-    let visibleUserIds: string[] = []
-
-    if (user?.role === 'admin') {
-      // Admins see all sentences
-      visibleUserIds = []
-    } else if (user?.role === 'supervisor') {
-      // Get all labellers supervised by this user (including nested supervision)
-      const getSupervisedUserIds = async (supervisorId: string): Promise<string[]> => {
-        const labellers = await prisma.user.findMany({
-          where: { supervisorId },
-          select: { id: true, role: true }
-        })
-        
-        let allIds = labellers.map(l => l.id)
-        
-        // Recursively get supervised users for any supervisors
-        for (const labeller of labellers) {
-          if (labeller.role === 'supervisor') {
-            const nested = await getSupervisedUserIds(labeller.id)
-            allIds = allIds.concat(nested)
-          }
-        }
-        
-        return allIds
-      }
-      
-      visibleUserIds = await getSupervisedUserIds(session.user.id)
-      visibleUserIds.push(session.user.id) // Include supervisor's own work
-    } else {
-      // Labellers see only their own sentences
-      visibleUserIds = [session.user.id]
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return NextResponse.json({ error: 'startDate and endDate must be valid dates' }, { status: 400 })
     }
+
+    // Users whose work is visible: [] for admins (everyone), else self (+ team)
+    const visibleUserIds = (await getVisibleUserIds(user)) ?? []
 
     // Build where clause for sentence visibility
     const sentenceWhere: Prisma.SentenceWhereInput = {}
     // For non-admins, filter by assignments
     // Note: For supervisors, visibleUserIds includes both their own ID and supervised users
-    if (user?.role !== 'admin') {
+    if (user.role !== 'admin') {
       if (visibleUserIds.length > 0) {
         sentenceWhere.assignments = {
           some: {
@@ -93,7 +59,7 @@ export async function GET(req: NextRequest) {
           lte: end,
           not: null
         },
-        ...(user?.role !== 'admin' && visibleUserIds.length > 0 ? {
+        ...(user.role !== 'admin' && visibleUserIds.length > 0 ? {
           assignments: {
             some: {
               userId: { in: visibleUserIds }

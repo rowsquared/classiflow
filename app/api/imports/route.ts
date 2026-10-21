@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 
 export async function GET() {
-  const { error } = await requireSession()
+  const { error } = await requireSession('admin')
   if (error) return error
 
   try {

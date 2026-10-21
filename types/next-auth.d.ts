@@ -6,6 +6,7 @@ declare module 'next-auth' {
       id: string
       role: string
       mustResetPassword: boolean
+      sessionVersion?: number
     } & DefaultSession['user']
   }
 
@@ -13,6 +14,7 @@ declare module 'next-auth' {
     id: string
     role: string
     mustResetPassword: boolean
+    sessionVersion?: number
   }
 }
 
@@ -21,6 +23,7 @@ declare module 'next-auth/jwt' {
     id: string
     role: string
     mustResetPassword: boolean
+    sessionVersion?: number
   }
 }
 

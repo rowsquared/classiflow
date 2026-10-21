@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 
 export async function GET(
@@ -8,14 +9,13 @@ export async function GET(
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
   try {
-    // Get authenticated session
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
 
     const { sentenceId } = await params
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
+
     const sentence = await prisma.sentence.findUnique({
       where: { id: sentenceId },
       include: {
@@ -201,39 +201,9 @@ export async function GET(
       annotations: finalAnnotations
     }
 
-    // Check visibility permissions
-    if (session.user.role === 'labeller') {
-      // Labellers can only see their assigned sentences
-      const isAssigned = enrichedSentence.assignments.some(a => a.userId === session.user.id)
-      if (!isAssigned) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    } else if (session.user.role === 'supervisor') {
-      const visibleUserIds = new Set<string>([session.user.id])
-      let frontier = [session.user.id]
-      
-      while (frontier.length > 0) {
-        const labellers = await prisma.user.findMany({
-          where: { supervisorId: { in: frontier } },
-          select: { id: true }
-        })
-        const newIds = labellers
-          .map(l => l.id)
-          .filter(id => !visibleUserIds.has(id))
-        newIds.forEach(id => visibleUserIds.add(id))
-        frontier = newIds
-      }
-      
-      const isVisible = enrichedSentence.assignments.some(a => visibleUserIds.has(a.userId))
-      
-      if (!isVisible) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
-    // Admins can see all sentences
-
     return NextResponse.json(enrichedSentence)
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 })
+    console.error('Sentence detail error:', error)
+    return NextResponse.json({ error: 'Failed to load record' }, { status: 500 })
   }
 }

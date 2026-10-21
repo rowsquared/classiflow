@@ -1,28 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { forbidden, requireSession } from '@/lib/api-auth'
+import { getVisibleUserIds } from '@/lib/access'
+import { isLastAdmin, validateSupervisor } from '@/lib/user-rules'
 
 const updateUserSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().min(1).max(200).optional(),
   role: z.enum(['admin', 'supervisor', 'labeller']).optional(),
   supervisorId: z.string().nullable().optional(),
-  newPassword: z.string().min(8).optional()
+  newPassword: z.string().min(8).max(256).optional()
 })
 
-// GET - Get single user
+// GET - Get single user: admins see anyone, supervisors their team, everyone themselves
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ userId: string }> }
 ) {
+  const { user: currentUser, error } = await requireSession()
+  if (error) return error
+
   try {
-    const session = await auth()
     const { userId } = await context.params
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const visibleUserIds = await getVisibleUserIds(currentUser)
+    if (visibleUserIds && !visibleUserIds.includes(userId)) {
+      return forbidden()
     }
 
     const user = await prisma.user.findUnique({
@@ -74,35 +79,44 @@ export async function GET(
   }
 }
 
-// PUT - Update user
+// PUT - Update user (admins only)
 export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ userId: string }> }
 ) {
-  try {
-    const session = await auth()
-    const { userId } = await context.params
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  const { error } = await requireSession('admin')
+  if (error) return error
 
-    // Only admins can update users
-    if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+  try {
+    const { userId } = await context.params
 
     const body = await req.json()
     const validation = updateUserSchema.safeParse(body)
-    
+
     if (!validation.success) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Invalid request data',
-        details: validation.error.issues 
+        details: validation.error.issues
       }, { status: 400 })
     }
 
     const { name, role, supervisorId, newPassword } = validation.data
+
+    const existing = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    if (!existing) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    if (role !== undefined && role !== 'admin' && existing.role === 'admin' && await isLastAdmin(userId)) {
+      return NextResponse.json({ error: 'Cannot demote the last admin' }, { status: 400 })
+    }
+
+    if (supervisorId !== undefined) {
+      const supervisorError = await validateSupervisor(userId, supervisorId)
+      if (supervisorError) {
+        return NextResponse.json({ error: supervisorError }, { status: 400 })
+      }
+    }
 
     // Build update data
     const updateData: Prisma.UserUncheckedUpdateInput = {}
@@ -110,10 +124,12 @@ export async function PUT(
     if (role !== undefined) updateData.role = role
     if (supervisorId !== undefined) updateData.supervisorId = supervisorId
 
-    // Hash new password if provided
+    // An admin-set password is temporary: the user must change it, and every
+    // session signed in with the old password ends.
     if (newPassword) {
       updateData.password = await bcrypt.hash(newPassword, 10)
       updateData.mustResetPassword = true
+      updateData.sessionVersion = { increment: 1 }
     }
 
     const user = await prisma.user.update({
@@ -137,26 +153,19 @@ export async function PUT(
   }
 }
 
-// DELETE - Delete user
+// DELETE - Delete user (admins only)
 export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ userId: string }> }
 ) {
+  const { user: currentUser, error } = await requireSession('admin')
+  if (error) return error
+
   try {
-    const session = await auth()
     const { userId } = await context.params
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
-    // Only admins can delete users
-    if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    // Prevent self-deletion
-    if (userId === session.user.id) {
+    // Prevent self-deletion (which also guarantees an admin remains)
+    if (userId === currentUser.id) {
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
     }
 
@@ -180,4 +189,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

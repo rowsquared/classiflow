@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { launchJob } from '@/lib/ai-job-monitor'
 import { AI_LABELING_BATCH_SIZE } from '@/lib/constants'
@@ -32,23 +32,8 @@ function buildSentenceFilter(input: z.infer<typeof startSchema>) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Verify the user exists in the database
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true }
-    })
-
-    if (!user) {
-      console.error(`User ${session.user.id} from session not found in database`)
-      return NextResponse.json({
-        error: 'User account not found. Please log out and log back in.'
-      }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const body = await req.json()
     const input = startSchema.parse(body)
@@ -87,7 +72,7 @@ export async function POST(req: NextRequest) {
       const batchIds = batches[i]
       const job = await prisma.aILabelingJob.create({
         data: {
-          createdById: session.user.id,
+          createdById: user.id,
           taxonomyId: taxonomy.id,
           status: 'pending',
           totalSentences: batchIds.length,
@@ -121,10 +106,8 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const searchParams = req.nextUrl.searchParams
     const statusParams = searchParams.getAll('status')

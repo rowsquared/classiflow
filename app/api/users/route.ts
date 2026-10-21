@@ -1,33 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import { getVisibleUserIds } from '@/lib/access'
+import { validateSupervisor } from '@/lib/user-rules'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
 const createUserSchema = z.object({
-  username: z.string().min(3),
-  email: z.string().email(),
-  name: z.string().min(1),
+  username: z.string().min(3).max(100),
+  email: z.string().email().max(254),
+  name: z.string().min(1).max(200),
   role: z.enum(['admin', 'supervisor', 'labeller']),
   supervisorId: z.string().optional().nullable(),
-  tempPassword: z.string().min(8)
+  tempPassword: z.string().min(8).max(256)
 })
 
-// GET - List all users
+// GET - List users: all for admins, themselves and their team for supervisors
 export async function GET() {
+  const { user: currentUser, error } = await requireSession('admin', 'supervisor')
+  if (error) return error
+
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Only admin and supervisors can view users
-    if (session.user.role !== 'admin' && session.user.role !== 'supervisor') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
+    const teamUserIds = await getVisibleUserIds(currentUser)
     const users = await prisma.user.findMany({
+      where: teamUserIds ? { id: { in: teamUserIds } } : undefined,
       select: {
         id: true,
         username: true,
@@ -74,18 +70,10 @@ export async function GET() {
 
 // POST - Create new user
 export async function POST(req: NextRequest) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Only admins can create users
-    if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const body = await req.json()
     const validation = createUserSchema.safeParse(body)
     
@@ -113,6 +101,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Username already in use' }, { status: 400 })
       }
       return NextResponse.json({ error: 'Email already in use' }, { status: 400 })
+    }
+
+    const supervisorError = await validateSupervisor(null, supervisorId || null)
+    if (supervisorError) {
+      return NextResponse.json({ error: supervisorError }, { status: 400 })
     }
 
     // Hash password

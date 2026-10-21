@@ -13,9 +13,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id
         token.role = user.role
         token.mustResetPassword = user.mustResetPassword
+        token.sessionVersion = user.sessionVersion ?? 0
       }
       
-      // Handle session update trigger - fetch fresh data from DB
+      // Handle session update trigger - fetch fresh data from DB.
+      // sessionVersion is deliberately not refreshed here: a revoked session must
+      // not be able to revive itself by asking for an update.
       if (trigger === 'update' && token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
@@ -37,6 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string
         session.user.role = token.role as string
         session.user.mustResetPassword = token.mustResetPassword as boolean
+        session.user.sessionVersion = Number(token.sessionVersion ?? 0)
       }
       return session
     }

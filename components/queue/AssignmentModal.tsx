@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
 
 type User = {
   id: string
@@ -17,7 +16,6 @@ type AssignmentModalProps = {
 }
 
 export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: AssignmentModalProps) {
-  const { data: session } = useSession()
   const [users, setUsers] = useState<User[]>([])
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [initialUserIds, setInitialUserIds] = useState<Set<string>>(new Set())
@@ -152,12 +150,9 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     }
   }
 
-  // Filter users based on role permissions
-  const assignableUsers = session?.user?.role === 'admin'
-    ? users
-    : users.filter(u => {
-        return u.role === 'labeller' || u.id === session?.user?.id
-      })
+  // /api/users already returns only the users the caller may assign to
+  // (everyone for admins, themselves and their team for supervisors).
+  const assignableUsers = users
 
   // Compute diff for button label
   const toAdd = Array.from(selectedUserIds).filter(id => !initialUserIds.has(id))

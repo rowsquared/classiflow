@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
+import { denyUnlessSentencesVisible } from '@/lib/access'
 import { Prisma, type SentenceAnnotation } from '@prisma/client'
 const annotationSchema = z.object({
   annotations: z.array(z.object({
@@ -26,12 +27,14 @@ export async function POST(
       return NextResponse.json({ ok: true, warmup: true })
     }
 
+    const { user, error: authError } = await requireSession()
+    if (authError) return authError
+    const userId = user.id
+
+    const denied = await denyUnlessSentencesVisible(user, [sentenceId])
+    if (denied) return denied
+
     const body = await req.json()
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const userId = session.user.id
 
     const {
       annotations: rawAnnotations,

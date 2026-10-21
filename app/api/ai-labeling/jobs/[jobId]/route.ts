@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import type { CaughtError } from '@/lib/utils'
 
@@ -8,10 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const { jobId } = await params
     const job = await prisma.aILabelingJob.findUnique({

@@ -36,6 +36,7 @@ model User {
   supervisor        User?     @relation("SupervisorToLabellers", fields: [supervisorId], references: [id], onDelete: SetNull)
   labellers         User[]    @relation("SupervisorToLabellers")
   mustResetPassword Boolean   @default(true) // Force password reset on first login
+  sessionVersion    Int       @default(0) // Bumped on password change; older JWTs are rejected
   lastLogin         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

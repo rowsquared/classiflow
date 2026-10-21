@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import type { CaughtError } from '@/lib/utils'
@@ -8,10 +8,8 @@ const statusSchema = z.enum(['pending', 'processing', 'completed', 'failed', 'ca
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const searchParams = req.nextUrl.searchParams
     const statusParams = searchParams.getAll('status')

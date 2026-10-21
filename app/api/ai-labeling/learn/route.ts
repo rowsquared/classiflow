@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { launchLearningJob } from '@/lib/ai-job-monitor'
 import { AI_LEARNING_BATCH_SIZE, AI_LEARNING_MIN_NEW_ANNOTATIONS } from '@/lib/constants'
@@ -11,21 +11,8 @@ const learnSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user || session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true }
-    })
-    if (!user) {
-      return NextResponse.json({
-        error: 'User account not found. Please log out and log back in.'
-      }, { status: 401 })
-    }
+    const { user, error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const body = await req.json()
     const { taxonomyKey } = learnSchema.parse(body)
@@ -92,7 +79,7 @@ export async function POST(req: NextRequest) {
     for (const batchIds of batches) {
       const job = await prisma.aILearningJob.create({
         data: {
-          createdById: session.user.id,
+          createdById: user.id,
           taxonomyId: taxonomy.id,
           status: 'pending',
           totalSentences: batchIds.length,

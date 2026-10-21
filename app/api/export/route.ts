@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
+import { requireSession } from '@/lib/api-auth'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { Prisma, SentenceStatus } from '@prisma/client'
 
@@ -12,22 +12,9 @@ import { Prisma, SentenceStatus } from '@prisma/client'
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     // Only admins can export
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true }
-    })
-
-    if (user?.role !== 'admin') {
-      return NextResponse.json({ 
-        error: 'Only admins can export data' 
-      }, { status: 403 })
-    }
+    const { error: authError } = await requireSession('admin')
+    if (authError) return authError
 
     const searchParams = req.nextUrl.searchParams
     const statusFilter = searchParams.get('status') || 'all'

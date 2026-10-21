@@ -114,9 +114,16 @@ uses JWT sessions. Session/JWT fields include user ID, role, and
 password reset flow. **It explicitly passes API requests through.** API handlers
 must perform their own session and role checks: start every handler with
 `requireSession()` from `lib/api-auth.ts` (any signed-in user) or
-`requireSession('admin')` (listed roles only). Do not infer protection from an
-`/admin` UI, middleware, or neighboring endpoint. Record-level scoping (which
-sentences a labeller may see) is applied in the queue/stats handlers only.
+`requireSession('admin')` (listed roles only). It re-reads role, reset flag and
+`sessionVersion` from the database on every call, so use the returned `user`,
+not the JWT role. Do not infer protection from an `/admin` UI, middleware, or
+neighboring endpoint.
+
+Record-level scoping lives in `lib/access.ts` (admin: all; supervisor: whole
+team subtree; labeller: own assignments). Any handler that reads or writes a
+record uses `sentenceVisibilityFilter()` or `denyUnlessSentencesVisible()`;
+writes need the same scope as reads. The access matrix is in
+[docs/security.md](docs/security.md); add an integration test when you change it.
 
 ## Optional AI integration
 
@@ -166,6 +173,7 @@ introduce a different package manager or lockfile incidentally.
 | TypeScript | `npm run typecheck` (`tsc --noEmit`) |
 | Lint | `npm run lint` |
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
+| Integration tests | `TEST_DATABASE_URL=…/classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Production build | `npm run build` (Prisma generation + Next build) |
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database; commit generated SQL |
 
