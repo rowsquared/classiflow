@@ -11,7 +11,7 @@ const MAX_LIMIT = 200
  * entityType, entityId, actorId. Paging: pass the previous response's
  * nextCursor as `cursor`.
  */
-export const GET = workspaceRoute(['admin'], async (req, { user }) => {
+export const GET = workspaceRoute(['admin'], async req => {
   const params = req.nextUrl.searchParams
   const limit = Math.min(Math.max(parseInt(params.get('limit') || '50', 10) || 50, 1), MAX_LIMIT)
   const action = params.get('action')

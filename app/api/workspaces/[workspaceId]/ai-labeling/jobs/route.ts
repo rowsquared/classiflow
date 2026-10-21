@@ -133,7 +133,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
   }
 })
 
-export const GET = workspaceRoute(['admin'], async (req, { user }) => {
+export const GET = workspaceRoute(['admin'], async req => {
   try {
     const searchParams = req.nextUrl.searchParams
     const statusParams = searchParams.getAll('status')

@@ -5,7 +5,7 @@ import { readUpload } from '@/lib/upload'
 import { logError } from '@/lib/logger'
 
 // Dry run for taxonomy creation/replacement: the same parser the commit uses.
-export const POST = workspaceRoute(['admin'], async (req, { user }) => {
+export const POST = workspaceRoute(['admin'], async req => {
   try {
     const formData = await req.formData()
     const upload = await readUpload(formData.get('file'))
