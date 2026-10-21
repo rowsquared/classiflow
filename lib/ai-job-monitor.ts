@@ -9,7 +9,9 @@
 
 import { prisma } from '@/lib/prisma'
 import { startAIJob, fetchAIJobStatus } from './ai-labeling'
-import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS, AI_SOURCE_SLUG } from './constants'
+import type { Prisma } from '@prisma/client'
+import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS, AI_SOURCE_SLUG, getUnknownCodeForLevel } from './constants'
+import { parseLabelingResults } from './ai-results'
 import { buildFieldMap } from './ai-utils'
 
 // ---------------------------------------------------------------------------
@@ -273,7 +275,7 @@ function runMonitor(
       const msg = error instanceof Error ? error.message : String(error)
       console.error(`[monitor] ${kind} job ${jobId} failed: ${msg}`)
       try {
-        await updateJobRecord(jobId, kind, { status: 'failed', errorMessage: msg, completedAt: new Date() })
+        await failIfActive(jobId, kind, msg)
       } catch { /* best effort */ }
     } finally {
       getActiveMonitors().delete(jobId)
@@ -310,17 +312,22 @@ async function pollUntilComplete(
       })
 
       if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
-        // Store results for labeling jobs (AI suggestions)
-        if (kind === 'labeling') {
-          await storeLabelingResults(jobId, taxonomyId, sentenceIds, status)
-        }
-
-        await updateJobRecord(jobId, kind, {
-          status: 'completed',
-          processedSentences: totalSentences,
-          completedAt: new Date(),
-          errorMessage: null
-        })
+        // Completion is a conditional transition: if the job was cancelled while
+        // we waited for the service, nothing is written. Results and status
+        // commit together.
+        const completed = await prisma.$transaction(async (tx) => {
+          const data = { status: 'completed' as const, processedSentences: totalSentences, completedAt: new Date(), errorMessage: null }
+          const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
+          const claimed = kind === 'learning'
+            ? await tx.aILearningJob.updateMany({ where, data })
+            : await tx.aILabelingJob.updateMany({ where, data })
+          if (claimed.count === 0) return false
+          if (kind === 'labeling') {
+            await storeLabelingResults(tx, jobId, taxonomyId, sentenceIds, status.result || status)
+          }
+          return true
+        }, { timeout: 120_000 })
+        if (!completed) return
 
         // For learning jobs, update taxonomy lastLearningAt
         if (kind === 'learning') {
@@ -331,11 +338,7 @@ async function pollUntilComplete(
       }
 
       if (normalized === 'failed' || normalized === 'error') {
-        await updateJobRecord(jobId, kind, {
-          status: 'failed',
-          errorMessage: status.error || 'External AI job failed',
-          completedAt: new Date()
-        })
+        await failIfActive(jobId, kind, status.error || 'External AI job failed')
         return
       }
     } catch (error) {
@@ -368,59 +371,62 @@ async function updateTaxonomyLearningStatus(taxonomyId: string) {
   }
 }
 
+/** Marks a job failed unless it already reached a final state (e.g. cancelled). */
+async function failIfActive(jobId: string, kind: JobKind, message: string) {
+  const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
+  const data = { status: 'failed' as const, errorMessage: message, completedAt: new Date() }
+  if (kind === 'learning') {
+    await prisma.aILearningJob.updateMany({ where, data })
+  } else {
+    await prisma.aILabelingJob.updateMany({ where, data })
+  }
+}
+
 /**
- * Parse AI suggestions from the completed labeling job and store in DB.
+ * Validates the completed labeling job's result (lib/ai-results.ts) and stores
+ * the suggestions, inside the completion transaction. Only the job's own
+ * records are touched, and only codes that exist in the taxonomy (or are the
+ * level's unknown code) are kept.
  */
 async function storeLabelingResults(
+  tx: Prisma.TransactionClient,
   jobId: string,
   taxonomyId: string,
   sentenceIds: string[],
-  status: Record<string, unknown>
+  result: unknown
 ) {
-  const response = (status.result || status) as {
-    suggestions?: Array<{
-      sentenceId?: string
-      sentence_id?: string
-      annotations: Array<{ level: number; nodeCode: string | number; confidence?: number }>
-    }>
-    errors?: Array<{ sentenceId?: string; sentence_id?: string; error?: string }>
-  }
+  const { bySentence, rejected, serviceErrors } = parseLabelingResults(result, sentenceIds)
 
-  const suggestionMap = new Map<
-    string,
-    { annotations: Array<{ level: number; nodeCode: string; confidence: number }> }
-  >()
+  const codes = new Set<string>()
+  bySentence.forEach(list => list.forEach(s => codes.add(s.nodeCode)))
+  const known = new Set(
+    (await tx.taxonomyNode.findMany({
+      where: { taxonomyId, code: { in: Array.from(codes) } },
+      select: { code: true }
+    })).map(n => n.code)
+  )
+  let unknownCodes = 0
 
-  for (const suggestion of response.suggestions || []) {
-    const sentenceId = suggestion.sentenceId || suggestion.sentence_id
-    if (!sentenceId || !Array.isArray(suggestion.annotations)) continue
-    suggestionMap.set(sentenceId, {
-      annotations: (suggestion.annotations || []).map(a => ({
-        level: a.level,
-        nodeCode: String(a.nodeCode),
-        confidence: typeof a.confidence === 'number' ? a.confidence : 0
+  for (const [sentenceId, suggestions] of bySentence) {
+    const valid = suggestions.filter(s => known.has(s.nodeCode) || s.nodeCode === getUnknownCodeForLevel(s.level))
+    unknownCodes += suggestions.length - valid.length
+    await tx.sentenceAISuggestion.deleteMany({ where: { sentenceId, taxonomyId } })
+    if (valid.length === 0) continue
+    await tx.sentenceAISuggestion.createMany({
+      data: valid.map(s => ({
+        sentenceId,
+        taxonomyId,
+        level: s.level,
+        nodeCode: s.nodeCode,
+        confidenceScore: s.confidence
       }))
     })
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const [sentenceId, data] of suggestionMap) {
-      await tx.sentenceAISuggestion.deleteMany({ where: { sentenceId, taxonomyId } })
-      if (data.annotations.length === 0) continue
-      await tx.sentenceAISuggestion.createMany({
-        data: data.annotations.map(ann => ({
-          sentenceId,
-          taxonomyId,
-          level: ann.level,
-          nodeCode: ann.nodeCode,
-          confidenceScore: ann.confidence
-        }))
-      })
-    }
-  })
-
-  const errorCount = (response.errors || []).length
-  if (errorCount > 0) {
-    await updateJobRecord(jobId, 'labeling', { failedSentences: errorCount })
+  if (rejected > 0 || unknownCodes > 0) {
+    console.warn(`[monitor] labeling job ${jobId}: dropped ${rejected} malformed/foreign record result(s) and ${unknownCodes} suggestion(s) with codes not in the taxonomy`)
+  }
+  if (serviceErrors + rejected > 0) {
+    await tx.aILabelingJob.update({ where: { id: jobId }, data: { failedSentences: serviceErrors + rejected } })
   }
 }

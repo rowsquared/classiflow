@@ -481,6 +481,22 @@ results, cancellation races, malformed results, and unavailable service have
 defined outcomes. Unrelated records cannot be overwritten by a response. Human
 labeling continues with the AI service absent. No Taxomind source changes needed.
 
+**Status (21 Oct 2026): in progress.**
+
+- [x] Result validation (`lib/ai-results.ts`, unit-tested): only the job's own
+      record ids are written; levels 1..5 unique; codes non-empty strings
+      (numbers stringified for compatibility); confidence clamped to 0..1;
+      codes not in the taxonomy (other than the level's unknown) dropped.
+      Rejections counted in `failedSentences` and logged.
+- [x] Completion is a conditional transition (`updateMany` where status is
+      pending/processing) in the same transaction as the stored suggestions, so
+      a job cancelled while polling stays cancelled and gets no results.
+      Failure is conditional too (`failIfActive`).
+- [ ] Not verified against a running Taxomind (no service available here);
+      no integration test for the monitor yet (needs a stubbed HTTP service).
+- [ ] Durable ownership/lease for multi-instance deployments, recovery of jobs
+      nobody polls, retry/backoff, graceful shutdown: still process-local.
+
 ## W08 Query performance and metric correctness
 
 **Priority:** P1 for incorrect metrics, P2 for measured optimization.
