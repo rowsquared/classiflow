@@ -23,3 +23,5 @@ Users who wrote comments or started AI jobs cannot be deleted (their authorship
 is kept), and deleting a labeller drops the attribution of their labels. A
 `deactivatedAt` flag that blocks sign-in and hides the user from pickers, while
 keeping history, would cover people who leave a project.
+
+**Planned:** now part of [user management plan](plans/user-management.md) (U3).
