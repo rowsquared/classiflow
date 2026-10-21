@@ -221,6 +221,7 @@ files for deployment details; these are separate from the local dev stack.
   as a complete specification.
 
 For hardening and modernization work, start with the
+[handoff](docs/plans/hardening-handoff.md) and the
 [repository review](docs/reviews/2026-10-21-review.md), then read only the relevant
 linked investigation brief. These are dated findings and proposed work, not
 implemented behavior or additional standing instructions.
