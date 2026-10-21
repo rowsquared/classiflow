@@ -1,6 +1,8 @@
 import type { Prisma } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { currentWorkspaceId, db, withWorkspace } from '@/lib/workspace/db'
+import { logError } from '@/lib/logger'
+import { currentRequestId } from '@/lib/request-id'
 
 /**
  * Audit trail of administrative and access-relevant events, stored in
@@ -19,6 +21,9 @@ import { currentWorkspaceId, db, withWorkspace } from '@/lib/workspace/db'
  * Inside a workspace transaction the entry is written in that transaction and
  * commits (or rolls back) with the change. Elsewhere writing is best effort: a
  * failure is logged and never fails the request.
+ *
+ * Entries written during a request carry its ID (`requestId`, see
+ * lib/request-id.ts), which also appears on that request's log lines.
  */
 
 export type AuditAction =
@@ -65,11 +70,12 @@ export type AuditEntry = {
 export async function audit(entry: AuditEntry): Promise<void> {
   const inTransaction = currentWorkspaceId()
   const workspaceId = entry.workspaceId === undefined ? inTransaction : entry.workspaceId
+  const requestId = await currentRequestId()
   const write = async (client: Pick<Prisma.TransactionClient, 'user' | 'auditLog'>) => {
     const actorName = entry.actorId
       ? ((await client.user.findUnique({ where: { id: entry.actorId }, select: { username: true } }))?.username ?? null)
       : null
-    await client.auditLog.create({ data: { ...entry, workspaceId, actorName } })
+    await client.auditLog.create({ data: { ...entry, workspaceId, actorName, requestId } })
   }
 
   if (inTransaction && workspaceId === inTransaction) {
@@ -83,6 +89,10 @@ export async function audit(entry: AuditEntry): Promise<void> {
       await write(prisma)
     }
   } catch (error) {
-    console.error(`[audit] could not record ${entry.action} on ${entry.entityType} ${entry.entityId}:`, error)
+    await logError('Could not record audit entry', error, {
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId
+    })
   }
 }

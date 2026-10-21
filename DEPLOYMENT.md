@@ -109,6 +109,30 @@ when the database does not answer. Compare `release` with the commit you meant
 to deploy; with the repository variable `PROD_HEALTH_URL` set, the CI
 `deploy-prod` job waits for production to report the promoted commit.
 
+## Logs, request IDs and traces
+
+The app logs JSON lines to stdout (collect them with the platform's container
+logs). Every request gets an ID: a well-formed `X-Request-ID` from the reverse
+proxy is kept (8–128 letters, digits, `.`, `_`, `:` or `-`), otherwise one is
+generated. It comes back as the `x-request-id` response header, appears on
+that request's log lines and is stored on its audit entries (`requestId`), so
+a reported error can be traced from the audit log to the logs. Unhandled
+errors in workspace API routes are logged with it and answered with a plain
+500. Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` points at an OTLP/HTTP
+collector (ENV_SETUP.md "Logs and traces").
+
+## Container hardening
+
+`docker-compose.yml` runs the app with no Linux capabilities, no privilege
+escalation and a **read-only root filesystem**. Only `/tmp` and
+`/app/.next/cache` (Next's cache, created at start) are writable, both in
+memory. The start script calls the Prisma CLI directly rather than through
+`npx`, because npm would write its cache and logs under `$HOME`. Checked by
+running `prisma migrate deploy` and the standalone server on a read-only
+mount. If a future change needs to write files, give it its own tmpfs or
+volume rather than dropping `read_only`. Memory and CPU limits are left as
+commented placeholders: size them from production usage.
+
 ## Admin User
 
 On every start, `scripts/init-admin.ts` creates an admin from `DEFAULT_ADMIN_USERNAME` (default `admin`), `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` **only if the database has no admin yet**. The password must be changed at first sign-in. In production the script refuses a missing or well-known placeholder password and stops startup with an error, so set a real one before the first deploy. It never prints the password.
@@ -149,10 +173,22 @@ the host, encrypted, and restore one regularly:
 # Backup, from the project directory (or the Coolify server)
 docker compose exec -T postgres pg_dump -U classiflow -Fc classiflow > classiflow-$(date +%F).dump
 
-# Restore drill: restores into a throwaway PostgreSQL 18 container, prints the
-# latest migration and row counts, and how long the restore took.
+# Restore drill, from a checkout of the deployed commit after `npm ci`:
+# restores into a throwaway PostgreSQL 18 container, prints the latest
+# migration and row counts and how long the restore took, then runs
+# scripts/restore-check.ts against it (below).
 scripts/restore-drill.sh classiflow-2026-10-21.dump
 ```
+
+`scripts/restore-check.ts` fails the drill unless: no migration failed; every
+table with a `workspaceId` (except the `WorkspaceMembership` control-plane
+table) has row security enabled and a policy; the runtime role, set up as the
+start script does, is not a superuser, cannot bypass row security, owns no
+table, has row access to every application table, none to the migration
+history, and may run the AI job recovery function; and, for every workspace,
+the runtime role inside that workspace's context sees exactly the owner's rows
+of each workspace table (and none without a context). It prints a summary per
+workspace (records, labels, taxonomies, comments).
 
 Decide and record: how much data loss is tolerable (backup frequency), how long
 a restore may take, where encrypted copies live and for how long, and who is
@@ -162,7 +198,12 @@ and at least quarterly.
 To restore for real, stop the app, restore into an empty database with
 `pg_restore --no-owner --no-privileges -U classiflow -d classiflow`, then start
 the app: migrations bring an older dump up to date and, with `APP_DB_USER` set,
-the runtime role's grants are re-applied.
+the runtime role's grants are re-applied. Then run the same checks against it
+before opening it to users:
+
+```bash
+docker compose exec app node scripts/restore-check.ts   # uses the container's DATABASE_URL, APP_DB_USER, APP_DB_PASSWORD
+```
 
 ## Troubleshooting
 

@@ -7,6 +7,7 @@ import { readUpload } from '@/lib/upload'
 import type { CaughtError, CsvRow } from '@/lib/utils'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 const BATCH_SIZE = 1000
 const MAX_FIELD_COLUMNS = 5
@@ -323,7 +324,7 @@ export const POST = workspaceRoute(
           { status: 409 }
         )
       }
-      console.error('Import error:', e)
+      await logError('Import error', e)
       return NextResponse.json(
         {
           ok: false,

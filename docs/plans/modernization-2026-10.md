@@ -33,7 +33,20 @@ production build, and `npm audit --omit=dev` (0 findings):
 - **M00** PostgreSQL 18 everywhere, one baseline migration, external-training
   model and the `isLeaf` / `'success'` fallbacks removed, label-integrity report
   deleted, upgrade path dropped from the docs.
-- **M08** (partly) Trivy scan of the smoke image in CI.
+- **M08** Trivy scan of the smoke image in CI. Done 22 October 2026: pino
+  JSON logs with redaction (`lib/logger.ts`), a request ID per request
+  (`lib/request-id.ts`, set in `proxy.ts`, returned as `x-request-id`, stored
+  on audit entries as `AuditLog.requestId`), unhandled workspace-route errors
+  logged and answered with a plain 500, OpenTelemetry traces over OTLP/HTTP
+  when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (`lib/telemetry.ts`, loaded by
+  `instrumentation.ts` only then; checked against the standalone build with a
+  local collector), trace IDs on log lines, read-only root filesystem in
+  Compose. Server `console.*` calls were replaced in shared infrastructure and
+  the record, import, comment, assignment and export routes; the AI, users,
+  auth, taxonomy and progress code still uses `console` (owned by parallel
+  work at the time). Not done: passing the request ID to Taxomind (the AI
+  client was being reworked), alerts (need a log/trace backend), memory/CPU
+  limits (need production numbers).
 - **M09** Taxomind contract: types generated from Taxomind's OpenAPI document,
   calls through `openapi-fetch`, every response parsed in
   `lib/contracts/taxomind.ts`; the stub service checks requests and replies
@@ -50,7 +63,7 @@ Still open from this plan:
   route parameters are typed instead of an index signature.
 - M01: remove hand-written `useMemo`/`useCallback` where the compiler covers
   them (optional).
-- M06, M07, M08 logs/traces, the open points under M09, and the "Carried over
+- M06, M07, the rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
 - Watch: Prisma 7.10's query interpreter runs the sub-queries of one
   operation (relation `include`s) in parallel on an interactive
@@ -473,13 +486,14 @@ duplicate-label backup table, the old fallback database password) are dropped.
   `tests/integration/ai-job-monitor.test.ts` has been used.
 - **Release AI job leases on shutdown** (W07): today they expire within
   2 × poll interval + 60 s after an instance stops.
-- **More browser journeys** (W10): taxonomy admin and bulk labelling (team
+- ~~**More browser journeys** (W10)~~ done 22 October 2026 (`tests/e2e/labelling-bulk.spec.ts`, `taxonomy-admin.spec.ts`): taxonomy admin and bulk labelling (team
   management comes with the [user management plan](user-management.md)).
 - **Backups** (W12, phase 3): the maintainer sets recovery objectives
   (tolerated data loss, recovery time); then off-host encrypted dumps on a
   schedule, retention, an alert on failure, and `scripts/restore-drill.sh` on
-  a real dump.
-- **Read-only root filesystem and limits** (W12): check that the Prisma CLI
+  a real dump (the drill now also runs `scripts/restore-check.ts`: row
+  security, runtime role and per-workspace rows).
+- **Read-only root filesystem** done 22 October 2026 (DEPLOYMENT.md "Container hardening"); **limits** still open. Original item (W12): check that the Prisma CLI
   writes nothing during `migrate deploy`, then add `read_only` with a `/tmp`
   tmpfs, and memory/CPU limits sized from production usage.
 - **Audit log retention** (W12): the maintainer picks a period; pruning is

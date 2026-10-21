@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth'
 import { isCrossSiteMutation } from '@/lib/cross-site'
+import { logger } from '@/lib/logger'
+import { REQUEST_ID_HEADER, requestIdFrom } from '@/lib/request-id'
 
 // Enforced. Scripts need this request's nonce (Next adds it to its own
 // scripts; app/layout.tsx passes it to the sidebar init script), and
@@ -27,15 +29,26 @@ function contentSecurityPolicy(nonce: string) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Every request gets an ID (lib/request-id.ts): handlers read it from the
+  // request headers for logs and audit entries, and the response carries it.
+  const requestId = requestIdFrom(request.headers.get(REQUEST_ID_HEADER))
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set(REQUEST_ID_HEADER, requestId)
+  const withId = <T extends Response>(response: T) => {
+    response.headers.set(REQUEST_ID_HEADER, requestId)
+    return response
+  }
+
   // API routes handle their own auth (lib/api-auth.ts). Here they only get a
   // cross-site check: a browser request that changes data must come from this
   // site. Requests without an Origin header (scripts) pass; Better Auth checks
   // the origin on its own routes too.
   if (pathname.startsWith('/api')) {
     if (isCrossSiteMutation(request)) {
-      return NextResponse.json({ error: 'Cross-site request refused' }, { status: 403 })
+      logger.warn({ requestId, method: request.method, path: pathname }, 'cross-site request refused')
+      return withId(NextResponse.json({ error: 'Cross-site request refused' }, { status: 403 }))
     }
-    return NextResponse.next()
+    return withId(NextResponse.next({ request: { headers: requestHeaders } }))
   }
 
   // The same database-backed session the API sees: a revoked session, a
@@ -45,24 +58,23 @@ export async function proxy(request: NextRequest) {
   const isLoginPage = pathname === '/login'
 
   if (!user?.id && !isLoginPage) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return withId(NextResponse.redirect(new URL('/login', request.url)))
   }
   if (user?.id && isLoginPage) {
-    return NextResponse.redirect(new URL('/', request.url))
+    return withId(NextResponse.redirect(new URL('/', request.url)))
   }
   if (user?.mustResetPassword && pathname !== '/reset-password') {
-    return NextResponse.redirect(new URL('/reset-password', request.url))
+    return withId(NextResponse.redirect(new URL('/reset-password', request.url)))
   }
 
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const csp = contentSecurityPolicy(nonce)
-  const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-nonce', nonce)
   requestHeaders.set('Content-Security-Policy', csp)
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   response.headers.set('Content-Security-Policy', csp)
-  return response
+  return withId(response)
 }
 
 export const config = {

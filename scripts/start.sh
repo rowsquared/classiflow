@@ -20,7 +20,9 @@ node_script() {
   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON "$@"
 }
 
-npx prisma migrate deploy
+# The Prisma CLI directly, not through npx: npm would try to write its cache
+# and logs under $HOME, which is read-only in production (docker-compose.yml).
+node_modules/.bin/prisma migrate deploy
 
 if [ -n "${APP_DB_USER:-}" ]; then
   node_script scripts/db-runtime-role.ts

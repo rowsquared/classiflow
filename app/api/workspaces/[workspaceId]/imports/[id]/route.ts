@@ -3,6 +3,7 @@ import { db, inCurrentWorkspace } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 export const DELETE = workspaceRoute<'id'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
@@ -77,7 +78,7 @@ export const DELETE = workspaceRoute<'id'>(['admin'], async (req, { user: actor,
     })
   } catch (caught) {
     const e = caught as CaughtError
-    console.error('Failed to delete import:', e)
+    await logError('Failed to delete import', e)
     return NextResponse.json(
       {
         ok: false,

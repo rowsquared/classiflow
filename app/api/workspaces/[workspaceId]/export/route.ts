@@ -3,6 +3,7 @@ import { reloadWorkspaceUser, workspaceRoute } from '@/lib/api-auth'
 import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
 import { exportStream } from '@/lib/export-csv'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 /**
  * GET /api/workspaces/[workspaceId]/export?status=...&dateRange=...&formulaSafe=false
@@ -82,7 +83,7 @@ export const GET = workspaceRoute(
         }
       })
     } catch (error) {
-      console.error('Export error:', error)
+      await logError('Export error', error)
       return NextResponse.json({ error: 'Export failed' }, { status: 500 })
     }
   },

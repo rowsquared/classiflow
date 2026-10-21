@@ -1,35 +1,13 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures'
-
-const api = (path: string) => `/api/workspaces/${WORKSPACE_ID}${path}`
-const pagePath = (path: string) => `/w/${WORKSPACE_ID}${path}`
+import { ADMIN, RECORDS } from './fixtures'
+import { api, failOnCspViolations, pagePath, rows, signIn } from './helpers'
 
 // The tests share one seeded database and run in this order: the labelling
 // journey changes a record, which the export journey then reads.
 test.describe.configure({ mode: 'serial' })
 
-async function signIn(page: Page, password = ADMIN.password) {
-  await page.goto('/login')
-  await page.getByLabel(/username or email/i).fill(ADMIN.username)
-  await page.getByLabel(/password/i).fill(password)
-  await page.getByRole('button', { name: /sign in|log in/i }).click()
-}
-
-const rows = (page: Page) => page.locator('tbody tr')
-
-// The Content-Security-Policy is enforced (proxy.ts); any violation is logged
-// to the console and fails the journey.
-let cspReports: string[] = []
-test.beforeEach(({ page }) => {
-  cspReports = []
-  page.on('console', msg => {
-    if (msg.text().includes('Content Security Policy')) cspReports.push(msg.text())
-  })
-})
-test.afterEach(() => {
-  expect(cspReports).toEqual([])
-})
+failOnCspViolations()
 const isQueueRequest = (url: string) => new URL(url).pathname === api('/sentences')
 
 test('sign-in refuses a wrong password and admits the right one', async ({ page }) => {

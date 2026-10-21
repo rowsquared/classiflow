@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
+import { logError } from '@/lib/logger'
 
 const MAX_COMMENT_LENGTH = 10_000
 
@@ -46,7 +47,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
 
     return NextResponse.json({ ok: true, comment })
   } catch (error) {
-    console.error('Failed to create comment:', error)
+    await logError('Failed to create comment', error)
     return NextResponse.json({ ok: false, error: 'Failed to create comment' }, { status: 500 })
   }
 })
@@ -85,7 +86,7 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
 
     return NextResponse.json({ ok: true, comments, hasResolved: resolvedCount > 0 })
   } catch (error) {
-    console.error('Failed to fetch comments:', error)
+    await logError('Failed to fetch comments', error)
     return NextResponse.json({ ok: false, error: 'Failed to fetch comments' }, { status: 500 })
   }
 })
@@ -128,7 +129,7 @@ export const PATCH = workspaceRoute<'sentenceId'>([], async (req, { user, params
 
     return NextResponse.json({ ok: true, comment: updated })
   } catch (error) {
-    console.error('Failed to update comment:', error)
+    await logError('Failed to update comment', error)
     return NextResponse.json({ ok: false, error: 'Failed to update comment' }, { status: 500 })
   }
 })
@@ -167,7 +168,7 @@ export const DELETE = workspaceRoute<'sentenceId'>([], async (req, { user, param
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('Failed to delete comment:', error)
+    await logError('Failed to delete comment', error)
     return NextResponse.json({ ok: false, error: 'Failed to delete comment' }, { status: 500 })
   }
 })

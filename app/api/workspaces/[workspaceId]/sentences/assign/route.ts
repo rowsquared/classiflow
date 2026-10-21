@@ -6,6 +6,7 @@ import { forbidden, workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible, getVisibleUserIds } from '@/lib/access'
 import { membershipIdsForUsers } from '@/lib/server/users'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 // Admins assign any record of the workspace to any active member. Supervisors
 // only touch records they can see and only assign to / unassign from themselves
@@ -67,7 +68,7 @@ export const GET = workspaceRoute(['admin', 'supervisor'], async (req, { user })
 
     return NextResponse.json({ ok: true, userAssignments })
   } catch (error) {
-    console.error('Error fetching assignments:', error)
+    await logError('Error fetching assignments', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 })
@@ -121,7 +122,7 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
       users: userIds.length
     })
   } catch (error) {
-    console.error('Error assigning sentences:', error)
+    await logError('Error assigning sentences', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 })
@@ -171,7 +172,7 @@ export const DELETE = workspaceRoute(['admin', 'supervisor'], async (req, { user
       unassigned: deleted.count
     })
   } catch (error) {
-    console.error('Error unassigning sentences:', error)
+    await logError('Error unassigning sentences', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 })

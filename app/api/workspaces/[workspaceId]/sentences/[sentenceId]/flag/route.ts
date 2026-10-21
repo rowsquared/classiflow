@@ -3,6 +3,7 @@ import { db } from '@/lib/workspace/db'
 import { z } from 'zod'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
+import { logError } from '@/lib/logger'
 
 const flagSchema = z.object({
   flagged: z.boolean()
@@ -27,7 +28,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
 
     return NextResponse.json({ success: true, flagged })
   } catch (error) {
-    console.error('Flag update error:', error)
+    await logError('Flag update error', error)
     return NextResponse.json({ error: 'Failed to update flag' }, { status: 500 })
   }
 })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { logError } from '@/lib/logger'
 
 // Public liveness/readiness probe: reports whether the database answers and
 // which commit is running (SOURCE_COMMIT, set at image build), so a deploy can
@@ -17,7 +18,7 @@ export async function GET() {
       release
     })
   } catch (error) {
-    console.error('Health check failed:', error)
+    await logError('Health check failed', error)
     return NextResponse.json(
       {
         status: 'unhealthy',

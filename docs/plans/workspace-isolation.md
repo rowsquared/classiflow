@@ -97,7 +97,10 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    input tables, persisted taxonomy-sync job, per-workspace job ceilings;
    P7 external AI cancellation on archive, transactional audit for
    membership changes, import/lint boundary check against the `prisma`
-   singleton, restore check; a searchable header switcher (today: "Switch
+   singleton, restore check (done 22 October 2026: `scripts/restore-check.ts`,
+   run by `scripts/restore-drill.sh`, checks row security on every workspace
+   table, the runtime role's attributes and grants, and every workspace's rows
+   through that role); a searchable header switcher (today: "Switch
    workspace" link to the chooser); Taxomind namespace isolation verified
    live (release gate for AI).
 

@@ -63,7 +63,7 @@ Browser: React client components
 | Authentication | `lib/auth.ts` (Better Auth server), `lib/auth-client.ts` (browser), `lib/api-auth.ts`, `lib/passwords.ts`, `proxy.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.ts`, `init-admin.ts`, server; `reset-admin-password.ts` for admin recovery; `restore-drill.sh` for backups; `promote-main.mjs`) |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.ts`, `init-admin.ts`, server; `reset-admin-password.ts` for admin recovery; `restore-drill.sh` + `restore-check.ts` for backups; `promote-main.mjs`); logs `lib/logger.ts`, request IDs `lib/request-id.ts` (set in `proxy.ts`), traces `lib/telemetry.ts` (loaded by `instrumentation.ts` only with an OTLP endpoint) |
 
 ## Domain model and behavior to preserve
 
@@ -243,6 +243,11 @@ files for deployment details; these are separate from the local dev stack.
   into `main`: production is released only with `node scripts/promote-main.mjs`
   after CI is green on `staging` (a ruleset enforces this). See "Deploy
   triggers" in `COOLIFY_DEPLOYMENT.md`.
+- Server code logs through `lib/logger.ts` (pino, JSON): `logError(message,
+  error, fields)` in route handlers' catch blocks (it adds the request ID), or
+  `logger`/`requestLogger()`; not `console.*`. Scripts in `scripts/` and client
+  components keep `console`. Never log record text, passwords, tokens or mail
+  bodies. `workspaceRoute` already logs unhandled errors and answers 500.
 - Use the `@/` root import alias and existing component/route conventions. Keep
   Prisma, auth internals, and AI credentials on the server; interactive React
   files use `'use client'`. App Router dynamic route `params` are promises.

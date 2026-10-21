@@ -62,9 +62,27 @@ labelling; AI features stay disabled. They are set together or not at all.
 | `PORT`, `HOSTNAME` | no | `3000`, `0.0.0.0` in the image | no | Listen address of `server.js` |
 | `NODE_ENV` | no | `production` in the image | no | Enables production checks (admin password placeholders, auth secret) and the sign-in rate limit |
 
+## Logs and traces
+
+Logs are JSON lines on stdout (pino, `lib/logger.ts`) with `level`, `time`,
+`msg`, `service`, `release` and, during a request, `requestId` (also returned
+as the `x-request-id` response header and stored on audit entries). Passwords,
+tokens, cookies and record text are redacted if passed by mistake.
+
+| Variable | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `LOG_LEVEL` | no | `info` (`silent` in the test suites) | no | `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | empty (tracing off) | no | OTLP/HTTP collector base URL, e.g. `http://otel-collector:4318`. When set, `instrumentation.ts` loads the OpenTelemetry SDK (`lib/telemetry.ts`) and Next.js traces requests, route handlers, page renders and server-side `fetch` calls (including the AI service); log lines then carry `traceId`/`spanId`. Unset, the SDK is never loaded |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | no | empty | no | Full traces URL instead of the base URL (`…/v1/traces`) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | no | empty | yes, if it holds a token | Headers for the collector, e.g. `authorization=Bearer …` |
+| `OTEL_SERVICE_NAME` | no | `classiflow` | no | Service name on the traces; `service.version` is `SOURCE_COMMIT` |
+| `OTEL_SDK_DISABLED` | no | empty | no | `true` turns tracing off even with an endpoint set |
+| `NEXT_OTEL_VERBOSE` | no | empty | no | `1` makes Next.js emit more spans (Next.js documentation) |
+
 ## Scripts and tests only
 
 | Variable | Used by | Purpose |
 | --- | --- | --- |
 | `NEW_PASSWORD` | `scripts/reset-admin-password.ts` | Temporary password to set (DEPLOYMENT.md "Admin User") |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | `scripts/restore-check.ts` | Runtime role to set up and check on a restored database (DEPLOYMENT.md "Backups") |
 | `TEST_DATABASE_URL` | `npm run test:integration` | Disposable database whose name ends in `_test` |

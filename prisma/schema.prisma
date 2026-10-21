@@ -489,6 +489,8 @@ model AuditLog {
   entityType  String
   entityId    String
   payload     Json?
+  /// The request that caused the event (x-request-id, lib/request-id.ts), to find its log lines.
+  requestId   String?
   createdAt   DateTime @default(now())
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id])

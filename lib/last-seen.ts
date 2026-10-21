@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { logError } from '@/lib/logger'
 
 /**
  * "Last seen" in a workspace: the app was open in that workspace and loading
@@ -23,6 +24,6 @@ export async function touchLastSeen(membershipId: string): Promise<void> {
           OR "lastSeenAt" < (now() AT TIME ZONE 'UTC') - ${LAST_SEEN_INTERVAL}::interval
           OR "lastSeenAt" > (now() AT TIME ZONE 'UTC'))`
   } catch (error) {
-    console.error('[last-seen] could not record activity:', error)
+    await logError('Could not record last seen', error, { membershipId })
   }
 }

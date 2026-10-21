@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { audit } from '@/lib/audit'
 import { withWorkspace, WorkspaceArchivedError } from '@/lib/workspace/db'
 import { touchLastSeen } from '@/lib/last-seen'
+import { logError } from '@/lib/logger'
 
 /** A person's role inside one workspace. */
 export type Role = 'admin' | 'supervisor' | 'labeller'
@@ -206,21 +207,32 @@ export function workspaceRoute<Segment extends string = never>(
 ) {
   return async (req: NextRequest, { params }: RouteContext<WorkspaceParams<Segment>>): Promise<Response> => {
     const resolved = await params
-    const { user, session, error } = await checkWorkspace(resolved.workspaceId, roles, passive)
-    if (error) return error
-    const write = req.method !== 'GET' && req.method !== 'HEAD'
-    if (write && user.archived) return workspaceArchived()
-    if (!transaction) return handler(req, { user, session, params: resolved })
     try {
+      const { user, session, error } = await checkWorkspace(resolved.workspaceId, roles, passive)
+      if (error) return error
+      const write = req.method !== 'GET' && req.method !== 'HEAD'
+      if (write && user.archived) return workspaceArchived()
+      if (!transaction) return await handler(req, { user, session, params: resolved })
       return await withWorkspace(user.workspaceId, () => handler(req, { user, session, params: resolved }), {
         write,
         timeoutMs
       })
     } catch (caught) {
       if (caught instanceof WorkspaceArchivedError) return workspaceArchived()
-      throw caught
+      // Anything a handler did not turn into a response: logged with the
+      // request ID (which the response also carries), never shown to the caller.
+      await logError('Unhandled error in workspace route', caught, {
+        method: req.method,
+        path: req.nextUrl.pathname,
+        workspaceId: resolved.workspaceId
+      })
+      return internalError()
     }
   }
+}
+
+export function internalError() {
+  return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
 }
 
 export function workspaceArchived() {

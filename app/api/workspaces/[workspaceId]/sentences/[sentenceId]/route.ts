@@ -3,6 +3,7 @@ import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { logError } from '@/lib/logger'
 
 export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
@@ -194,7 +195,7 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
 
     return NextResponse.json(enrichedSentence)
   } catch (error) {
-    console.error('Sentence detail error:', error)
+    await logError('Sentence detail error', error)
     return NextResponse.json({ error: 'Failed to load record' }, { status: 500 })
   }
 })

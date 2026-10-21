@@ -2,6 +2,7 @@ import type { Prisma } from '@/lib/generated/prisma/client'
 import { db, withWorkspace } from '@/lib/workspace/db'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { csvLine, type CsvColumn } from '@/lib/csv'
+import { logError } from '@/lib/logger'
 
 /**
  * Streaming CSV export of one workspace's records
@@ -228,7 +229,7 @@ export async function exportStream(
         records += next.value.length
         controller.enqueue(encoder.encode(lines.join('')))
       } catch (error) {
-        console.error('Export failed while streaming:', error)
+        await logError('Export failed while streaming', error, { records })
         controller.error(error)
       }
     },

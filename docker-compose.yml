@@ -68,6 +68,13 @@ services:
       AI_JOB_POLL_INTERVAL_MS: ${AI_JOB_POLL_INTERVAL_MS:-5000}
       AI_JOB_POLL_TIMEOUT_MS: ${AI_JOB_POLL_TIMEOUT_MS:-600000}
       AI_SOURCE_SLUG: ${AI_SOURCE_SLUG:-}
+
+      # Logs and traces (ENV_SETUP.md "Logs and traces"); tracing is off
+      # unless an OTLP endpoint is set.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-classiflow}
     # Migrations, optional runtime DB role, admin bootstrap, then the server.
     command: sh scripts/start.sh
     # The server runs as an unprivileged user on port 3000: no Linux
@@ -76,6 +83,17 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Read-only root filesystem. The start script and the server write only
+    # Next's cache (created at start, used by image optimisation) and
+    # temporary files; both live in memory. Checked with scripts/start.sh's
+    # steps and the standalone server on a read-only mount (DEPLOYMENT.md).
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    # Resource limits: size them from production usage, then uncomment.
+    # mem_limit: 1g
+    # cpus: 1.0
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
