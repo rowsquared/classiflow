@@ -30,16 +30,16 @@ not all of them.
 | --- | --- | --- |
 | W01 access | done | — |
 | W02 sessions | done | MFA/SSO is a product decision |
-| W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image (W12); pin action SHAs |
-| W04 HTTP | mostly done | CSP (report-only first); verify live proxy settings |
+| W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image; pin action SHAs |
+| W04 HTTP | mostly done | enforce the report-only CSP after watching production; verify live proxy settings |
 | W05 labelling | done | run `scripts/label-integrity-report.sql` on production; decide repairs |
-| W06 import/export | done | streaming export for large data |
+| W06 import/export | done | — |
 | W07 AI | done in code | verify against a running Taxomind; idempotent job start (needs Taxomind support) |
 | W08 metrics | correctness done | performance tuning with measured data |
-| W09 UI | mostly done | stats staleness indicator, contrast/narrow viewports, labelling save errors, component size |
+| W09 UI | mostly done | contrast/narrow viewports, labelling save errors (`alert()`), component size |
 | W10 tests/CI | mostly done | more journeys (imports, admin, comments); shared filter-param builder; build-time check bypass |
 | W11 docs | done | keep the map in README/AGENTS current |
-| W12 ops | mostly done | backup schedule/objectives (maintainer), upgrade test from a real dump, structured logs/alerts, container limits |
+| W12 ops | mostly done | backup schedule/objectives (maintainer), upgrade test from a real dump, structured logs/alerts, read-only FS and limits |
 
 Suggested next order: the smaller open items in each brief (see the `[ ]` lines).
 

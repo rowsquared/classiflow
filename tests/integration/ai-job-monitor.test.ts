@@ -228,7 +228,9 @@ describe('AI job monitor against a stub service', () => {
     expect(started[0].body.sentences).toEqual([
       { sentenceId: a.id, fields: { text: 'record 0' }, annotations: [{ level: 1, nodeCode: '02' }] },
     ])
-    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastLearningStatus).toBe('completed')
+    // Recorded right after the job's completion, outside its transaction.
+    await expect.poll(async () => (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastLearningStatus)
+      .toBe('completed')
   })
 })
 

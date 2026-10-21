@@ -67,6 +67,12 @@ services:
       AI_SOURCE_SLUG: ${AI_SOURCE_SLUG:-}
     # Migrations, optional runtime DB role, admin bootstrap, then the server.
     command: sh scripts/start.sh
+    # The server runs as an unprivileged user on port 3000: no Linux
+    # capabilities or privilege escalation needed.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s

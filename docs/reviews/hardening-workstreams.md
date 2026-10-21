@@ -251,10 +251,12 @@ April 2028) and a committed npm lockfile.
       findings above).
 - [ ] Promote the tested image instead of rebuilding in Coolify (W12). Until
       then the lockfile and pinned base make a rebuild reproduce CI's graph.
-- [ ] Pin GitHub Actions to commit SHAs (Dependabot can then keep them current).
-- [ ] npm 11 warns that dependency install scripts (Prisma engines, esbuild,
-      unrs-resolver) are not listed in `allowScripts`; approve them explicitly
-      before an npm release turns the warning into a refusal.
+- [ ] Pin GitHub Actions to commit SHAs (Dependabot then keeps them current).
+      Not done here: resolving the SHAs means reading the actions' own
+      repositories, which this agent's GitHub scope excludes.
+- [x] Install scripts approved explicitly in `package.json` `allowScripts`
+      (`prisma`, `@prisma/client`, `@prisma/engines`, `unrs-resolver`); `npm ci`
+      no longer warns and Prisma engines still install.
 
 ## W04 HTTP boundaries and data exposure
 
@@ -327,7 +329,11 @@ rules and remains out of source control/images.
       DEPLOYMENT.md ("Reverse proxy").
 - [x] Training upload: removed with the external-training feature (no
       `public/training-data` writes remain in the code).
-- [ ] CSP (start in report-only; the layout has an inline script).
+- [x] CSP in report-only mode (`next.config.ts`): `'self'` for everything,
+      inline scripts/styles allowed (Next hydration, sidebar init script). The
+      browser journeys fail on any CSP report, and none occur. Next: enforce
+      (rename the header) once production logs show no reports; nonces would
+      remove `'unsafe-inline'`.
 - [ ] Verify live proxy: Host forwarding, HSTS, body limit, login rate limit
       (needs access to the Coolify host).
 
@@ -475,8 +481,11 @@ Document that ordinary export is not directly round-trippable through record imp
 - [x] Tests: `lib/csv.test.ts`, `lib/taxonomy-csv.test.ts`,
       `tests/integration/import-export.test.ts` (7 cases).
 
-Not done: streaming/chunked export for very large datasets (needs measured
-sizes, see W08); export is still built in memory.
+Streaming export (later): `lib/export-csv.ts` pages records in import order
+(keyset, 1,000 per page) and streams the CSV, so memory no longer grows with
+the export. Taxonomy columns are ordered by key (before: by database row
+order). The export is audited once the last row is sent. Integration test with
+2,500 records over two imports.
 
 ## W07 Classiflow AI integration reliability
 
@@ -606,8 +615,8 @@ show before/after results at agreed sizes without stale data or scope leakage.
       per-node child-count fallback for them.
 - [x] Health probe uses the shared Prisma client, no per-probe disconnect, and
       no longer returns the error message.
-- [ ] Team metrics still query per member; queue loads full comment bodies;
-      export is built in memory. Needs representative data and agreed budgets
+- [ ] Team metrics still query per member; queue loads full comment bodies
+      (the export now streams, W06). Needs representative data and agreed budgets
       before tuning (`EXPLAIN ANALYZE` on an isolated copy).
 
 ## W09 UI state and accessibility
@@ -666,8 +675,9 @@ narrow viewport sizes. Validate through actual browser journeys.
       record; shortcuts are ignored inside dialogs. Browser-tested.
 - [x] Names for icon-only buttons, search fields and row checkboxes; toasts
       announced through a polite live region.
-- [ ] Stats failures still keep stale numbers silently; AI job badge polls on
-      its own interval.
+- [x] A failed stats refresh keeps the last numbers and says they may be out
+      of date (browser-tested with the queue failure journey).
+- [ ] The AI job badge polls on its own interval.
 - [ ] Not yet checked: contrast, narrow viewports, keyboard resizing of
       panels, failed-save recovery on the labelling page (still `alert()`).
 - [ ] Splitting the 1,000-line labelling and taxonomy admin components.
@@ -896,5 +906,10 @@ events record actor, action, target, and time with appropriate access controls.
       (their rows carry author and time); revisit if label history is needed.
 - [ ] Structured logs with correlation IDs; alerts for a failed deploy or a
       stuck AI job.
-- [ ] Resource limits, capability dropping, read-only root filesystem.
+- [x] App container drops all Linux capabilities and sets
+      `no-new-privileges` (Compose; the CI smoke job runs it).
+- [ ] Read-only root filesystem and memory/CPU limits: not verifiable in this
+      sandbox (no network inside Docker builds); check that the Prisma CLI
+      writes nothing at `migrate deploy`, then add `read_only` with a `/tmp`
+      tmpfs and limits sized from production usage.
 - [ ] Verify live: GitHub rulesets, Coolify auto-deploy settings, ingress (W04).

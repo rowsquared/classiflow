@@ -97,7 +97,7 @@ and set `POSTGRES_PASSWORD` to the new value and redeploy.
 
 - Terminate TLS at the proxy and forward `Host` (or `X-Forwarded-Host`) unchanged: state-changing API calls whose browser `Origin` does not match are refused (403).
 - Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files), and a rate limit on `POST /api/auth/callback/credentials`: the built-in login throttle is per process only.
-- Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`; a Content-Security-Policy is not set yet.
+- Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and a report-only `Content-Security-Policy` (see `next.config.ts`; switch it to enforcing once browser consoles in production show no reports).
 
 ## Health Check
 
