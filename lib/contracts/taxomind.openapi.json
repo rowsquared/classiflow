@@ -1,0 +1,2627 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "taxomind",
+    "description": "Multilingual taxonomy classification service with async taxonomy management and hierarchical inference labeling.",
+    "version": "0.1"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "description": "Health check endpoint for monitoring and container orchestration.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taxonomies": {
+      "post": {
+        "tags": [
+          "taxonomies"
+        ],
+        "summary": "Create Taxonomy",
+        "description": "Create a new taxonomy by triggering the taxonomy pipeline asynchronously.\n\nThis endpoint accepts taxonomy data and immediately returns a job ID.\nThe actual processing happens in the background and can take several\nminutes.\n\nUse the GET /taxonomies/{job_id}/status endpoint to check job status.\n\nArgs:\n    request: Taxonomy data including action and taxonomy structure\n    background_tasks: FastAPI background tasks manager\n    service: Taxonomy pipeline service\n    job_store: Job status storage\n\nReturns:\n    TaxonomyJobResponse with job_id and initial status",
+        "operationId": "create_taxonomy_taxonomies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxonomyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/taxonomies/{taxonomy_key}/enrich": {
+      "post": {
+        "tags": [
+          "taxonomies"
+        ],
+        "summary": "Enrich Taxonomy",
+        "description": "Run the `enrich_taxonomy` pipeline asynchronously for one taxonomy.",
+        "operationId": "enrich_taxonomy_taxonomies__taxonomy_key__enrich_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "taxonomy_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Taxonomy Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taxonomies/{taxonomy_key}/build": {
+      "post": {
+        "tags": [
+          "taxonomies"
+        ],
+        "summary": "Build Taxonomy Index",
+        "description": "Run the `build_taxonomy` pipeline asynchronously for one taxonomy.",
+        "operationId": "build_taxonomy_index_taxonomies__taxonomy_key__build_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "taxonomy_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Taxonomy Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taxonomies/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "taxonomies"
+        ],
+        "summary": "Cancel Taxonomy Job",
+        "description": "Request cancellation for a taxonomy job.",
+        "operationId": "cancel_taxonomy_job_taxonomies__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taxonomies/{job_id}/status": {
+      "get": {
+        "tags": [
+          "taxonomies"
+        ],
+        "summary": "Get Taxonomy Status",
+        "description": "Get the current status of a taxonomy processing job.\n\nPoll this endpoint to check if the taxonomy pipeline has completed.\n\nArgs:\n    job_id: The job ID returned from the POST /taxonomies endpoint\n    job_store: Job status storage\n\nReturns:\n    TaxonomyStatusResponse with current job status and progress\n\nRaises:\n    HTTPException: 404 if job_id is not found",
+        "operationId": "get_taxonomy_status_taxonomies__job_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/classify": {
+      "post": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Create Inference Job",
+        "description": "Create an inference job for hierarchical classification.\n\nThis endpoint accepts sentences with field dictionaries, concatenates them into text,\nand classifies them using trained ye models for all hierarchical levels.\n\n**Authentication**: Requires Bearer token in Authorization header.\n\n**Request Format**:\n```json\n{\n  \"taxonomyKey\": \"ISCO\",\n  \"sentences\": [\n    {\n      \"sentence_id\": \"unique-id-1\",\n      \"fields\": {\n        \"Job Description\": \"Primary school teacher\",\n        \"Industry Description\": \"Ministry of Education\"\n      }\n    }\n  ]\n}\n```\n\n**Response**: Returns job ID for polling status via `/classify/{jobId}/status`\n\n**Processing**:\n1. Validates payload structure\n2. Concatenates fields into text (e.g., \"Job Description: ..., Industry Description: ...\")\n3. Loads trained models for the taxonomy\n4. Performs hierarchical inference (predicts Level 1, 2, 3, 4)\n5. Returns predictions for all levels\n\n**Notes**:\n- Models must be trained first using `/learn` endpoint\n- Processing is asynchronous; poll for results\n- All field values are concatenated with field names",
+        "operationId": "create_inference_job_classify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/classify/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Cancel Inference Job",
+        "description": "Request cancellation for an inference job.",
+        "operationId": "cancel_inference_job_classify__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/classify/{job_id}/status": {
+      "get": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Get Inference Status",
+        "description": "Get the status of an inference job.\n\n**Authentication**: Requires Bearer token in Authorization header.\n\n**Job States**:\n- `pending`: Job created, waiting to start\n- `running`: Inference in progress\n- `completed`: Inference finished successfully (includes results)\n- `failed`: Inference failed (includes error message)\n\n**Example Response** (completed):\n```json\n{\n  \"jobId\": \"...\",\n  \"status\": \"completed\",\n  \"taxonomyKey\": \"ISCO\",\n  \"message\": \"Inference completed successfully\",\n  \"createdAt\": \"2025-01-25T10:30:00Z\",\n  \"completedAt\": \"2025-01-25T10:30:05Z\",\n  \"result\": {\n    \"taxonomyKey\": \"ISCO\",\n    \"results\": [\n      {\n        \"sentence_id\": \"unique-id-1\",\n        \"text\": \"Job Description: Primary school teacher, Industry Description: Ministry of Education\",\n        \"predictions\": {\n          \"1\": \"Professionals\",\n          \"2\": \"Teaching Professionals\",\n          \"3\": \"Primary School and Early Childhood Teachers\",\n          \"4\": \"Primary School Teachers\"\n        }\n      }\n    ]\n  }\n}\n```\n\n**Polling Recommendation**: Poll every 2-5 seconds until status is `completed` or `failed`",
+        "operationId": "get_inference_status_classify__job_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/label": {
+      "post": {
+        "tags": [
+          "labeling"
+        ],
+        "summary": "Create Labeling Job",
+        "description": "Create a new labeling job by triggering the inference pipeline asynchronously.\n\nThis endpoint accepts a batch of sentences and immediately returns a\njob ID. The actual classification happens in the background and can\ntake several minutes depending on batch size and model configuration.\n\nUse the GET /label/{job_id}/status endpoint to check job status.\n\nArgs:\n    request: Labeling request with taxonomy key, batch ID, and sentences\n    background_tasks: FastAPI background tasks manager\n    service: Labeling pipeline service\n    job_store: Job status storage\n\nReturns:\n    LabelingJobResponse with job_id and initial status",
+        "operationId": "create_labeling_job_label_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelingJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/label/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "labeling"
+        ],
+        "summary": "Cancel Labeling Job",
+        "description": "Request cancellation for a labeling job.",
+        "operationId": "cancel_labeling_job_label__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelingStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/label/{job_id}/status": {
+      "get": {
+        "tags": [
+          "labeling"
+        ],
+        "summary": "Get Labeling Status",
+        "description": "Get the current status of a labeling job.\n\nPoll this endpoint to check if the labeling pipeline has completed.\n\nArgs:\n    job_id: The job ID returned from the POST /label endpoint\n    job_store: Job status storage\n\nReturns:\n    LabelingStatusResponse with current job status, progress,\n    and results (if completed)\n\nRaises:\n    HTTPException: 404 if job_id is not found",
+        "operationId": "get_labeling_status_label__job_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelingStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learn": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Create Learning Job",
+        "description": "Create a new incremental learning job by triggering the learning pipeline asynchronously.\n\nThis endpoint accepts training sentences with annotations and immediately returns a\njob ID. The evidence update happens in the background and can take several\nminutes depending on dataset size.\n\nThe learning process will:\n1. Validate the payload\n2. Embed the corrected texts\n3. Update per-node evidence centroids (no ancestor drift)\n\nUse the GET /learn/{job_id}/status endpoint to poll for job completion.\n\nArgs:\n    request: Learning request with taxonomy key and training sentences\n    background_tasks: FastAPI background tasks manager\n    service: Learning pipeline service\n    job_store: Job status storage\n\nReturns:\n    LearningJobResponse with job_id and initial status (HTTP 202 Accepted)\n\nExample:\n    ```\n    POST /learn\n    {\n      \"taxonomyKey\": \"ISCO\",\n      \"sentences\": [\n        {\n          \"sentenceId\": \"job-001\",\n          \"fields\": {\n            \"job_title\": \"Software Engineer\",\n            \"job_description\": \"Develops web applications\"\n          },\n          \"annotations\": [\n            {\"level\": 1, \"nodeCode\": \"2\"},\n            {\"level\": 2, \"nodeCode\": \"25\"},\n            {\"level\": 3, \"nodeCode\": \"251\"},\n            {\"level\": 4, \"nodeCode\": \"2512\"}\n          ]\n        }\n      ]\n    }\n    ```",
+        "operationId": "create_learning_job_learn_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/learn/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Cancel Learning Job",
+        "description": "Request cancellation for a learning job.",
+        "operationId": "cancel_learning_job_learn__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learn/{job_id}/status": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Learning Status",
+        "description": "Get the current status of an incremental training job.\n\nPoll this endpoint to check if the training pipeline has completed.\nRecommended polling interval: 5-10 seconds for jobs expected to complete\nwithin minutes, or 30-60 seconds for longer training runs.\n\nResponse varies by job status:\n- **pending**: Job queued but not yet started\n- **running**: Training in progress (includes progress information)\n- **completed**: Training finished successfully (includes model version and metrics)\n- **failed**: Training failed (includes error message)\n\nArgs:\n    job_id: The job ID returned from the POST /learn endpoint\n    job_store: Job status storage\n\nReturns:\n    LearningStatusResponse with current job status, progress,\n    and results (if completed)\n\nRaises:\n    HTTPException: 404 if job_id is not found\n\nExample completed response:\n    ```\n    {\n      \"jobId\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"status\": \"completed\",\n      \"taxonomyKey\": \"ISCO\",\n      \"message\": \"Training completed successfully\",\n      \"createdAt\": \"2025-01-24T18:20:45.123Z\",\n      \"startedAt\": \"2025-01-24T18:20:47.456Z\",\n      \"completedAt\": \"2025-01-24T18:35:12.789Z\",\n      \"result\": {\n        \"modelVersion\": \"ISCO_v5_20250124T182045\",\n        \"trainingMetrics\": {\n          \"totalLevels\": 4,\n          \"levelsSummary\": {\n            \"1\": {\"accuracy\": 0.95, \"f1_score\": 0.94, \"training_mode\": \"standard\"}\n          }\n        },\n        \"trainingDataStats\": {\n          \"newSamples\": 15,\n          \"totalSamples\": 150,\n          \"appendedToExisting\": true\n        }\n      }\n    }\n    ```",
+        "operationId": "get_learning_status_learn__job_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/error-analysis": {
+      "post": {
+        "tags": [
+          "error-analysis"
+        ],
+        "summary": "Run Error Analysis",
+        "description": "Run the `error_analysis` pipeline asynchronously.",
+        "operationId": "run_error_analysis_error_analysis_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorAnalysisJobResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/error-analysis/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "error-analysis"
+        ],
+        "summary": "Cancel Error Analysis Job",
+        "description": "Request cancellation for an error analysis job.",
+        "operationId": "cancel_error_analysis_job_error_analysis__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorAnalysisStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/error-analysis/{job_id}/status": {
+      "get": {
+        "tags": [
+          "error-analysis"
+        ],
+        "summary": "Get Error Analysis Status",
+        "description": "Get the current status of an error analysis job.",
+        "operationId": "get_error_analysis_status_error_analysis__job_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorAnalysisStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Annotation": {
+        "properties": {
+          "level": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "Taxonomy level"
+          },
+          "nodeCode": {
+            "type": "string",
+            "title": "Nodecode",
+            "description": "Node code (-99 for unknown)"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Confidence score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "nodeCode",
+          "confidence"
+        ],
+        "title": "Annotation",
+        "description": "Single annotation at a specific level.",
+        "example": {
+          "confidence": 0.87,
+          "level": 4,
+          "nodeCode": "2341"
+        }
+      },
+      "ErrorAnalysisJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "title": "ErrorAnalysisJobResponse",
+        "description": "Response returned when an error-analysis job is created.",
+        "example": {
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Error analysis started",
+          "status": "pending"
+        }
+      },
+      "ErrorAnalysisStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Status message"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0.0 to 1.0)"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if job failed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "When the job started running"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the job completed or failed"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At",
+            "description": "When the job failed"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "Error analysis results (only when completed)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "created_at"
+        ],
+        "title": "ErrorAnalysisStatusResponse",
+        "description": "Response for error-analysis job status queries.",
+        "example": {
+          "completed_at": "2026-02-11T12:00:11Z",
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Error analysis completed successfully",
+          "progress": 1.0,
+          "result": {
+            "rows": {
+              "classifai": 420,
+              "taxonomy_training": 420,
+              "training_sentences": 420
+            },
+            "taxonomy_key_counts": {
+              "classifai": {
+                "ISCO": 420
+              },
+              "taxonomy_training": {
+                "ISCO": 420
+              },
+              "training_sentences": {
+                "ISCO": 420
+              }
+            }
+          },
+          "status": "completed"
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InferenceJobResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid",
+            "description": "Unique job identifier"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Job status"
+          },
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy used for classification"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status message"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "Job creation timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "taxonomyKey",
+          "message",
+          "createdAt"
+        ],
+        "title": "InferenceJobResponse",
+        "description": "Response when creating an inference job.",
+        "example": {
+          "createdAt": "2025-01-25T10:30:00Z",
+          "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "message": "Inference job created",
+          "status": "pending",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "InferenceRequest": {
+        "properties": {
+          "taxonomyKey": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Taxonomykey",
+            "description": "Taxonomy to use for classification (e.g., 'ISCO')"
+          },
+          "sourceSlug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceslug",
+            "description": "Optional source identifier for the caller. If omitted, inferred from Origin/Referer host (fallback: request host; e.g., subdomain.domani1.com -> subdomain-domani1)."
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/InferenceSentence"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sentences",
+            "description": "List of sentences to classify"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taxonomyKey",
+          "sentences"
+        ],
+        "title": "InferenceRequest",
+        "description": "Request payload for classification inference.",
+        "example": {
+          "sentences": [
+            {
+              "fields": {
+                "Industry Description": "agriculture own business",
+                "Job Description": "mixed vegetable farmer"
+              },
+              "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+            },
+            {
+              "fields": {
+                "Industry Description": "Ministry of Education",
+                "Job Description": "Primary school teacher"
+              },
+              "sentence_id": "9043b0ea-ebda-4cfb-8b96-cb1db4872417"
+            }
+          ],
+          "sourceSlug": "subdomain-domani1",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "InferenceResult": {
+        "properties": {
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy used"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/PredictionResult"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "Predictions for all sentences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taxonomyKey",
+          "results"
+        ],
+        "title": "InferenceResult",
+        "description": "Complete inference result.",
+        "example": {
+          "results": [
+            {
+              "predictions": {
+                "1": "Skilled Agricultural, Forestry and Fishery Workers",
+                "2": "Market-oriented Skilled Agricultural Workers",
+                "3": "Mixed Crop Growers",
+                "4": "Mixed Crop Growers"
+              },
+              "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc",
+              "text": "Job Description: mixed vegetable farmer, Industry Description: agriculture own business"
+            }
+          ],
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "InferenceSentence": {
+        "properties": {
+          "sentence_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sentence Id",
+            "description": "Unique identifier for the sentence"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Fields",
+            "description": "Key-value pairs to concatenate into text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence_id",
+          "fields"
+        ],
+        "title": "InferenceSentence",
+        "description": "A single sentence to classify.",
+        "example": {
+          "fields": {
+            "Industry Description": "agriculture own business",
+            "Job Description": "mixed vegetable farmer"
+          },
+          "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+        }
+      },
+      "InferenceStatusResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid",
+            "description": "Job identifier"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Job status"
+          },
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy used"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status message"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "Job creation timestamp"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0.0 to 1.0)"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat",
+            "description": "When job started running"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat",
+            "description": "When job completed"
+          },
+          "failedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failedat",
+            "description": "When job failed"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if failed"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inference results if completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "taxonomyKey",
+          "message",
+          "createdAt"
+        ],
+        "title": "InferenceStatusResponse",
+        "description": "Response for inference job status query.",
+        "example": {
+          "completedAt": "2025-01-25T10:30:05Z",
+          "createdAt": "2025-01-25T10:30:00Z",
+          "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "message": "Inference completed successfully",
+          "result": {
+            "results": [
+              {
+                "predictions": {
+                  "1": "Skilled Agricultural, Forestry and Fishery Workers",
+                  "2": "Market-oriented Skilled Agricultural Workers",
+                  "3": "Mixed Crop Growers",
+                  "4": "Mixed Crop Growers"
+                },
+                "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc",
+                "text": "Job Description: mixed vegetable farmer, Industry Description: agriculture own business"
+              }
+            ],
+            "taxonomyKey": "ISCO"
+          },
+          "startedAt": "2025-01-25T10:30:01Z",
+          "status": "completed",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "canceled"
+        ],
+        "title": "JobStatus",
+        "description": "Canonical status values for background jobs."
+      },
+      "LabelingJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "batch_id": {
+            "type": "string",
+            "title": "Batch Id",
+            "description": "Batch identifier from request"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "batch_id",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "title": "LabelingJobResponse",
+        "description": "Response returned when a labeling job is created.",
+        "example": {
+          "batch_id": "batch-20260211-001",
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Labeling job started",
+          "status": "pending"
+        }
+      },
+      "LabelingRequest": {
+        "properties": {
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy key to use for classification (e.g., ISCO)"
+          },
+          "sourceSlug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceslug",
+            "description": "Optional source identifier for the caller. If omitted, inferred from Origin/Referer host (fallback: request host; e.g., subdomain.domani1.com -> subdomain-domani1)."
+          },
+          "batchId": {
+            "type": "string",
+            "title": "Batchid",
+            "description": "Unique identifier for this batch"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/LabelingSentence"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sentences",
+            "description": "List of sentences to classify"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taxonomyKey",
+          "batchId",
+          "sentences"
+        ],
+        "title": "LabelingRequest",
+        "description": "Request payload for batch labeling.",
+        "example": {
+          "batchId": "batch-20260211-001",
+          "sentences": [
+            {
+              "fields": {
+                "Industry Description": "Ministry of Education",
+                "Job Description": "Primary school teacher"
+              },
+              "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+            }
+          ],
+          "sourceSlug": "subdomain-domani1",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "LabelingResponse": {
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "title": "Batchid",
+            "description": "Batch identifier"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceSuggestion"
+            },
+            "type": "array",
+            "title": "Suggestions",
+            "description": "Successfully classified sentences"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceError"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Failed sentences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batchId"
+        ],
+        "title": "LabelingResponse",
+        "description": "Final response after labeling is complete.",
+        "example": {
+          "batchId": "batch-20260211-001",
+          "errors": [],
+          "suggestions": [
+            {
+              "annotations": [
+                {
+                  "confidence": 0.95,
+                  "level": 1,
+                  "nodeCode": "2"
+                },
+                {
+                  "confidence": 0.92,
+                  "level": 2,
+                  "nodeCode": "23"
+                },
+                {
+                  "confidence": 0.89,
+                  "level": 3,
+                  "nodeCode": "234"
+                },
+                {
+                  "confidence": 0.87,
+                  "level": 4,
+                  "nodeCode": "2341"
+                }
+              ],
+              "sentenceId": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+            }
+          ]
+        }
+      },
+      "LabelingSentence": {
+        "properties": {
+          "sentence_id": {
+            "type": "string",
+            "title": "Sentence Id",
+            "description": "Unique identifier for the sentence"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fields",
+            "description": "Dynamic fields (e.g., Job Description, Industry)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence_id",
+          "fields"
+        ],
+        "title": "LabelingSentence",
+        "description": "Individual sentence to be labeled.",
+        "example": {
+          "fields": {
+            "Industry Description": "Ministry of Education",
+            "Job Description": "Primary school teacher"
+          },
+          "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+        }
+      },
+      "LabelingStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "batch_id": {
+            "type": "string",
+            "title": "Batch Id",
+            "description": "Batch identifier from request"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Status message"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0.0 to 1.0)"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if job failed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "When the job started running"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the job completed or failed"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At",
+            "description": "When the job failed"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabelingResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Labeling results (only when completed)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "batch_id",
+          "status",
+          "created_at"
+        ],
+        "title": "LabelingStatusResponse",
+        "description": "Response for labeling job status queries.",
+        "example": {
+          "batch_id": "batch-20260211-001",
+          "completed_at": "2026-02-11T12:00:08Z",
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Labeling completed successfully",
+          "progress": 1.0,
+          "result": {
+            "batchId": "batch-20260211-001",
+            "errors": [],
+            "suggestions": [
+              {
+                "annotations": [
+                  {
+                    "confidence": 0.95,
+                    "level": 1,
+                    "nodeCode": "2"
+                  },
+                  {
+                    "confidence": 0.92,
+                    "level": 2,
+                    "nodeCode": "23"
+                  },
+                  {
+                    "confidence": 0.89,
+                    "level": 3,
+                    "nodeCode": "234"
+                  },
+                  {
+                    "confidence": 0.87,
+                    "level": 4,
+                    "nodeCode": "2341"
+                  }
+                ],
+                "sentenceId": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+              }
+            ]
+          },
+          "status": "completed"
+        }
+      },
+      "LearningJobResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid",
+            "description": "Unique job identifier"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Job status"
+          },
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy identifier"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "Job creation timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "taxonomyKey",
+          "message",
+          "createdAt"
+        ],
+        "title": "LearningJobResponse",
+        "description": "Response from POST /learn endpoint with job creation confirmation.\n\nAttributes:\n    jobId: Unique identifier for the training job\n    status: Current job status (always \"pending\" on creation)\n    taxonomyKey: Taxonomy identifier\n    message: Human-readable status message\n    createdAt: Job creation timestamp",
+        "example": {
+          "createdAt": "2026-02-11T12:00:00Z",
+          "jobId": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Learning job initiated for taxonomy ISCO",
+          "status": "pending",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "LearningRequest": {
+        "properties": {
+          "taxonomyKey": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Taxonomykey",
+            "description": "Taxonomy identifier"
+          },
+          "sourceSlug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceslug",
+            "description": "Optional source identifier for the caller. If omitted, inferred from Origin/Referer host (fallback: request host; e.g., subdomain.domani1.com -> subdomain-domani1)."
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingSentence"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sentences",
+            "description": "Training sentences with annotations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taxonomyKey",
+          "sentences"
+        ],
+        "title": "LearningRequest",
+        "description": "Request payload for POST /learn endpoint.\n\nAttributes:\n    taxonomyKey: Taxonomy identifier (e.g., \"ISCO\")\n    sentences: List of training sentences with annotations",
+        "example": {
+          "sentences": [
+            {
+              "annotations": [
+                {
+                  "level": 1,
+                  "nodeCode": "2"
+                },
+                {
+                  "level": 2,
+                  "nodeCode": "25"
+                },
+                {
+                  "level": 3,
+                  "nodeCode": "251"
+                },
+                {
+                  "level": 4,
+                  "nodeCode": "2512"
+                }
+              ],
+              "fields": {
+                "job_description": "Develops web applications",
+                "job_title": "Software Engineer"
+              },
+              "sentenceId": "job-001"
+            }
+          ],
+          "sourceSlug": "subdomain-domani1",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "LearningStatusResponse": {
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "title": "Jobid",
+            "description": "Unique job identifier"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Job status"
+          },
+          "taxonomyKey": {
+            "type": "string",
+            "title": "Taxonomykey",
+            "description": "Taxonomy identifier"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "Job creation timestamp"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat",
+            "description": "Job start timestamp"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat",
+            "description": "Job completion timestamp"
+          },
+          "failedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failedat",
+            "description": "Job failure timestamp"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0.0 to 1.0)"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if failed"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Training results if completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "taxonomyKey",
+          "message",
+          "createdAt"
+        ],
+        "title": "LearningStatusResponse",
+        "description": "Response from GET /learn/{jobId}/status endpoint.\n\nAttributes:\n    jobId: Unique job identifier\n    status: Current job status (pending, running, completed, failed)\n    taxonomyKey: Taxonomy identifier\n    message: Human-readable status message\n    createdAt: Job creation timestamp\n    startedAt: Job start timestamp (if running/completed/failed)\n    completedAt: Job completion timestamp (if completed)\n    failedAt: Job failure timestamp (if failed)\n    progress: Numeric progress from 0.0 to 1.0 (if available)\n    error: Error message (if failed)\n    result: Training results (if completed)",
+        "example": {
+          "completedAt": "2026-02-11T12:01:22Z",
+          "createdAt": "2026-02-11T12:00:00Z",
+          "jobId": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Training completed successfully",
+          "result": {
+            "modelVersion": "evidence_only",
+            "trainingDataStats": {
+              "receivedSamples": 15,
+              "taxonomyKey": "ISCO",
+              "updatedNodes": 9
+            },
+            "trainingMetrics": {
+              "levelsSummary": {},
+              "totalLevels": 0
+            }
+          },
+          "startedAt": "2026-02-11T12:00:05Z",
+          "status": "completed",
+          "taxonomyKey": "ISCO"
+        }
+      },
+      "PredictionResult": {
+        "properties": {
+          "sentence_id": {
+            "type": "string",
+            "title": "Sentence Id",
+            "description": "Sentence identifier"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Concatenated text that was classified"
+          },
+          "predictions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Predictions",
+            "description": "Predicted labels by level {1: 'label1', 2: 'label2', ...}"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentence_id",
+          "text",
+          "predictions"
+        ],
+        "title": "PredictionResult",
+        "description": "Prediction result for a single sentence.",
+        "example": {
+          "predictions": {
+            "1": "Skilled Agricultural, Forestry and Fishery Workers",
+            "2": "Market-oriented Skilled Agricultural Workers",
+            "3": "Mixed Crop Growers",
+            "4": "Mixed Crop Growers"
+          },
+          "sentence_id": "670ff0e7-d10e-430c-90e5-729a7e362ecc",
+          "text": "Job Description: mixed vegetable farmer, Industry Description: agriculture own business"
+        }
+      },
+      "SentenceError": {
+        "properties": {
+          "sentenceId": {
+            "type": "string",
+            "title": "Sentenceid",
+            "description": "Sentence identifier"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Error message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentenceId",
+          "error"
+        ],
+        "title": "SentenceError",
+        "description": "Error information for a failed sentence.",
+        "example": {
+          "error": "Unable to classify: empty text after concatenating fields",
+          "sentenceId": "sentence-002"
+        }
+      },
+      "SentenceSuggestion": {
+        "properties": {
+          "sentenceId": {
+            "type": "string",
+            "title": "Sentenceid",
+            "description": "Sentence identifier"
+          },
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/Annotation"
+            },
+            "type": "array",
+            "title": "Annotations",
+            "description": "Annotations at each level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentenceId",
+          "annotations"
+        ],
+        "title": "SentenceSuggestion",
+        "description": "Classification suggestions for a single sentence.",
+        "example": {
+          "annotations": [
+            {
+              "confidence": 0.95,
+              "level": 1,
+              "nodeCode": "2"
+            },
+            {
+              "confidence": 0.92,
+              "level": 2,
+              "nodeCode": "23"
+            },
+            {
+              "confidence": 0.89,
+              "level": 3,
+              "nodeCode": "234"
+            },
+            {
+              "confidence": 0.87,
+              "level": 4,
+              "nodeCode": "2341"
+            }
+          ],
+          "sentenceId": "670ff0e7-d10e-430c-90e5-729a7e362ecc"
+        }
+      },
+      "TaxonomyData": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Canonical key for the taxonomy (e.g., ISCO)"
+          },
+          "maxDepth": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Maxdepth",
+            "description": "Maximum depth of the taxonomy hierarchy"
+          },
+          "levelNames": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Levelnames",
+            "description": "Mapping of level numbers to friendly names"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TaxonomyNode"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Nodes",
+            "description": "List of taxonomy nodes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "maxDepth",
+          "nodes"
+        ],
+        "title": "TaxonomyData",
+        "description": "Complete taxonomy structure.",
+        "example": {
+          "key": "ISCO",
+          "levelNames": {
+            "1": "Major Group",
+            "2": "Sub-major Group",
+            "3": "Minor Group",
+            "4": "Unit Group"
+          },
+          "maxDepth": 4,
+          "nodes": [
+            {
+              "code": "2",
+              "definition": "",
+              "examples": "",
+              "isLeaf": false,
+              "label": "Professionals",
+              "level": 1
+            },
+            {
+              "code": "25",
+              "definition": "",
+              "examples": "",
+              "isLeaf": false,
+              "label": "Information and communications technology professionals",
+              "level": 2,
+              "parentCode": "2"
+            }
+          ]
+        }
+      },
+      "TaxonomyJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "title": "TaxonomyJobResponse",
+        "description": "Response returned when a taxonomy job is created.",
+        "example": {
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Taxonomy processing started",
+          "status": "pending"
+        }
+      },
+      "TaxonomyNode": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Unique code for the taxonomy node"
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "1-indexed depth of the node"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Human-readable label for the node"
+          },
+          "definition": {
+            "type": "string",
+            "title": "Definition",
+            "description": "Definition describing the node",
+            "default": ""
+          },
+          "examples": {
+            "type": "string",
+            "title": "Examples",
+            "description": "Usage examples or sample descriptions",
+            "default": ""
+          },
+          "parentCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentcode",
+            "description": "Parent code or null for root nodes"
+          },
+          "isLeaf": {
+            "type": "boolean",
+            "title": "Isleaf",
+            "description": "Whether the node represents a terminal leaf",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "level",
+          "label"
+        ],
+        "title": "TaxonomyNode",
+        "description": "Individual node in the taxonomy hierarchy.",
+        "example": {
+          "code": "2512",
+          "definition": "Develop and maintain software systems.",
+          "examples": "Backend developer, frontend developer",
+          "isLeaf": true,
+          "label": "Software developers",
+          "level": 4,
+          "parentCode": "251"
+        }
+      },
+      "TaxonomyRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "create",
+            "title": "Action",
+            "description": "Action to perform (currently only 'create' is supported)"
+          },
+          "sourceSlug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceslug",
+            "description": "Optional source identifier for the caller. If omitted, inferred from Origin/Referer host (fallback: request host; e.g., subdomain.domani1.com -> subdomain-domani1)."
+          },
+          "taxonomy": {
+            "$ref": "#/components/schemas/TaxonomyData",
+            "description": "Taxonomy data to process"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "taxonomy"
+        ],
+        "title": "TaxonomyRequest",
+        "description": "Request payload for taxonomy operations.",
+        "example": {
+          "action": "create",
+          "sourceSlug": "subdomain-domani1",
+          "taxonomy": {
+            "key": "ISCO",
+            "levelNames": {
+              "1": "Major Group",
+              "2": "Sub-major Group",
+              "3": "Minor Group",
+              "4": "Unit Group"
+            },
+            "maxDepth": 4,
+            "nodes": [
+              {
+                "code": "2",
+                "definition": "",
+                "examples": "",
+                "isLeaf": false,
+                "label": "Professionals",
+                "level": 1
+              },
+              {
+                "code": "25",
+                "definition": "",
+                "examples": "",
+                "isLeaf": false,
+                "label": "Information and communications technology professionals",
+                "level": 2,
+                "parentCode": "2"
+              }
+            ]
+          }
+        }
+      },
+      "TaxonomyStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique identifier for the job"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current status of the job"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Status message"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0.0 to 1.0)"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if job failed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the job was created"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "When the job started running"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the job completed or failed"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At",
+            "description": "When the job failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "created_at"
+        ],
+        "title": "TaxonomyStatusResponse",
+        "description": "Response for job status queries.",
+        "example": {
+          "completed_at": "2026-02-11T12:01:10Z",
+          "created_at": "2026-02-11T12:00:00Z",
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "message": "Pipeline completed successfully",
+          "progress": 1.0,
+          "status": "completed"
+        }
+      },
+      "TrainingAnnotation": {
+        "properties": {
+          "level": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "Hierarchical level number"
+          },
+          "nodeCode": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Nodecode",
+            "description": "Taxonomy node code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "nodeCode"
+        ],
+        "title": "TrainingAnnotation",
+        "description": "Annotation for a single hierarchical level.\n\nAttributes:\n    level: Hierarchical level number (e.g., 1, 2, 3, 4)\n    nodeCode: Taxonomy node code at this level (e.g., \"1\", \"11\", \"112\")",
+        "example": {
+          "level": 4,
+          "nodeCode": "2512"
+        }
+      },
+      "TrainingResult": {
+        "properties": {
+          "modelVersion": {
+            "type": "string",
+            "title": "Modelversion",
+            "description": "Versioned model identifier"
+          },
+          "trainingMetrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trainingmetrics",
+            "description": "Training metrics by level"
+          },
+          "trainingDataStats": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trainingdatastats",
+            "description": "Training data statistics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "modelVersion",
+          "trainingMetrics",
+          "trainingDataStats"
+        ],
+        "title": "TrainingResult",
+        "description": "Training result data for completed jobs.\n\nAttributes:\n    modelVersion: Versioned model identifier (e.g., \"ISCO_v5_20250124T182045\")\n    trainingMetrics: Metrics summary per level\n    trainingDataStats: Statistics about training data",
+        "example": {
+          "modelVersion": "evidence_only",
+          "trainingDataStats": {
+            "receivedSamples": 15,
+            "taxonomyKey": "ISCO",
+            "updatedNodes": 9
+          },
+          "trainingMetrics": {
+            "levelsSummary": {},
+            "totalLevels": 0
+          }
+        }
+      },
+      "TrainingSentence": {
+        "properties": {
+          "sentenceId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sentenceid",
+            "description": "Unique sentence identifier"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Fields",
+            "description": "Text fields (e.g., job_title, job_description)"
+          },
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingAnnotation"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Annotations",
+            "description": "Hierarchical annotations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sentenceId",
+          "fields",
+          "annotations"
+        ],
+        "title": "TrainingSentence",
+        "description": "Training sentence with text fields and hierarchical annotations.\n\nAttributes:\n    sentenceId: Unique identifier for this training sample\n    fields: Dictionary of text fields to be concatenated for training\n    annotations: List of annotations, one per hierarchical level",
+        "example": {
+          "annotations": [
+            {
+              "level": 1,
+              "nodeCode": "2"
+            },
+            {
+              "level": 2,
+              "nodeCode": "25"
+            },
+            {
+              "level": 3,
+              "nodeCode": "251"
+            },
+            {
+              "level": 4,
+              "nodeCode": "2512"
+            }
+          ],
+          "fields": {
+            "job_description": "Develops web applications",
+            "job_title": "Software Engineer"
+          },
+          "sentenceId": "job-001"
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

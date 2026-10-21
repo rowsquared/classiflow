@@ -34,6 +34,12 @@ production build, and `npm audit --omit=dev` (0 findings):
   model and the `isLeaf` / `'success'` fallbacks removed, label-integrity report
   deleted, upgrade path dropped from the docs.
 - **M08** (partly) Trivy scan of the smoke image in CI.
+- **M09** Taxomind contract: types generated from Taxomind's OpenAPI document,
+  calls through `openapi-fetch`, every response parsed in
+  `lib/contracts/taxomind.ts`; the stub service checks requests and replies
+  against the document. Verified with typecheck, lint (0 errors), 48 unit
+  tests, 77 integration tests (PostgreSQL 16) and a production build. W07's
+  idempotent start stays open (Taxomind does not deduplicate); see M09.
 
 Still open from this plan:
 
@@ -41,7 +47,8 @@ Still open from this plan:
   with a single reformat commit.
 - M01: remove hand-written `useMemo`/`useCallback` where the compiler covers
   them (optional).
-- M06, M07, M08 logs/traces, M09, and the "Carried over from hardening" list.
+- M06, M07, M08 logs/traces, the open points under M09, and the "Carried over
+  from hardening" list.
 - Setting up staging and production from the docs (phase 3) is the
   maintainer's.
 
@@ -375,16 +382,72 @@ PostgreSQL 18 itself is part of M00 (no upgrade needed on a fresh start).
   configured. Alerts for failed deploys and stuck AI jobs build on these.
 - Read-only root filesystem and limits: see "Carried over from hardening".
 
-### M09 Taxomind contract (P2, S)
+### M09 Taxomind contract (P2, S; done 21 October 2026)
 
-`lib/ai-labeling.ts` types Taxomind's requests and responses by hand, and
-`lib/ai-results.ts` validates results after the fact. If Taxomind publishes
+`lib/ai-labeling.ts` typed Taxomind's requests and responses by hand, and
+`lib/ai-results.ts` validated results after the fact. If Taxomind publishes
 an OpenAPI document, generate types with `openapi-typescript` and call it via
 `openapi-fetch`; otherwise put zod schemas for the boundary in
 `lib/contracts/taxomind.ts`. Reuse the stub HTTP service from
 `tests/integration/ai-job-monitor.test.ts` as the contract test. W07's
 idempotent job start (send `batchId`, let Taxomind deduplicate) belongs here
 if Taxomind supports it.
+
+**Done.** Taxomind is a FastAPI service and serves its OpenAPI document at
+`/openapi.json`, with a response model on every endpoint classiflow uses.
+
+- `lib/contracts/taxomind.openapi.json` is a snapshot of that document
+  (Taxomind `f7a9e91`, FastAPI 0.121.3 / Pydantic 2.12.4 as in its
+  `requirements-prod.txt`). `npm run taxomind:types` regenerates
+  `taxomind.openapi.ts` from it (`openapi-typescript`; an `overrides` entry lets
+  it use TypeScript 6). To refresh: save `$AI_LABELING_API_URL/openapi.json`
+  over the snapshot, regenerate, run typecheck and the integration tests.
+- `lib/ai-labeling.ts` calls Taxomind through `openapi-fetch`, keeping the
+  bearer token, the 3 min / 30 s timeouts and best-effort cancel. Labeling and
+  learning requests are typed by the generated `LabelingRequest` /
+  `LearningRequest`.
+- `lib/contracts/taxomind.ts` parses every response with zod: the job id of
+  each creation response (`job_id`, or `jobId` for `/learn`), the status
+  (`pending`, `running`, `completed`, `failed`, `canceled`) and the labeling
+  result. Each schema is checked against the generated type, so a regenerated
+  contract that renames or retypes a field fails typecheck. The old
+  `lib/ai-results.ts` lives on here as `parseLabelingResults`. It still takes
+  only the job's own records, drops malformed ones and keeps codes as strings.
+  It now expects the contract's `sentenceId` and string `nodeCode`.
+- Behaviour changes, all from the contract: a malformed status response (not
+  JSON, unknown or missing status) counts as a failed status request (backoff,
+  then the poll timeout). The aliases `complete`, `success` and `error` are gone
+  (Taxomind never sends them). A job Taxomind reports as `canceled` is failed
+  with that reason instead of being polled until it times out (monitor and
+  taxonomy sync).
+- Contract test: the stub in `tests/integration/ai-job-monitor.test.ts` converts
+  the document's schemas with `z.fromJSONSchema` and checks every request
+  classiflow sends and every reply it gives. It covers labeling, learning,
+  taxonomy sync through the `sync-ai` route and cancel, plus malformed replies
+  (not JSON, missing or unknown status, start response without a job id,
+  refused start, partial and empty results), Taxomind-side cancellation,
+  `sourceSlug` (`AI_SOURCE_SLUG--<workspaceId>`), leading zeros and the
+  unknown codes.
+
+Still open:
+
+- **W07 idempotent start:** Taxomind requires `batchId` on `/label` but
+  creates a new job for every request (`uuid4`) and does not deduplicate.
+  If an instance dies after `POST /label` succeeded but before it saved
+  `externalJobId`, recovery sends the batch again. Closing this needs
+  Taxomind to deduplicate by `(sourceSlug, batchId)` and return the existing
+  job. `/learn` has no batch id at all.
+- **Taxonomy delete notification:** the taxonomy delete route sends
+  `POST /taxonomies` with `action: 'delete'`. Taxomind accepts only `create`
+  and answers 422, so `aiNotified` is always false. Either Taxomind gets a
+  delete action or the call goes.
+- **Typed taxonomy requests:** `startAIJob('/taxonomies', …)` still takes an
+  untyped payload, because the payloads are built in the taxonomy routes
+  (outside M09's scope). Typing them as `TaxonomyRequest` would surface the
+  delete mismatch above at compile time. Taxomind ignores the `description` and
+  `synonyms` the sync route sends.
+- **Taxomind end to end** (below): still only the stub; the snapshot makes
+  the stub match Taxomind's declared contract, not its runtime behaviour.
 
 ## Carried over from hardening
 

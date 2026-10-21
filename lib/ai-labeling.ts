@@ -1,7 +1,22 @@
+import createClient from 'openapi-fetch'
 import {
   AI_JOB_POLL_INTERVAL_MS,
   AI_JOB_POLL_TIMEOUT_MS
 } from '@/lib/constants'
+import type { paths } from '@/lib/contracts/taxomind.openapi'
+import {
+  createdJobId,
+  jobStatusResponse,
+  parseResponse,
+  type JobStatusResponse,
+  type LabelingRequest,
+  type LearningRequest,
+  type TaxomindResource,
+  type TaxonomyRequest,
+} from '@/lib/contracts/taxomind'
+
+// The HTTP boundary to Taxomind. Requests and responses follow its OpenAPI
+// contract (lib/contracts/taxomind.ts); every response is parsed there.
 
 const API_URL = process.env.AI_LABELING_API_URL
 const API_KEY = process.env.AI_LABELING_API_KEY
@@ -19,99 +34,119 @@ export function ensureAIConfig() {
   }
 }
 
-async function requestAI<T = unknown>(path: string, options: RequestInit): Promise<T> {
+let taxomindClient: ReturnType<typeof createClient<paths>> | undefined
+
+function taxomind() {
   ensureAIConfig()
+  taxomindClient ??= createClient<paths>({
+    baseUrl: API_URL,
+    headers: { Authorization: `Bearer ${API_KEY}` },
+  })
+  return taxomindClient
+}
 
-  const method = (options.method || 'GET').toUpperCase()
+type Sent = { data?: unknown; error?: unknown; response: Response }
+
+/**
+ * Sends one request with the method's timeout and returns the body of a 2xx
+ * response. Non-2xx, timeouts and bodies that are not JSON become errors that
+ * name the request.
+ */
+async function send(method: 'GET' | 'POST', path: string, request: (signal: AbortSignal) => Promise<Sent>): Promise<unknown> {
   const timeoutMs = method === 'POST' ? AI_REQUEST_TIMEOUT_POST_MS : AI_REQUEST_TIMEOUT_GET_MS
-
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
+  let sent: Sent
   try {
-    const res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        ...(options.headers || {})
-      }
-    })
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`AI labeling API error (${res.status}): ${text || res.statusText}`)
-    }
-
-    return res.json() as Promise<T>
+    sent = await request(AbortSignal.timeout(timeoutMs))
   } catch (error: unknown) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
       throw new Error(`AI service request timed out after ${timeoutMs / 1000}s (${method} ${path})`)
     }
+    if (error instanceof SyntaxError) {
+      throw new Error(`AI service returned a body that is not JSON (${method} ${path})`)
+    }
     throw error
-  } finally {
-    clearTimeout(timeoutId)
   }
-}
 
-export async function callAILabelingEndpoint<T = unknown>(path: string, payload: unknown): Promise<T> {
-  return requestAI<T>(path, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-}
-
-export type AIJobStatusResponse = {
-  status?: string
-  result?: unknown
-  error?: string
-  [key: string]: unknown
-}
-
-export type AIJobResult =
-  | { success: true; data: AIJobStatusResponse }
-  | { success: false; data?: AIJobStatusResponse; error: string }
-
-export async function startAIJob(path: string, payload: unknown): Promise<string> {
-  const response = await requestAI<{ job_id?: string; jobId?: string }>(path, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  })
-  const jobId = response.job_id || response.jobId
-  if (!jobId) {
-    throw new Error('AI job response did not include a job_id')
+  const { data, error, response } = sent
+  if (!response.ok) {
+    const text = typeof error === 'string' ? error : error === undefined ? '' : JSON.stringify(error)
+    throw new Error(`AI labeling API error (${response.status}): ${text || response.statusText}`)
   }
-  return jobId
+  return data
 }
 
-export async function fetchAIJobStatus(statusPath: string): Promise<AIJobStatusResponse> {
-  return requestAI<AIJobStatusResponse>(statusPath, { method: 'GET' })
+/** Labeling job: POST /label. Returns Taxomind's job id. */
+export async function startLabelingJob(body: LabelingRequest): Promise<string> {
+  const data = await send('POST', '/label', signal => taxomind().POST('/label', { body, signal }))
+  return createdJobId('label', data)
+}
+
+/** Learning job: POST /learn. Returns Taxomind's job id. */
+export async function startLearningJob(body: LearningRequest): Promise<string> {
+  const data = await send('POST', '/learn', signal => taxomind().POST('/learn', { body, signal }))
+  return createdJobId('learn', data)
+}
+
+/**
+ * Taxonomy job: POST /taxonomies. The taxonomy routes build the payload; it is
+ * not narrowed to TaxonomyRequest yet (see M09 in
+ * docs/plans/modernization-2026-10.md), so Taxomind validates it (422).
+ */
+export async function startAIJob(path: '/taxonomies', payload: unknown): Promise<string> {
+  const data = await send('POST', path, signal => taxomind().POST(path, { body: payload as TaxonomyRequest, signal }))
+  return createdJobId('taxonomies', data)
+}
+
+export async function fetchAIJobStatus(resource: TaxomindResource, externalJobId: string): Promise<JobStatusResponse> {
+  const path = `/${resource}/${externalJobId}/status`
+  const params = { path: { job_id: externalJobId } }
+  const data = await send('GET', path, signal => {
+    switch (resource) {
+      case 'label': return taxomind().GET('/label/{job_id}/status', { params, signal })
+      case 'learn': return taxomind().GET('/learn/{job_id}/status', { params, signal })
+      case 'taxonomies': return taxomind().GET('/taxonomies/{job_id}/status', { params, signal })
+    }
+  })
+  return parseResponse(jobStatusResponse, data, `GET ${path}`)
 }
 
 /**
  * Cancel a running job on the external AI API.
  * Best-effort: failures are logged but not thrown.
  */
-export async function cancelAIJob(apiPath: string, externalJobId: string): Promise<void> {
+export async function cancelAIJob(apiPath: `/${TaxomindResource}`, externalJobId: string): Promise<void> {
+  const path = `${apiPath}/${externalJobId}/cancel`
+  const params = { path: { job_id: externalJobId } }
   try {
-    await requestAI(`${apiPath}/${externalJobId}/cancel`, { method: 'POST' })
+    await send('POST', path, signal => {
+      switch (apiPath) {
+        case '/label': return taxomind().POST('/label/{job_id}/cancel', { params, signal })
+        case '/learn': return taxomind().POST('/learn/{job_id}/cancel', { params, signal })
+        case '/taxonomies': return taxomind().POST('/taxonomies/{job_id}/cancel', { params, signal })
+      }
+    })
   } catch (error) {
     console.warn(`[ai] Failed to cancel external job ${externalJobId}:`, error)
   }
 }
 
-export async function waitForAIJobResult(jobId: string, statusPath: string): Promise<AIJobResult> {
+export type AIJobResult =
+  | { success: true; data: JobStatusResponse }
+  | { success: false; data?: JobStatusResponse; error: string }
+
+export async function waitForAIJobResult(resource: TaxomindResource, jobId: string): Promise<AIJobResult> {
   const startedAt = Date.now()
   while (true) {
     try {
-      const status = await fetchAIJobStatus(statusPath)
-      const normalized = (status.status || '').toLowerCase()
-      if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
+      const status = await fetchAIJobStatus(resource, jobId)
+      if (status.status === 'completed') {
         return { success: true, data: status }
       }
-      if (normalized === 'failed' || normalized === 'error') {
+      if (status.status === 'failed') {
         return { success: false, data: status, error: status.error || 'AI job failed' }
+      }
+      if (status.status === 'canceled') {
+        return { success: false, data: status, error: status.error || 'AI job was cancelled in the AI service' }
       }
     } catch (error: unknown) {
       if (Date.now() - startedAt >= AI_JOB_POLL_TIMEOUT_MS) {
@@ -129,13 +164,14 @@ export async function waitForAIJobResult(jobId: string, statusPath: string): Pro
   }
 }
 
+/** Polls `statusPath` (`/{resource}/{jobId}/status`) in the background until the job ends. */
 export function monitorAIJob(
   jobId: string,
-  statusPath: string,
+  statusPath: `/${TaxomindResource}/${string}/status`,
   handler: (result: AIJobResult) => Promise<void> | void
 ) {
-  waitForAIJobResult(jobId, statusPath)
+  const resource = statusPath.split('/')[1] as TaxomindResource
+  waitForAIJobResult(resource, jobId)
     .then(handler)
     .catch(error => handler({ success: false, error: error instanceof Error ? error.message : String(error) }))
 }
-
