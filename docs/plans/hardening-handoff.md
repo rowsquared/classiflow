@@ -1,7 +1,7 @@
 # Hardening work: handoff
 
-**Status:** 21 October 2026, after the W03 (Node 24, lockfile, dependency triage)
-and W12 (Compose secrets, runtime DB role, release health, restore drill) commits.
+**Status:** 21 October 2026. All workstreams are done or mostly done in code; what
+is left needs production data, a decision, or its own upgrade plan (table below).
 **Pushing:** push only with the maintainer's go-ahead.
 **Staging deploys nothing at the moment (as of 21 October 2026):** a push to
 `staging` runs CI but no staging environment is updated. Do not treat a push as
@@ -23,6 +23,10 @@ not all of them.
   flag and `sessionVersion` from the database on every API call.
 - Work is committed on `staging`, one commit per meaningful step, and pushed
   only when the maintainer says so.
+- Audit trail covers administrative changes and refused access, not individual
+  label saves, comments or flags (those rows carry author and time).
+- Node 24 LTS and a committed npm lockfile; Next 16 and Prisma 7 are separate
+  upgrade plans, not part of hardening.
 
 ## Where things stand
 
@@ -49,8 +53,10 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
   `lib/access.ts` (record scope), `lib/label-path.ts` + `lib/annotation-status.ts`
   (labelling), `lib/taxonomy-csv.ts` (taxonomy files), `lib/csv.ts` (export),
   `lib/ai-results.ts` (AI results). Access matrix: [security](../security.md).
-- Checks: `npm run typecheck`, `npm run lint`, `npm test`, and the integration
-  suite (needs PostgreSQL; see `tests/integration/README.md`):
+- Checks: `npm run typecheck`, `npm run lint`, `npm test`, the integration
+  suite (needs PostgreSQL; see `tests/integration/README.md`) and, for UI
+  changes, the browser journeys (`npm run build`, then `npm run test:e2e`; see
+  `tests/e2e/README.md`):
 
   ```bash
   npm run db:up
@@ -85,3 +91,8 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
   "Include Source Commit in Build", and the repository variable `PROD_HEALTH_URL`.
 - Decide backup objectives and schedule off-host encrypted dumps; run
   `scripts/restore-drill.sh` on a real dump.
+- After the first deploy with these commits: watch browser consoles for
+  Content-Security-Policy reports; if there are none, enforce it (rename the
+  header in `next.config.ts`). Choose an audit-log retention period.
+- Pin the GitHub Actions in `.github/workflows/ci.yml` to commit SHAs (the
+  agent could not read the actions' repositories).
