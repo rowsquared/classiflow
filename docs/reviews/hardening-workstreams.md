@@ -387,6 +387,37 @@ leading zeros survive; deletion with completed/active learning jobs has a tested
 outcome; records cannot retain silently invalid labels after taxonomy changes.
 Document that ordinary export is not directly round-trippable through record import.
 
+**Status (21 Oct 2026): done except streaming.**
+
+- [x] `lib/taxonomy-csv.ts`: one parser for validate, create, replace (PUT with
+      file) and incremental import, so dry run and commit cannot disagree.
+      Duplicate headers/ids, reserved unknown codes, empty labels, level range,
+      level-1-without-parent, parent exactly one level up (rules out cycles and
+      the old infinite `inferLevel` loop). `isLeaf`/`path` computed at import
+      (create previously left `isLeaf` null). Synonyms split on `, ; |`
+      everywhere (create/replace used `,` only).
+- [x] Replace vs incremental defined: PUT with a file replaces all nodes and
+      sets `maxDepth` to the file's depth; `/[key]/import` only adds nodes
+      (parents may be existing nodes), now in one transaction. A replacement
+      that drops codes used by human labels or AI suggestions returns 409
+      `ORPHANED_LABELS`; the admin UI asks before resending with confirmation.
+- [x] Record import: duplicate headers rejected, 50 MB upload cap
+      (`lib/upload.ts`), id length bound, error lists capped, uploader recorded
+      (`uploadedById`), concurrent duplicate ids return 409 instead of 500.
+- [x] Export: `lib/csv.ts` quotes/escapes every cell including headers;
+      formula-leading text in field/support/comment/editor columns gets `'`
+      (`formulaSafe=false` for raw); ids and codes are never altered.
+- [x] Deletion: refuses (409) while labeling/learning jobs run; deletes learning
+      job history (previously a foreign-key failure); notifies the AI service
+      only after the local transaction commits and reports `aiNotified`.
+- [x] New taxonomy keys limited to `[A-Za-z0-9_-]{1,50}`, `maxDepth` 1..5.
+- [x] Restore route kept: it re-activates an inactive taxonomy (no UI uses it).
+- [x] Tests: `lib/csv.test.ts`, `lib/taxonomy-csv.test.ts`,
+      `tests/integration/import-export.test.ts` (7 cases).
+
+Not done: streaming/chunked export for very large datasets (needs measured
+sizes, see W08); export is still built in memory.
+
 ## W07 Classiflow AI integration reliability
 
 **Priority:** P1 when enabled, P2 otherwise. **Dependencies:** W04 storage, W05

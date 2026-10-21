@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { parse } from 'csv-parse/sync'
 import { requireSession } from '@/lib/api-auth'
+import { readUpload } from '@/lib/upload'
 import type { CaughtError, CsvRow } from '@/lib/utils'
 import { Prisma } from '@prisma/client'
 
@@ -10,7 +11,7 @@ const MAX_FIELD_COLUMNS = 5
 const MAX_SUPPORT_COLUMNS = 5
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireSession('admin')
+  const { user, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -22,20 +23,23 @@ export async function POST(req: NextRequest) {
 
     // Get the file from FormData
     const formData = await req.formData()
-    const file = formData.get('file') as File
-    
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    const upload = await readUpload(formData.get('file'))
+    if (!upload.ok) {
+      return NextResponse.json({ error: upload.error }, { status: 400 })
     }
 
-    const fileName = file.name
-    const csvText = await file.text()
-    
-    // Parse CSV
+    const fileName = upload.name
+    const csvText = upload.text
+
+    // Parse CSV (no casting: ids and values stay strings, leading zeros kept)
+    let headers: string[] = []
     let records: CsvRow[]
     try {
-      records = parse(csvText, { 
-        columns: true, 
+      records = parse(csvText, {
+        columns: (header: string[]) => {
+          headers = header.map(h => String(h).trim())
+          return headers
+        },
         skip_empty_lines: true, 
         bom: true,
         trim: true
@@ -55,7 +59,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Extract and validate headers
-    const headers = Object.keys(records[0])
+    const duplicateHeaders = headers.filter((h, i) => headers.indexOf(h) !== i)
+    if (duplicateHeaders.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        errors: [`Duplicate columns: ${Array.from(new Set(duplicateHeaders)).join(', ')}`]
+      }, { status: 400 })
+    }
     const hasIdColumn = headers.includes('id')
     
     const fieldColumns = headers
@@ -131,6 +141,10 @@ export async function POST(req: NextRequest) {
         }
         sentenceId = record.id.trim()
         
+        if (sentenceId.length > 191) {
+          rowErrors.push({ row: rowNum, message: 'ID is longer than 191 characters' })
+          continue
+        }
         if (providedIds.has(sentenceId)) {
           rowErrors.push({ row: rowNum, message: `Duplicate ID: ${sentenceId}` })
           continue
@@ -181,7 +195,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (rowErrors.length > 0) {
-      const formattedErrors = rowErrors.map(err => `Row ${err.row}: ${err.message}`)
+      const formattedErrors = rowErrors.slice(0, 200).map(err => `Row ${err.row}: ${err.message}`)
       return NextResponse.json({ 
         ok: false, 
         errors: formattedErrors 
@@ -198,7 +212,7 @@ export async function POST(req: NextRequest) {
       if (existing.length > 0) {
         return NextResponse.json({ 
           ok: false, 
-          errors: [`The following IDs already exist in the database: ${existing.map(e => e.id).join(', ')}`]
+          errors: [`${existing.length} ID(s) already exist in the database, e.g. ${existing.slice(0, 20).map(e => e.id).join(', ')}`]
         }, { status: 400 })
       }
     }
@@ -230,7 +244,7 @@ export async function POST(req: NextRequest) {
         data: {
           fileName,
           totalRows: sentences.length,
-          // uploadedById: null, // TODO: Add auth later
+          uploadedById: user.id
         }
       })
 
@@ -277,10 +291,14 @@ export async function POST(req: NextRequest) {
   } catch (caught) {
 
     const e = caught as CaughtError
+    // Another import committed one of these ids between the check and the insert.
+    if (e?.code === 'P2002') {
+      return NextResponse.json({ ok: false, errors: ['Some IDs already exist in the database; nothing was imported'] }, { status: 409 })
+    }
     console.error('Import error:', e)
-    return NextResponse.json({ 
-      ok: false, 
-      error: e?.message || String(e) 
+    return NextResponse.json({
+      ok: false,
+      error: 'Import failed; nothing was imported'
     }, { status: 500 })
   }
 }

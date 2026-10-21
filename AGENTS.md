@@ -97,11 +97,14 @@ Read `prisma/schema.prisma` before changing data behavior.
   to five `support_*` columns. `app/api/sentences/import/route.ts` supports a dry
   run; the admin UI validates before committing.
 - Taxonomy CSV uses `id`, `label`, `parent_id`, `level`, plus optional
-  `definition`, `examples`, and `synonyms`. Creation, validation, and imports into
-  an existing taxonomy have separate handlers; check all relevant paths.
+  `definition`, `examples`, and `synonyms`. Every handler (validate, create,
+  replace via PUT, incremental `/[key]/import`) uses `lib/taxonomy-csv.ts`;
+  change the rules there. Replacing nodes that labels still use needs
+  `confirmOrphans=true`.
 - Export includes original field/support names, human labels as
   `{taxonomyKey}_{level}`, and AI codes/confidences as `{taxonomyKey}_ai{level}`
-  and `{taxonomyKey}_ai{level}c`. Record import does not accept all export columns;
+  and `{taxonomyKey}_ai{level}c`. All cells go through `lib/csv.ts` (escaping,
+  formula neutralising for free text only). Record import does not accept all export columns;
   a full export is not directly round-trippable through that importer.
 
 ## Authentication and authorization
