@@ -1,15 +1,17 @@
 # Progress dashboard: implementation plan
 
-**Status:** D0–D2 implemented 22 October 2026 (backend only; see below). D3 (UI) and D4 open.
+**Status:** D0–D3 implemented 22 October 2026, D4 verified locally (see below); the staging-host benchmark under concurrent load is open.
 **Priority:** follow-up feature after the existing modernization and feature plans.
 **Reviewed baseline:** `fae270f` plus the in-progress working tree on 21 October.
 The deployed older UI was described by the maintainer, not profiled in this review.
 
 ## Implementation status (22 October 2026)
 
-Built on `staging` `addc0a7` (workspaces, Better Auth, Prisma 7, `lib/server/*`).
-**D0–D2 are done; the Progress page itself is unchanged** and still reads the
-old `stats`, `timeline` and `team` endpoints until D3 replaces its UI.
+Built on `staging` `addc0a7` (workspaces, Better Auth, Prisma 7, `lib/server/*`);
+D3/D4 on the merged overnight lanes (`17eeb76`, with M06 part 1's TanStack
+Query, nuqs and Radix conventions). **The Progress page is the new dashboard**;
+the old `stats`, `timeline` and `team` endpoints, their server functions and
+`lib/metrics.ts` (AI agreement) are gone.
 
 **D0, decisions recorded** (defaults chosen overnight; change them here if needed):
 
@@ -126,16 +128,73 @@ supervisor), inside the 750 ms query budget. Responses: overview ~350 bytes,
 (lastEditedAt-based, AI agreement, median time) is not replaced: D3 drops the
 cards it feeds, as "First-release experience" says.
 
+**D3 dashboard** (`app/w/[workspaceId]/progress/page.tsx`, `components/progress/`):
+
+- Filter bar: Last 7 / 30 / 90 days / 12 months (`days`, so a shared link
+  keeps meaning "the last 30 days"; the reports accept `days` instead of a
+  start date) or custom dates with Apply (validated: order, at most two
+  years); Team (a supervisor or admin: their current subtree) and Person
+  (Radix `Combobox`, suspended members marked "inactive"), for admins and
+  supervisors only; labellers see their own work and no directory. Choosing
+  a team that does not contain the selected person clears the person and
+  announces it. The whole view (range, team, person, granularity, people
+  search/sort/page) is in the URL (`lib/progress-url.ts`, nuqs), with the
+  API's parameter names; the server page reads the same parsers.
+- Sections: overview cards (Total, Complete with %, Remaining with the
+  pending/skipped/escalated split, Labeled in period), activity (bar chart,
+  Daily/Weekly with daily disabled beyond 366 days, "Show as table"
+  alternative, a summary as the chart's accessible name), people (sortable
+  headers with `aria-sort`, debounced search, 25 per page, a name selects that
+  person). Each section is its own TanStack Query
+  (`queryKeys.progressReport`) with its own skeleton, "Updating…", error and
+  Retry; previous results stay on screen while reloading **only for the same
+  team and person** (`placeholderData` checks the scope key), so another
+  person's figures never appear under a new selection.
+- The server renders the URL's view through `lib/server/progress.ts` with the
+  same query strings and hands it over as `initialData`, so mounting makes no
+  request (the e2e journey checks this). Header: last update time and
+  Refresh (invalidates the workspace's progress queries). The range line
+  names the dates, scope and reporting time zone; workspace admins change the
+  zone there (`PUT /api/workspaces/[id]`, "Use the deployment default"
+  resets it). A notice explains when activity history starts inside the
+  selected period.
+- `operationId`: the labelling screen and the bulk panel send one per save
+  attempt and reuse it when the same labels are sent again after a failure
+  (`lib/save-operation.ts`), so a lost response does not double-count.
+
+**D4 verification (local):** `tests/e2e/progress.spec.ts` (period presets
+across reload and back/forward, custom range validation and server-rendered
+restore, team/person filters with the clear-and-announce rule, keyboard
+sorting, a section failing on its own and recovering with Retry, the table
+alternative, the time zone dialog, axe on the page and dialog, every report
+response under 100 KB, no requests on mount); `tests/integration/progress-reports.test.ts`
+"counts reconcile with the fixture" (17 records, shared assignments, repeated,
+bulk and admin saves: overview, timeline and people rows against the truth
+kept while saving, for admin and supervisor). Benchmark at 50,000 records
+(same container and seed as above, another lane's builds running, load
+average ~4; p50/p95 ms, statements):
+
+| Call | Viewer | p50 | p95 | Statements | Bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| dashboard page (overview + activity + people), 7 days | admin | 83 | 122 | 8 | 6,391 |
+| dashboard page (overview + activity + people), 7 days | supervisor | 153 | 174 | 11 | 6,402 |
+| overview, 2 years | supervisor | 128 | 214 | 5 | 358 |
+| activity weekly, 2 years | supervisor | 173 | 202 | 5 | 8,709 |
+| people by labeled, 2 years | supervisor | 201 | 263 | 5 | 5,255 |
+
+The page's three reports together stay under 200 ms p95 for the default view
+and every single report under the 750 ms budget; the largest response is the
+2-year weekly timeline (8.7 KB).
+
 **Left:**
 
-- **D3** (after the frontend lane lands TanStack Query and nuqs): the new
-  page on these endpoints, `operationId` per save attempt in the labeling
-  page and bulk panel, time zone setting in the workspace settings UI. Then
-  remove `getProgressStats`/`getProgressTimeline` and their routes.
-- **D4:** benchmark on a staging-like host with the agreed concurrent load
-  (10 viewers plus labeling writes), browser journeys, release.
+- D4 on a staging-like host with the agreed concurrent load (10 viewers plus
+  labeling writes) and the browser timings of the budget table; then release
+  through staging.
 - Platform admins without a membership can label; their activity counts in
   workspace totals but they have no people row.
+- People pickers list the whole visible membership (not paged); fine for
+  hundreds of members, revisit if a workspace grows into thousands.
 
 ## Outcome and place in the roadmap
 

@@ -67,7 +67,8 @@ Still open from this plan:
   ([progress dashboard](progress-dashboard.md), "Implementation status"):
   `pg_trgm` indexes for the queue search (through `app_search_sentences()`,
   because row security keeps them from the runtime role's ILIKE) and one
-  grouped query for the team metrics instead of ~8 per member.
+  grouped query for the team metrics instead of ~8 per member (since replaced,
+  with the old team endpoint, by the dashboard's `people` report).
 - **M06 part 1** done 22 October 2026 (lane C1): TanStack Query
   (`components/QueryProvider.tsx` per workspace/user/role, `lib/query/` keys and
   fetch), nuqs for the queue view (`lib/queue-url.ts`, shared with the server

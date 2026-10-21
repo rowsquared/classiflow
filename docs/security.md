@@ -205,8 +205,6 @@ admin) with a valid session who does not have to reset their password.
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
 | `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
 | `/export` | GET | admin; re-checked before every page of the stream |
-| `/progress/stats`, `/timeline` | GET | member; limited to own work (labeller) or team (supervisor) |
-| `/progress/team` | GET | admin, supervisor (own team) |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
 | `/progress/people` | GET | admin, supervisor (own subtree); same selector rule |
 | `/ai-labeling/*`, `/ai-jobs/*`, `/ai-settings`, `/ai-settings/connection`, `/audit` | all | admin (credentials write-only) |

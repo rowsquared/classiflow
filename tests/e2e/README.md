@@ -7,7 +7,10 @@ record import, the CSV export and audit log, the Team and Accounts pages
 (`journeys.spec.ts`); bulk labelling (`labelling-bulk.spec.ts`); taxonomy
 administration (create from a CSV with leading-zero codes, browse, incremental
 import, edit, delete; `taxonomy-admin.spec.ts`); the queue view in the URL
-(reload, back/forward) and the workspace switcher (`queue-url.spec.ts`); and
+(reload, back/forward) and the workspace switcher (`queue-url.spec.ts`); the
+Progress dashboard (period, team and person filters in the URL, a failing
+section with Retry, keyboard sorting, the chart's table alternative, the time
+zone dialog; `progress.spec.ts`); and
 axe-core on the main pages (`accessibility.spec.ts`, helper `a11y.ts`), which
 fails on serious or critical findings. There are no accepted exceptions; if
 one is ever needed, it goes in `KNOWN` in `a11y.ts` with the file that needs

@@ -1,21 +1,7 @@
 import { z } from 'zod'
+import { MAX_RANGE_DAYS } from '@/lib/reporting-dates'
 
-// Query parameters of /api/progress/*, shared by the handlers and the page.
-
-export type DateRange = { start: Date; end: Date }
-
-const date = z
-  .string({ error: 'startDate and endDate are required' })
-  .transform(value => new Date(value))
-  .refine(value => !Number.isNaN(value.getTime()), 'startDate and endDate must be valid dates')
-
-export const dateRangeQuery = z
-  .object({ startDate: date, endDate: date })
-  .transform(({ startDate, endDate }): DateRange => ({ start: startDate, end: endDate }))
-
-export const timelineQuery = z.object({
-  granularity: z.enum(['day', 'week']).catch('day')
-})
+// Query parameters of /api/workspaces/[id]/progress/*, shared by the handlers and the page.
 
 /** Parses a query string; `error` is the first message, for a 400 response. */
 export function parseQuery<S extends z.ZodType>(
@@ -42,6 +28,13 @@ const selector = z.string().trim().min(1).max(100).optional()
 export const reportFilterQuery = z.object({
   startDate: calendarDate,
   endDate: calendarDate,
+  /** Without startDate: the last `days` days up to endDate (default today). */
+  days: z.coerce
+    .number({ error: 'days must be a number' })
+    .int('days must be a whole number')
+    .min(1, 'days must be at least 1')
+    .max(MAX_RANGE_DAYS, `A report covers at most ${MAX_RANGE_DAYS} days`)
+    .optional(),
   personId: selector,
   teamId: selector
 })

@@ -22,6 +22,15 @@ export const queryKeys = {
   taxonomyNodes: (workspaceId: string, taxonomyKey: string, params: string) =>
     ['ws', workspaceId, 'taxonomies', taxonomyKey, 'nodes', params] as const,
 
+  /**
+   * Progress reports. `scope` (lib/progress-url.ts scopeKey) names who a report
+   * covers, so a section keeps showing its previous data while it reloads only
+   * when the person and team stay the same.
+   */
+  progress: (workspaceId: string) => ['ws', workspaceId, 'progress'] as const,
+  progressReport: (workspaceId: string, report: 'overview' | 'activity' | 'people', scope: string, params: string) =>
+    ['ws', workspaceId, 'progress', report, scope, params] as const,
+
   imports: (workspaceId: string) => ['ws', workspaceId, 'imports'] as const,
 
   /** AI jobs: the header badge's active list and the AI jobs page's history. */

@@ -142,17 +142,20 @@ export type ReportingRange = {
 
 /**
  * Validates and normalizes inclusive dates. Missing dates default to the last
- * seven days ending today (in the zone); a missing start with an end means the
- * seven days ending then.
+ * `days` (default seven) days ending today in the zone; a missing start with
+ * an end means the `days` days ending then. "Last 30 days" is `{ days: 30 }`,
+ * so a shared link keeps meaning the last 30 days.
  */
 export function normalizeRange(
-  input: { startDate?: string; endDate?: string },
+  input: { startDate?: string; endDate?: string; days?: number },
   timeZone: string,
   now = new Date()
 ): { range: ReportingRange; error?: undefined } | { range?: undefined; error: string } {
   const end = input.endDate ? parseCalendarDate(input.endDate) : todayIn(timeZone, now)
   if (!end) return { error: 'endDate must be a date (YYYY-MM-DD)' }
-  const start = input.startDate ? parseCalendarDate(input.startDate) : addDays(end, -(DEFAULT_RANGE_DAYS - 1))
+  const start = input.startDate
+    ? parseCalendarDate(input.startDate)
+    : addDays(end, -((input.days ?? DEFAULT_RANGE_DAYS) - 1))
   if (!start) return { error: 'startDate must be a date (YYYY-MM-DD)' }
   if (start > end) return { error: 'startDate must not be after endDate' }
   const days = daysBetween(start, end) + 1

@@ -18,6 +18,7 @@ import {
 } from '@/lib/labeling'
 import { readNavigationList, storeNavigationList } from '@/lib/labeling-navigation'
 import { useUnsavedChanges } from '@/lib/unsaved-changes'
+import { SaveOperation } from '@/lib/save-operation'
 import { useActiveTaxonomies, useComments, useRecord, type LabelingRecord } from './data'
 import RecordPanel from './RecordPanel'
 import ActionBar from './ActionBar'
@@ -121,6 +122,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   // Labels, flags and statuses changed: the queue's lists and counts are out of date.
   const invalidateQueue = () => queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) })
 
+  const [saveOperation] = useState(() => new SaveOperation())
   const postAnnotations = async (body: Record<string, unknown>) =>
     fetch(api(`/sentences/${sentenceId}/annotations`), {
       method: 'POST',
@@ -230,21 +232,25 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     }
 
     try {
+      const annotations = selectedLabels.map(l => ({
+        level: l.level,
+        nodeCode: l.nodeCode, // level-specific unknown codes included
+        taxonomyKey: activeTaxonomy.key
+      }))
       const res = await postAnnotations({
         status: 'submitted', // The server keeps 'pending' until every taxonomy is done
-        annotations: selectedLabels.map(l => ({
-          level: l.level,
-          nodeCode: l.nodeCode, // level-specific unknown codes included
-          taxonomyKey: activeTaxonomy.key
-        })),
+        annotations,
         flagged: sentence?.flagged,
-        labelingStartedAt
+        labelingStartedAt,
+        // Sending the same labels again after a failure is the same save.
+        operationId: saveOperation.idFor(JSON.stringify([sentenceId, annotations]))
       })
       const data = (await res.json().catch(() => ({}))) as AnnotationResponse
       if (!res.ok) {
         showError(`Failed to submit annotations: ${data.error || 'Unknown error'}`)
         return
       }
+      saveOperation.succeeded()
 
       if (data.status) updateRecord({ status: data.status })
       if (data.completedTaxonomies) setSavedCompletion(new Set(data.completedTaxonomies))

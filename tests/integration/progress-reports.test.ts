@@ -37,7 +37,6 @@ import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-la
 import * as overviewRoute from '@/app/api/workspaces/[workspaceId]/progress/overview/route'
 import * as activityRoute from '@/app/api/workspaces/[workspaceId]/progress/activity/route'
 import * as peopleRoute from '@/app/api/workspaces/[workspaceId]/progress/people/route'
-import * as teamRoute from '@/app/api/workspaces/[workspaceId]/progress/team/route'
 import * as workspaceRoute from '@/app/api/workspaces/[workspaceId]/route'
 
 // Team tree in the main workspace:
@@ -415,54 +414,95 @@ describe('people', () => {
   })
 })
 
-describe('team progress (grouped)', () => {
-  it('keeps the per-member figures of the old handler', async () => {
-    signInAs(l1)
-    await save(r1.id, { annotations: label(), labelingStartedAt: new Date(Date.now() - 60_000).toISOString() })
-    await save(r2.id, { annotations: label() })
-    const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { workspaceId: wsId() } })
-    await prisma.sentenceAISuggestion.createMany({
-      data: [
-        {
-          workspaceId: wsId(),
-          sentenceId: r1.id,
-          taxonomyId: taxonomy.id,
-          level: 1,
-          nodeCode: '02',
-          confidenceScore: 1
-        },
-        {
-          workspaceId: wsId(),
-          sentenceId: r2.id,
-          taxonomyId: taxonomy.id,
-          level: 1,
-          nodeCode: '01',
-          confidenceScore: 1
-        }
-      ]
+describe('counts reconcile with the fixture', () => {
+  it('overview, timeline and people agree with what was assigned and saved', async () => {
+    // Twelve more records: l1, l2, both, l3 in turn.
+    const owners: User[][] = [[l1], [l2], [l1, l2], [l3]]
+    const extra: Array<{ id: string; owners: User[] }> = []
+    for (let i = 0; i < 12; i++) {
+      const who = owners[i % 4]!
+      const [record] = await createSentences(
+        1,
+        who.map(u => u.id)
+      )
+      extra.push({ id: record!.id, owners: who })
+    }
+    const all = [
+      { id: r1.id, owners: [l1] },
+      { id: r2.id, owners: [l1] },
+      { id: r3.id, owners: [l2] },
+      { id: r4.id, owners: [l1, l2] },
+      { id: r5.id, owners: [l3] },
+      ...extra
+    ]
+    // The truth, kept while saving: who saved which record, which are complete.
+    const savedBy = new Map<string, Set<string>>()
+    const complete = new Set<string>()
+    const record = async (actor: User, id: string, times = 1) => {
+      signInAs(actor)
+      for (let t = 0; t < times; t++) expect((await save(id, { annotations: label() })).status).toBe(200)
+      savedBy.set(actor.id, (savedBy.get(actor.id) ?? new Set()).add(id))
+      complete.add(id)
+    }
+    for (const [i, r] of all.entries()) {
+      if (i % 3 === 0) await record(r.owners[0]!, r.id, i % 2 ? 2 : 1) // a repeated save counts once
+      if (i % 5 === 0) await record(r.owners.at(-1)!, r.id)
+      if (i % 7 === 0) await record(admin, r.id)
+    }
+    signInAs(l2)
+    const bulkIds = all.filter(r => r.owners.includes(l2) && !complete.has(r.id)).map(r => r.id)
+    expect((await bulk({ sentenceIds: bulkIds, annotations: [{ level: 1, nodeCode: '02' }] })).status).toBe(200)
+    for (const id of bulkIds) {
+      savedBy.set(l2.id, (savedBy.get(l2.id) ?? new Set()).add(id))
+      complete.add(id)
+    }
+
+    const union = (sets: Array<Set<string> | undefined>) => new Set(sets.flatMap(set => [...(set ?? [])]))
+    const assignedTo = (users: User[]) => all.filter(r => r.owners.some(o => users.some(u => u.id === o.id)))
+
+    // Admin: every record (one unassigned) and anyone's activity.
+    signInAs(admin)
+    const adminView = (await overview()).body
+    expect(adminView.workload).toMatchObject({
+      total: all.length + 1,
+      complete: complete.size,
+      remaining: all.length + 1 - complete.size
     })
+    expect(adminView.activity.labeledRecords).toBe(union([...savedBy.values()]).size)
+    const timeline = await activityRoute.GET(request(`/x/activity?${wide()}&granularity=week`), params())
+    const buckets: Array<{ labeledRecords: number }> = (await timeline.json()).buckets
+    // Everything happened today, so one bucket holds it all.
+    expect(buckets.reduce((sum, b) => sum + b.labeledRecords, 0)).toBe(adminView.activity.labeledRecords)
+
+    const rows = (await people('pageSize=100')).body.people as Array<{
+      userId: string
+      assigned: number
+      complete: number
+      remaining: number
+      labeledRecords: number
+    }>
+    for (const person of [l1, l2, l3, sup, sub, admin]) {
+      const mine = assignedTo([person])
+      const row = rows.find(r => r.userId === person.id)!
+      expect(row, person.username).toMatchObject({
+        assigned: mine.length,
+        complete: mine.filter(r => complete.has(r.id)).length,
+        remaining: mine.filter(r => !complete.has(r.id)).length,
+        labeledRecords: savedBy.get(person.id)?.size ?? 0
+      })
+    }
+
+    // Supervisor: records of the subtree; activity by the subtree, in those records.
     signInAs(sup)
-    const res = await teamRoute.GET(request('/x/team?startDate=2000-01-01&endDate=2100-01-01'), params())
-    const { team } = await res.json()
-    expect(team.map((m: { id: string }) => m.id).sort()).toEqual([sup.id, l1.id, sub.id, l2.id].sort())
-    const one = team.find((m: { id: string }) => m.id === l1.id)
-    expect(one.stats).toEqual({
-      totalAssigned: 3,
-      totalCompleted: 2,
-      pending: 1,
-      completedInPeriod: 2,
-      skippedInPeriod: 0,
-      flaggedInPeriod: 0,
-      medianTime: expect.any(Number),
-      aiAgreementRate: 50,
-      aiAgreementTotal: 2
+    const team = assignedTo([l1, l2])
+    const teamIds = new Set(team.map(r => r.id))
+    const supView = (await overview()).body
+    expect(supView.workload).toMatchObject({
+      total: team.length,
+      complete: team.filter(r => complete.has(r.id)).length
     })
-    expect(team.find((m: { id: string }) => m.id === l2.id).stats).toMatchObject({
-      totalAssigned: 2,
-      totalCompleted: 0,
-      medianTime: null,
-      aiAgreementRate: null
-    })
+    const teamActivity = [...union([savedBy.get(l1.id), savedBy.get(l2.id)])].filter(id => teamIds.has(id))
+    expect(supView.activity.labeledRecords).toBe(teamActivity.length)
   })
 })
 
@@ -501,8 +541,7 @@ describe('isolation and query count', () => {
         await countFor(() => overviewRoute.GET(request(`/x/overview?${wide()}`), params())),
         await countFor(() => overviewRoute.GET(request(`/x/overview?${wide()}&teamId=${sub.id}`), params())),
         await countFor(() => activityRoute.GET(request(`/x/activity?${wide()}&granularity=week`), params())),
-        await countFor(() => peopleRoute.GET(request(`/x/people?${wide()}`), params())),
-        await countFor(() => teamRoute.GET(request(`/x/team?${range}`), params()))
+        await countFor(() => peopleRoute.GET(request(`/x/people?${wide()}`), params()))
       ]
     }
     const small = await runAll()

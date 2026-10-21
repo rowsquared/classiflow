@@ -6,6 +6,7 @@ import { useActiveTaxonomies } from '@/components/labeling/data'
 import ResizablePanel from '../ResizablePanel'
 import { useDialog } from '../Modal'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
+import { SaveOperation } from '@/lib/save-operation'
 
 interface BulkLabelPanelProps {
   sentenceIds: string[]
@@ -20,6 +21,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
   const taxonomies: Taxonomy[] = useActiveTaxonomies().data ?? []
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([])
+  const [saveOperation] = useState(() => new SaveOperation())
   const [comment, setComment] = useState('')
   const [showCommentDialog, setShowCommentDialog] = useState(false)
   const [flagged, setFlagged] = useState(false)
@@ -173,10 +175,13 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
         taxonomyKey: string
         labelingStartedAt: string
         annotations?: Array<{ level: number; nodeCode: string }>
+        operationId: string
       } = {
         sentenceIds,
         taxonomyKey: activeTaxonomy.key,
-        labelingStartedAt: labelingStartedAt.toISOString()
+        labelingStartedAt: labelingStartedAt.toISOString(),
+        // Sending the same labels again after a failure is the same save.
+        operationId: saveOperation.idFor(JSON.stringify([sentenceIds, activeTaxonomy.key, annotations]))
       }
 
       if (annotations.length > 0) {
@@ -193,6 +198,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
         const data = await res.json()
         throw new Error(data.error || 'Bulk label failed')
       }
+      saveOperation.succeeded()
 
       // Move to next taxonomy or close if all done
       const nextIndex = activeTaxonomyIndex + 1

@@ -7,7 +7,9 @@ import type { CurrentUser } from '@/lib/api-auth'
 // BENCH_ITERATIONS runs (after two warm-up runs), SQL statements per call and
 // response size. Each call runs in its own workspace transaction as the
 // runtime role, as a route handler would. BENCH_LEGACY may name a module with
-// the old getProgressStats/getProgressTimeline/getTeamProgress to compare.
+// the old getProgressStats/getProgressTimeline/getTeamProgress (removed with the
+// dashboard, see the plan's benchmark table; e.g. lib/server/progress.ts from
+// commit 17eeb76) to compare.
 //
 //   TEST_DATABASE_URL=postgresql://.../classiflow_bench_test npm run bench:progress
 //
@@ -98,11 +100,15 @@ const current: Case[] = [
     run: u => progress.getProgressPeople(u, people(long, 'labeled'))
   },
   {
-    name: 'team (grouped), 7 days',
+    // What the Progress page renders on the server for its default view.
+    name: 'dashboard page (overview + activity + people), 7 days',
     roles: ['admin', 'supervisor'],
-    run: u => progress.getTeamProgress(u, asRange(short))
+    run: async u => [
+      await progress.getProgressOverview(u, { days: 7 }),
+      await progress.getProgressActivity(u, { days: 7, granularity: 'day' }),
+      await progress.getProgressPeople(u, { ...people(short), sort: 'name', dir: 'asc' })
+    ]
   },
-  { name: 'team (grouped), 2 years', roles: ['admin'], run: u => progress.getTeamProgress(u, asRange(long)) },
   {
     name: 'queue list, q=engineer',
     roles: ['admin'],
@@ -171,23 +177,6 @@ async function measure(run: () => Promise<unknown>) {
 }
 
 describe('progress benchmark', () => {
-  it('the grouped team query gives the old per-member figures', async () => {
-    const legacyModule = process.env.BENCH_LEGACY
-    if (!legacyModule) return
-    const legacy = (await import(/* @vite-ignore */ legacyModule)) as Legacy
-    const byId = (result: unknown) =>
-      [...(result as { team: Array<{ id: string }> }).team].sort((a, b) => a.id.localeCompare(b.id))
-    for (const user of [viewers.admin, viewers.supervisor]) {
-      for (const range of [short, long]) {
-        const [before, after] = await Promise.all([
-          withWorkspace(WORKSPACE, () => legacy.getTeamProgress(user, asRange(range))),
-          withWorkspace(WORKSPACE, () => progress.getTeamProgress(user, asRange(range)))
-        ])
-        expect(byId(after)).toEqual(byId(before))
-      }
-    }
-  })
-
   it('measures the reports', async () => {
     const legacyModule = process.env.BENCH_LEGACY
     const legacy = legacyModule ? ((await import(/* @vite-ignore */ legacyModule)) as Legacy) : null

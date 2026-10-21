@@ -29,7 +29,7 @@ import * as userRoute from '@/app/api/workspaces/[workspaceId]/users/[userId]/ro
 import * as accountRoute from '@/app/api/users/[userId]/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 import * as resetPasswordRoute from '@/app/api/auth/reset-password/route'
-import * as progressStatsRoute from '@/app/api/workspaces/[workspaceId]/progress/stats/route'
+import * as progressOverviewRoute from '@/app/api/workspaces/[workspaceId]/progress/overview/route'
 import * as taxonomiesRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/route'
 
 // Team tree:  admin
@@ -251,16 +251,17 @@ describe('supervisor scope', () => {
     )
   })
 
-  it('progress stats count only the subtree', async () => {
+  it('progress counts only the subtree', async () => {
     signInAs(t1)
-    const res = await progressStatsRoute.GET(
-      request('/api/progress/stats?startDate=2020-01-01&endDate=2100-01-01'),
+    const res = await progressOverviewRoute.GET(
+      request('/api/progress/overview?startDate=2020-01-01&endDate=2021-12-31'),
       params()
     )
     expect(res.status).toBe(200)
-    expect((await res.json()).metrics.completion.total).toBe(1)
+    expect((await res.json()).workload.total).toBe(1)
     expect(
-      (await progressStatsRoute.GET(request('/api/progress/stats?startDate=nope&endDate=2100-01-01'), params())).status
+      (await progressOverviewRoute.GET(request('/api/progress/overview?startDate=nope&endDate=2021-01-01'), params()))
+        .status
     ).toBe(400)
   })
 })

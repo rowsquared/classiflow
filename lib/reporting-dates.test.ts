@@ -85,6 +85,21 @@ describe('normalizeRange', () => {
     expect(range).toMatchObject({ startDate: '2026-10-16', endDate: '2026-10-22', days: 7 })
   })
 
+  it('takes a number of days ending today (or the end date) instead of a start', () => {
+    const now = new Date('2026-10-21T12:00:00Z')
+    expect(normalizeRange({ days: 30 }, 'UTC', now).range).toMatchObject({
+      startDate: '2026-09-22',
+      endDate: '2026-10-21',
+      days: 30
+    })
+    expect(normalizeRange({ days: 1, endDate: '2026-03-01' }, 'UTC', now).range).toMatchObject({
+      startDate: '2026-03-01',
+      endDate: '2026-03-01'
+    })
+    // An explicit start wins over days.
+    expect(normalizeRange({ startDate: '2026-10-20', days: 30 }, 'UTC', now).range?.days).toBe(2)
+  })
+
   it('refuses malformed, reversed and oversized ranges', () => {
     expect(normalizeRange({ startDate: 'nope', endDate: '2026-10-07' }, 'UTC').error).toMatch(/startDate/)
     expect(normalizeRange({ startDate: '2026-10-01', endDate: '2026-13-01' }, 'UTC').error).toMatch(/endDate/)
