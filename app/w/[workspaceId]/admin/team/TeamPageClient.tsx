@@ -3,6 +3,7 @@ import { workspaceApi } from '@/lib/workspace/urls'
 
 import { useState, useCallback } from 'react'
 import { useSession } from '@/lib/auth-client'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import PageHeader from '@/components/PageHeader'
 import Modal from '@/components/Modal'
 
@@ -12,6 +13,7 @@ export type User = {
   email: string
   name: string | null
   role: 'admin' | 'supervisor' | 'labeller'
+  status: 'active' | 'suspended'
   supervisorId: string | null
   supervisor: { id: string; name: string | null; email: string } | null
   labellers: { id: string; name: string | null; email: string }[]
@@ -30,6 +32,10 @@ type Props = {
 
 export default function TeamPageClient({ initialUsers }: Props) {
   const { data: session } = useSession()
+  // Platform admins may add accounts that already exist (in other workspaces).
+  const isPlatformAdmin = useWorkspaceInfo()?.authority === 'platform'
+  const [addExisting, setAddExisting] = useState(false)
+  const [existingUser, setExistingUser] = useState('')
   const formatLastLoginDate = (date: Date | string | null) => {
     if (!date) return 'Never'
     try {
@@ -64,7 +70,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
   const fetchUsers = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(workspaceApi('/users'))
+      const res = await fetch(workspaceApi('/users?includeSuspended=true'))
       if (res.ok) {
         const data = await res.json()
         setUsers(data.users)
@@ -84,14 +90,16 @@ export default function TeamPageClient({ initialUsers }: Props) {
       const res = await fetch(workspaceApi('/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          name: formData.name,
-          role: formData.role,
-          supervisorId: formData.supervisorId || null,
-          tempPassword: formData.tempPassword
-        })
+        body: JSON.stringify(addExisting
+          ? { existingUser, role: formData.role, supervisorId: formData.supervisorId || null }
+          : {
+              username: formData.username,
+              email: formData.email,
+              name: formData.name,
+              role: formData.role,
+              supervisorId: formData.supervisorId || null,
+              tempPassword: formData.tempPassword
+            })
       })
 
       const data = await res.json()
@@ -117,10 +125,14 @@ export default function TeamPageClient({ initialUsers }: Props) {
     setError('')
 
     try {
-      const updatePayload: { name: string; role: User['role']; supervisorId: string | null; newPassword?: string } = {
-        name: formData.name,
+      const updatePayload: { name?: string; role: User['role']; supervisorId: string | null; newPassword?: string } = {
         role: formData.role,
         supervisorId: formData.supervisorId || null
+      }
+      // The name belongs to the account, which may be shared with other
+      // workspaces; send it only when it changed (the server decides).
+      if (formData.name !== (selectedUser.name || '')) {
+        updatePayload.name = formData.name
       }
 
       if (formData.newPassword) {
@@ -151,8 +163,10 @@ export default function TeamPageClient({ initialUsers }: Props) {
     }
   }
 
+  // Removing suspends the membership: the person loses access to this
+  // workspace, their labels and comments stay, the account is untouched.
   const handleDelete = async (userId: string, userName: string | null) => {
-    if (!confirm(`Are you sure you want to delete ${userName || 'this user'}? This action cannot be undone.`)) {
+    if (!confirm(`Remove ${userName || 'this user'} from this workspace? Their labels and comments are kept, and you can reactivate them later.`)) {
       return
     }
 
@@ -163,7 +177,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
 
       if (!res.ok) {
         const data = await res.json()
-        alert(data.error || 'Failed to delete user')
+        alert(data.error || 'Failed to remove user')
         return
       }
 
@@ -172,6 +186,20 @@ export default function TeamPageClient({ initialUsers }: Props) {
       console.error('Delete user error:', error)
       alert('An error occurred')
     }
+  }
+
+  const handleReactivate = async (user: User) => {
+    const res = await fetch(workspaceApi(`/users/${user.id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'active' })
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || 'Failed to reactivate user')
+      return
+    }
+    fetchUsers()
   }
 
   const openEditModal = (user: User) => {
@@ -191,12 +219,14 @@ export default function TeamPageClient({ initialUsers }: Props) {
 
   const openCreateModal = () => {
     setFormData({ username: '', email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
+    setAddExisting(false)
+    setExistingUser('')
     setError('')
     setShowCreateModal(true)
   }
 
   // Get list of potential supervisors (admin and supervisor roles)
-  const potentialSupervisors = users.filter(u => u.role === 'admin' || u.role === 'supervisor')
+  const potentialSupervisors = users.filter(u => u.status === 'active' && (u.role === 'admin' || u.role === 'supervisor'))
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -248,6 +278,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervisor</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervises</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
@@ -257,7 +288,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {users.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50">
+                <tr key={user.id} className={`hover:bg-gray-50 ${user.status === 'suspended' ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {user.username}
                   </td>
@@ -267,6 +298,9 @@ export default function TeamPageClient({ initialUsers }: Props) {
                     <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${getRoleBadgeColor(user.role)}`}>
                       {user.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {user.status === 'suspended' ? 'Removed' : 'Active'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {user.supervisor ? user.supervisor.name || user.supervisor.email : '-'}
@@ -281,13 +315,19 @@ export default function TeamPageClient({ initialUsers }: Props) {
                     {formatLastLoginDate(user.lastLogin)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right">
-                    <button
-                      onClick={() => openEditModal(user)}
-                      className="text-indigo-600 hover:text-indigo-700"
-                      title="Edit user"
-                    >
-                      Edit
-                    </button>
+                    {user.status === 'suspended' ? (
+                      <button onClick={() => handleReactivate(user)} className="text-indigo-600 hover:text-indigo-700">
+                        Reactivate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => openEditModal(user)}
+                        className="text-indigo-600 hover:text-indigo-700"
+                        title="Edit user"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -309,6 +349,25 @@ export default function TeamPageClient({ initialUsers }: Props) {
             )}
 
             <form onSubmit={handleCreate} className="space-y-4">
+              {isPlatformAdmin && (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={addExisting} onChange={e => setAddExisting(e.target.checked)} />
+                  Add an existing account (platform admin)
+                </label>
+              )}
+              {addExisting ? (
+                <div>
+                  <label htmlFor="existing-user" className="block text-sm font-medium text-gray-700 mb-1">Username or email *</label>
+                  <input
+                    id="existing-user"
+                    type="text"
+                    value={existingUser}
+                    onChange={(e) => setExistingUser(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                  />
+                </div>
+              ) : (<>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
                 <input
@@ -341,6 +400,8 @@ export default function TeamPageClient({ initialUsers }: Props) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 />
               </div>
+
+              </>)}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
@@ -503,7 +564,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
             {selectedUser.id !== session?.user?.id && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <p className="text-sm text-gray-600 mb-3">
-                  Delete this user account? This action cannot be undone.
+                  Remove this person from the workspace? Their labels and comments stay; you can reactivate them.
                 </p>
                 <button
                   onClick={() => {
@@ -513,7 +574,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                   }}
                   className="w-full px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
                 >
-                  Delete User
+                  Remove from workspace
                 </button>
               </div>
             )}

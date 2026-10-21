@@ -1,8 +1,15 @@
 import { execSync } from 'node:child_process'
 
+// The application code under test connects as this least-privilege role, the
+// way production runs (scripts/db-runtime-role.ts), so workspace row security
+// applies to every test. Fixtures and assertions use the owner (helpers.ts).
+export const RUNTIME_ROLE = 'classiflow_suite_app'
+export const RUNTIME_PASSWORD = 'suite-runtime-password-1'
+
 /**
- * Applies the committed migrations to TEST_DATABASE_URL before any test runs.
- * The database name must end in "_test": every test file truncates all tables.
+ * Applies the committed migrations to TEST_DATABASE_URL before any test runs
+ * and creates the runtime role. The database name must end in "_test": every
+ * test file truncates all tables.
  */
 export default function setup() {
   const url = testDatabaseUrl()
@@ -10,6 +17,18 @@ export default function setup() {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'inherit',
   })
+  execSync('node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-runtime-role.ts', {
+    env: { ...process.env, DATABASE_URL: url, APP_DB_USER: RUNTIME_ROLE, APP_DB_PASSWORD: RUNTIME_PASSWORD },
+    stdio: 'inherit',
+  })
+}
+
+/** TEST_DATABASE_URL with the runtime role's credentials. */
+export function runtimeDatabaseUrl(): string {
+  const url = new URL(testDatabaseUrl())
+  url.username = RUNTIME_ROLE
+  url.password = RUNTIME_PASSWORD
+  return url.href
 }
 
 export function testDatabaseUrl(): string {

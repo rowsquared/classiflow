@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { PrismaClient } from '@/lib/generated/prisma/client'
-import { createPrismaClient, prisma } from '@/lib/prisma'
+import { createPrismaClient } from '@/lib/prisma'
 import { testDatabaseUrl } from './global-setup'
-import { resetDatabase } from './helpers'
+import { prisma, resetDatabase } from './helpers'
 
 // scripts/db-runtime-role.ts as scripts/start.sh runs it: DATABASE_URL is the
 // schema owner, the server then connects as APP_DB_USER.

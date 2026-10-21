@@ -15,7 +15,8 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | `POSTGRES_PASSWORD` | yes, with `docker-compose.yml` | none (Compose refuses to start) | yes | Password of the Compose PostgreSQL service. PostgreSQL keeps the password it was initialised with: changing it later needs `ALTER ROLE` as well |
 | `POSTGRES_USER`, `POSTGRES_DB` | no | `classiflow` | no | Compose PostgreSQL user and database |
 | `DATABASE_POOL_SIZE` | no | `10` | no | Connections per app instance (`pg` pool, `lib/prisma.ts`). See DEPLOYMENT.md "Running more than one instance" |
-| `APP_DB_USER`, `APP_DB_PASSWORD` | no (recommended in production) | unset: the server uses `DATABASE_URL` | password: yes | Least-privilege role the server runs as; created by `scripts/start.sh`. See DEPLOYMENT.md "Database roles" |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | yes in production (Compose refuses to start without them) | none | password: yes | Least-privilege role the server runs as, bound by workspace row security; created by `scripts/start.sh`. See DEPLOYMENT.md "Database roles" |
+| `ALLOW_OWNER_RUNTIME` | no | unset | no | `true` lets the production server run as the schema owner without `APP_DB_USER`; row security then does not apply. Emergencies only |
 
 ## Authentication
 

@@ -2,9 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
-import { prisma } from '@/lib/prisma'
 import { db } from '@/lib/workspace/db'
-import { wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, resetDatabase } from './helpers'
+import { prisma, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, resetDatabase } from './helpers'
 
 // The monitor against a stub Taxomind on a local port. Poll fast; the module
 // reads these at load time, so lib/ai-job-monitor is imported after the stub
