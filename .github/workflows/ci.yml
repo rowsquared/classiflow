@@ -1,10 +1,11 @@
 # CI and the production deploy gate. See "Deploy triggers" in DEPLOYMENT.md.
 #
 # staging: Coolify auto-deploys on push, so the run there is a report card. It
-#          also records the "smoke" result on the commit, which the main
-#          ruleset requires before scripts/promote-main.mjs may push it.
+#          also records the "smoke" and "checks" results on the commit, which
+#          the main ruleset requires before scripts/promote-main.mjs may push it.
 # main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger and
-#          runs only after smoke passes, so a broken commit never reaches prod.
+#          runs only after smoke and checks pass, so a broken commit never
+#          reaches prod.
 name: CI
 
 on:
@@ -55,11 +56,11 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  quality:
-    # Report only, for now: main currently has type and lint errors, and
-    # next.config.ts skips both during build. Once they are fixed, drop the
-    # continue-on-error lines, add this job to deploy-prod's needs and to the
-    # main ruleset's required checks.
+  checks:
+    # Typecheck and unit tests block the deploy: next.config.ts skips type
+    # errors during build, so this is the only place they are caught. Lint
+    # only reports for now (main still has lint errors); drop its
+    # continue-on-error once they are fixed.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,26 +71,22 @@ jobs:
       # No lockfile in this repo (.npmrc: package-lock=false), mirrored from the Dockerfile.
       - run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Typecheck
-        id: typecheck
-        continue-on-error: true
-        run: npx tsc --noEmit
-      - name: Lint
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Lint (not blocking yet)
         id: lint
         continue-on-error: true
         run: npm run lint
-      - name: Summary
-        if: always()
+      - name: Lint summary
+        if: always() && steps.lint.outcome == 'failure'
         run: |
-          echo "### Code quality (not blocking yet)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Typecheck: ${{ steps.typecheck.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Lint: ${{ steps.lint.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          for s in "${{ steps.typecheck.outcome }}" "${{ steps.lint.outcome }}"; do
-            [ "$s" = "success" ] || echo "::warning::Typecheck or lint failed. Not blocking deploys yet; see the step logs."
-          done
+          echo "### Lint failed (not blocking yet); see the Lint step log." >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Lint failed. Not blocking deploys yet; see the Lint step log."
 
   deploy-prod:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [smoke]
+    needs: [smoke, checks]
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-prod

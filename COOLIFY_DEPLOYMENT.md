@@ -442,19 +442,20 @@ The two environments are triggered differently, on purpose.
 | Branch | Coolify auto-deploy | What deploys it |
 | --- | --- | --- |
 | `staging` | on | Coolify deploys on every push. CI also runs, as a report card. |
-| `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API, and only after the `smoke` job passes. |
+| `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API, and only after the `smoke` and `checks` jobs pass. |
 
 Staging may be briefly broken; the fast feedback is worth more than a gate.
-Production may not: a red `smoke` run leaves the previous release serving.
+Production may not: a red run leaves the previous release serving.
 Turning Coolify auto-deploy back on for production removes the gate entirely,
 because Coolify does not wait for GitHub Actions.
 
 `smoke` builds the image from the same `Dockerfile` and `docker-compose.yml`
 Coolify uses, starts the stack on an empty database, and checks that migrations
 applied, the default admin was created, `/api/health` reports a connected
-database and `/login` renders. The `quality` job (typecheck, lint) only reports
-for now, because `main` still has type and lint errors; make it blocking once
-they are fixed.
+database and `/login` renders. `checks` runs the typecheck and unit tests
+(`npm run typecheck`, `npm test`); the build itself skips type errors, so this
+is where they are caught. Lint runs in `checks` too but only reports for now,
+because `main` still has lint errors; make it blocking once they are fixed.
 
 Two repository secrets drive the production deploy. Without them the job fails
 loudly rather than skipping, because a release that quietly deploys nothing is
@@ -480,8 +481,9 @@ node scripts/promote-main.mjs
 
 The script refuses anything that is not a fast-forward, so `main` never holds a
 commit that was not on `staging` first and the two branches stay in sync. Never
-push or merge into `main` by hand. The `main` ruleset requires the `smoke`
-check, so the push is rejected until CI has passed on `staging` for that commit.
+push or merge into `main` by hand. The `main` ruleset requires the `smoke` and
+`checks` checks, so the push is rejected until CI has passed on `staging` for
+that commit.
 
 **Roll back by going forward**: revert the bad commit on `staging`, let CI pass,
 promote again. Resetting `main` backwards breaks every later promotion. If

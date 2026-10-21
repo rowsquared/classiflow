@@ -8,8 +8,8 @@
 //
 // Pushing does not deploy on its own: Coolify auto-deploy is off for
 // production, and the deploy-prod job in .github/workflows/ci.yml triggers it
-// only after the smoke job passes. If the main ruleset requires the smoke
-// check, the push is also rejected until CI has passed on staging.
+// only after the smoke and checks jobs pass. The main ruleset requires both
+// checks, so the push is also rejected until CI has passed on staging.
 //
 //   node scripts/promote-main.mjs --dry-run   # show what would move
 //   node scripts/promote-main.mjs             # promote
@@ -68,7 +68,7 @@ try {
   execFileSync('git', ['push', 'origin', `${source}:refs/heads/${TARGET}`], { stdio: 'inherit' })
 } catch {
   console.error(
-    `\nPush rejected. If the ruleset requires the smoke check, CI on ${SOURCE} has not ` +
+    `\nPush rejected. The main ruleset requires the smoke and checks jobs; CI on ${SOURCE} has not ` +
     `passed for ${source.slice(0, 8)} yet: wait for it (or fix it) and run this again.`)
   process.exit(1)
 }
