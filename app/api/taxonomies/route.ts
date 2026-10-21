@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { parse } from 'csv-parse/sync'
-import { isUnknownNodeCode } from '@/lib/constants'
 import { requireSession } from '@/lib/api-auth'
-import type { CaughtError, CsvRow } from '@/lib/utils'
-import { Prisma } from '@prisma/client'
+import type { CaughtError } from '@/lib/utils'
+import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
+import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
+import { readUpload } from '@/lib/upload'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -106,14 +106,24 @@ export async function POST(req: NextRequest) {
     const description = formData.get('description') as string | null
     const maxDepth = parseInt(formData.get('maxDepth') as string)
     const levelNamesStr = formData.get('levelNames') as string | null
-    const file = formData.get('file') as File
+    const file = formData.get('file')
 
     // Validation
     if (!key || !maxDepth || !file) {
       return NextResponse.json({ 
         ok: false, 
-        error: 'Missing required fields: key, maxDepth, file' 
+        error: 'Missing required fields: key, maxDepth, file'
       }, { status: 400 })
+    }
+    // Keys become URL segments, export column prefixes and AI service identifiers.
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$/.test(key)) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Key must be 1-50 letters, digits, "_" or "-", starting with a letter or digit'
+      }, { status: 400 })
+    }
+    if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 5) {
+      return NextResponse.json({ ok: false, error: 'maxDepth must be between 1 and 5' }, { status: 400 })
     }
 
     // Check active taxonomy limit (all taxonomies are active now since we use hard delete)
@@ -151,131 +161,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Parse CSV
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const csv = buffer.toString('utf-8')
-    // Use cast: false to preserve leading zeros in id and parent_id columns
-    const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as CsvRow[]
-
-    if (records.length === 0) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'CSV file is empty' 
-      }, { status: 400 })
+    const upload = await readUpload(file)
+    if (!upload.ok) {
+      return NextResponse.json({ ok: false, error: upload.error }, { status: 400 })
     }
-
-    // Validate CSV headers
-    if (!records || records.length === 0) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'CSV file is empty or contains no data rows' 
-      }, { status: 400 })
-    }
-
-    const headers = Object.keys(records[0] || {})
-    const requiredHeaders = ['id', 'label', 'parent_id', 'level']
-    const allowedOptionalHeaders = ['definition', 'examples', 'synonyms']
-    const allAllowedHeaders = [...requiredHeaders, ...allowedOptionalHeaders]
-    
-    // Check for missing required columns
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
-    if (missingHeaders.length > 0) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: `Missing required columns: ${missingHeaders.join(', ')}. The CSV must contain: id, label, parent_id, and level.` 
-      }, { status: 400 })
-    }
-    
-    // Check for disallowed columns
-    const disallowedHeaders = headers.filter(h => !allAllowedHeaders.includes(h))
-    if (disallowedHeaders.length > 0) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: `Disallowed columns found: ${disallowedHeaders.join(', ')}. Only the following columns are allowed: ${allAllowedHeaders.join(', ')}.` 
-      }, { status: 400 })
-    }
-
-    // Validate data: check for duplicate ids and invalid parent_ids
-    const validationErrors: Array<{ row: number; message: string }> = []
-    const idRowMap = new Map<string, number[]>() // Track all row numbers for each id (preserve leading zeros)
-    const allIds = new Set<string>() // All id values for parent_id validation
-    
-    // First pass: collect all ids and check for duplicates
-    records.forEach((record, idx) => {
-      const rowNum = idx + 2 // +2 because CSV has header and 0-indexed
-      const id = String(record.id).trim()
-      
-      // Validate that id is not -99 (reserved for UNKNOWN)
-      if (isUnknownNodeCode(id)) {
-        validationErrors.push({
-          row: rowNum,
-          message: 'Code -99 is reserved for UNKNOWN labels and cannot be used'
-        })
-        return
-      }
-      
-      // Track id occurrences for duplicate detection (preserve leading zeros with string comparison)
-      if (idRowMap.has(id)) {
-        idRowMap.get(id)!.push(rowNum)
-      } else {
-        idRowMap.set(id, [rowNum])
-        allIds.add(id)
-      }
-    })
-    
-    // Report duplicate ids
-    for (const [id, rowNumbers] of idRowMap.entries()) {
-      if (rowNumbers.length > 1) {
-        const rowsList = rowNumbers.join(', ')
-        validationErrors.push({
-          row: rowNumbers[0],
-          message: `Duplicate id "${id}" found in rows: ${rowsList}`
-        })
-        // Also add errors for subsequent occurrences
-        for (let i = 1; i < rowNumbers.length; i++) {
-          validationErrors.push({
-            row: rowNumbers[i],
-            message: `Duplicate id "${id}" (also appears in row ${rowNumbers[0]})`
-          })
-        }
-      }
-    }
-    
-    // Second pass: validate parent_id values exist in id column
-    records.forEach((record, idx) => {
-      const rowNum = idx + 2
-      const parentId = record.parent_id ? String(record.parent_id).trim() : ''
-      
-      // Validate that parent_id is not -99 (reserved for UNKNOWN)
-      if (parentId && isUnknownNodeCode(parentId)) {
-        validationErrors.push({
-          row: rowNum,
-          message: 'Code -99 is reserved for UNKNOWN labels and cannot be used as parent_id'
-        })
-        return
-      }
-      
-      // Check if parent_id exists in id column (only if parent_id is provided and not empty)
-      if (parentId && !allIds.has(parentId)) {
-        validationErrors.push({
-          row: rowNum,
-          message: `parent_id "${parentId}" does not match any id value in the file`
-        })
-      }
-    })
-    
-    // Return all validation errors if any found
+    const { nodes: parsedNodes, errors: validationErrors } = parseTaxonomyCsv(upload.text, { maxDepth })
     if (validationErrors.length > 0) {
-      const errorMessages = validationErrors.map(e => `Row ${e.row}: ${e.message}`).join('\n')
-      return NextResponse.json({ 
-        ok: false, 
-        error: `Validation failed:\n${errorMessages}`,
+      return NextResponse.json({
+        ok: false,
+        error: formatCsvErrors(validationErrors),
         errors: validationErrors
       }, { status: 400 })
     }
-
-    // All validation passed, use records as-is (validation ensures data integrity)
-    const finalRecords = records
 
     // Create taxonomy and import nodes in transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -289,52 +186,7 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      // Create nodes
-      const nodes = finalRecords.map((record) => {
-        const code = String(record.id).trim()
-        const parentCode = record.parent_id && String(record.parent_id).trim()
-          ? String(record.parent_id).trim()
-          : null
-
-        return {
-          taxonomyId: taxonomy.id,
-          code,
-          level: parseInt(String(record.level).trim()),
-          label: String(record.label || '').trim(),
-          definition: String(record.definition || '').trim() || null,
-          examples: String(record.examples || '').trim() || null,
-          parentCode
-        }
-      })
-
-      await tx.taxonomyNode.createMany({ data: nodes })
-
-      // Create synonyms, linked by node id (the node ids only exist after createMany)
-      const createdNodes = await tx.taxonomyNode.findMany({
-        where: { taxonomyId: taxonomy.id },
-        select: { id: true, code: true }
-      })
-      const nodeIdByCode = new Map(createdNodes.map(n => [n.code, n.id]))
-      const synonymsToCreate: Prisma.TaxonomySynonymCreateManyInput[] = []
-      finalRecords.forEach((record) => {
-        const synonymsStr = String(record.synonyms || '').trim()
-        if (synonymsStr) {
-          const synonymsList = synonymsStr.split(',').map(s => s.trim()).filter(s => s)
-          const nodeId = nodeIdByCode.get(String(record.id).trim())
-          if (!nodeId) return
-          synonymsList.forEach(synonym => {
-            synonymsToCreate.push({
-              taxonomyId: taxonomy.id,
-              nodeId,
-              synonym
-            })
-          })
-        }
-      })
-
-      if (synonymsToCreate.length > 0) {
-        await tx.taxonomySynonym.createMany({ data: synonymsToCreate })
-      }
+      await createTaxonomyNodes(tx, taxonomy.id, parsedNodes)
 
       return taxonomy
     })
@@ -342,7 +194,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
       ok: true, 
       taxonomy: result,
-      importedNodes: finalRecords.length
+      importedNodes: parsedNodes.length
     })
 
   } catch (caught) {

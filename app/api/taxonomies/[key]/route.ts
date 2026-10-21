@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { parse } from 'csv-parse/sync'
 import { Prisma } from '@prisma/client'
-import { isUnknownNodeCode, AI_SOURCE_SLUG } from '@/lib/constants'
+import { AI_SOURCE_SLUG, UNKNOWN_NODE_CODES } from '@/lib/constants'
 import { requireSession } from '@/lib/api-auth'
-import type { CaughtError, CsvRow } from '@/lib/utils'
+import type { CaughtError } from '@/lib/utils'
+import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
+import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
+import { readUpload } from '@/lib/upload'
 
 export async function PUT(
   req: NextRequest,
@@ -19,7 +21,7 @@ export async function PUT(
     
     const description = formData.get('description') as string | null
     const levelNamesStr = formData.get('levelNames') as string | null
-    const file = formData.get('file') as File | null
+    const file = formData.get('file')
 
     // Check if taxonomy exists
     const existingTaxonomy = await prisma.taxonomy.findUnique({
@@ -54,225 +56,64 @@ export async function PUT(
     // Track nodes imported for response
     let nodesImported = 0
 
-    // Handle CSV file update (REPLACE mode)
+    // Handle CSV file update (REPLACE mode): every node is replaced by the file.
     if (file) {
-      // Parse CSV
-      const buffer = Buffer.from(await file.arrayBuffer())
-      const csv = buffer.toString('utf-8')
-      // Use cast: false to preserve leading zeros in id and parent_id columns
-      const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as CsvRow[]
-
-      if (records.length === 0) {
-        return NextResponse.json({ 
-          ok: false, 
-          error: 'CSV file is empty' 
-        }, { status: 400 })
+      const upload = await readUpload(file)
+      if (!upload.ok) {
+        return NextResponse.json({ ok: false, error: upload.error }, { status: 400 })
       }
-
-      // Validate CSV headers
-      if (!records || records.length === 0) {
-        return NextResponse.json({ 
-          ok: false, 
-          error: 'CSV file is empty or contains no data rows' 
-        }, { status: 400 })
-      }
-
-      const headers = Object.keys(records[0] || {})
-      const requiredHeaders = ['id', 'label', 'parent_id', 'level']
-      const allowedOptionalHeaders = ['definition', 'examples', 'synonyms']
-      const allAllowedHeaders = [...requiredHeaders, ...allowedOptionalHeaders]
-      
-      // Check for missing required columns
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
-      if (missingHeaders.length > 0) {
-        return NextResponse.json({ 
-          ok: false, 
-          error: `Missing required columns: ${missingHeaders.join(', ')}. The CSV must contain: id, label, parent_id, and level.`,
-          errors: [{ row: 0, message: `Missing required columns: ${missingHeaders.join(', ')}` }]
-        }, { status: 400 })
-      }
-      
-      // Check for disallowed columns
-      const disallowedHeaders = headers.filter(h => !allAllowedHeaders.includes(h))
-      if (disallowedHeaders.length > 0) {
-        return NextResponse.json({ 
-          ok: false, 
-          error: `Disallowed columns found: ${disallowedHeaders.join(', ')}. Only the following columns are allowed: ${allAllowedHeaders.join(', ')}.`,
-          errors: [{ row: 0, message: `Disallowed columns: ${disallowedHeaders.join(', ')}` }]
-        }, { status: 400 })
-      }
-
-      // Validate data: check for duplicate ids and invalid parent_ids
-      const validationErrors: Array<{ row: number; message: string }> = []
-      const idRowMap = new Map<string, number[]>() // Track all row numbers for each id (preserve leading zeros)
-      const allIds = new Set<string>() // All id values for parent_id validation
-      
-      // First pass: collect all ids and check for duplicates
-      records.forEach((record, idx) => {
-        const rowNum = idx + 2 // +2 because CSV has header and 0-indexed
-        const id = String(record.id).trim()
-        
-        // Validate that id is not -99 (reserved for UNKNOWN)
-        if (isUnknownNodeCode(id)) {
-          validationErrors.push({
-            row: rowNum,
-            message: 'Code -99 is reserved for UNKNOWN labels and cannot be used'
-          })
-          return
-        }
-        
-        // Track id occurrences for duplicate detection (preserve leading zeros with string comparison)
-        if (idRowMap.has(id)) {
-          idRowMap.get(id)!.push(rowNum)
-        } else {
-          idRowMap.set(id, [rowNum])
-          allIds.add(id)
-        }
-      })
-      
-      // Report duplicate ids
-      for (const [id, rowNumbers] of idRowMap.entries()) {
-        if (rowNumbers.length > 1) {
-          const rowsList = rowNumbers.join(', ')
-          validationErrors.push({
-            row: rowNumbers[0],
-            message: `Duplicate id "${id}" found in rows: ${rowsList}`
-          })
-          // Also add errors for subsequent occurrences
-          for (let i = 1; i < rowNumbers.length; i++) {
-            validationErrors.push({
-              row: rowNumbers[i],
-              message: `Duplicate id "${id}" (also appears in row ${rowNumbers[0]})`
-            })
-          }
-        }
-      }
-      
-      // Second pass: validate parent_id values exist in id column
-      records.forEach((record, idx) => {
-        const rowNum = idx + 2
-        const parentId = record.parent_id ? String(record.parent_id).trim() : ''
-        
-        // Validate that parent_id is not -99 (reserved for UNKNOWN)
-        if (parentId && isUnknownNodeCode(parentId)) {
-          validationErrors.push({
-            row: rowNum,
-            message: 'Code -99 is reserved for UNKNOWN labels and cannot be used as parent_id'
-          })
-          return
-        }
-        
-        // Check if parent_id exists in id column (only if parent_id is provided and not empty)
-        if (parentId && !allIds.has(parentId)) {
-          validationErrors.push({
-            row: rowNum,
-            message: `parent_id "${parentId}" does not match any id value in the file`
-          })
-        }
-      })
-      
-      // Return all validation errors if any found
+      const { nodes: parsedNodes, errors: validationErrors } = parseTaxonomyCsv(upload.text)
       if (validationErrors.length > 0) {
-        const errorMessages = validationErrors.map(e => `Row ${e.row}: ${e.message}`).join('\n')
-        return NextResponse.json({ 
-          ok: false, 
-          error: `Validation failed:\n${errorMessages}`,
+        return NextResponse.json({
+          ok: false,
+          error: formatCsvErrors(validationErrors),
           errors: validationErrors
         }, { status: 400 })
       }
 
-      // All validation passed, use records as-is
-      const finalRecords = records
+      // Human labels and AI suggestions whose code is not in the new file would
+      // silently point at nothing. Report them and require explicit confirmation.
+      const newCodes = parsedNodes.map(n => n.code)
+      const orphanFilter = {
+        taxonomyId: existingTaxonomy.id,
+        nodeCode: { notIn: [...newCodes, ...Object.values(UNKNOWN_NODE_CODES)] }
+      }
+      const [orphanedLabels, orphanedSuggestions] = await prisma.$transaction([
+        prisma.sentenceAnnotation.count({ where: { ...orphanFilter, source: 'user' } }),
+        prisma.sentenceAISuggestion.count({ where: orphanFilter })
+      ])
+      if ((orphanedLabels > 0 || orphanedSuggestions > 0) && formData.get('confirmOrphans') !== 'true') {
+        const missingCodes = await prisma.sentenceAnnotation.findMany({
+          where: { ...orphanFilter, source: 'user' },
+          select: { nodeCode: true },
+          distinct: ['nodeCode'],
+          take: 20
+        })
+        return NextResponse.json({
+          ok: false,
+          code: 'ORPHANED_LABELS',
+          orphanedLabels,
+          orphanedSuggestions,
+          error: `The new file drops codes that ${orphanedLabels} human label(s) and ${orphanedSuggestions} AI suggestion(s) still use` +
+            (missingCodes.length ? ` (e.g. ${missingCodes.map(c => c.nodeCode).join(', ')})` : '') +
+            '. Those labels would point at codes that no longer exist.'
+        }, { status: 409 })
+      }
 
-      // Update taxonomy and REPLACE nodes in transaction
+      const fileDepth = Math.max(...parsedNodes.map(n => n.level))
       await prisma.$transaction(async (tx) => {
-        // Delete existing nodes and synonyms
         await tx.taxonomySynonym.deleteMany({
           where: { taxonomyId: existingTaxonomy.id }
         })
         await tx.taxonomyNode.deleteMany({
           where: { taxonomyId: existingTaxonomy.id }
         })
+        await createTaxonomyNodes(tx, existingTaxonomy.id, parsedNodes)
+      }, { timeout: 120_000 })
 
-        // Create new nodes
-        const parentLookup = new Map<string, string | null>()
-        finalRecords.forEach((record) => {
-          const code = String(record.id).trim()
-          const parentCode = record.parent_id && String(record.parent_id).trim()
-            ? String(record.parent_id).trim()
-            : null
-          parentLookup.set(code, parentCode)
-        })
-
-        const nodes = finalRecords.map((record) => {
-          const code = String(record.id).trim()
-          const parentCode = parentLookup.get(code) ?? null
-
-          if (isUnknownNodeCode(code) || isUnknownNodeCode(parentCode)) {
-            throw new Error('CSV contains IDs that are reserved for unknown labels (-9, -99, ...). Please rename those rows.')
-          }
-
-          const level = parseInt(String(record.level).trim())
-          const definition = String(record.definition || '').trim() || null
-          const examples = String(record.examples || '').trim() || null
-          const pathParts: string[] = []
-          let currentCode: string | null = code
-          const guard = new Set<string>()
-          while (currentCode) {
-            if (guard.has(currentCode)) break
-            guard.add(currentCode)
-            pathParts.unshift(currentCode)
-            currentCode = parentLookup.get(currentCode) ?? null
-          }
-          const path = pathParts.join('.')
-          const hasChildren = finalRecords.some(
-            (r) => String(r.parent_id || '').trim() === code
-          )
-
-          return {
-            taxonomyId: existingTaxonomy.id,
-            code,
-            level,
-            label: String(record.label || '').trim(),
-            definition: definition,
-            examples: examples,
-            parentCode,
-            path: path || null,
-            isLeaf: hasChildren ? false : true
-          }
-        })
-
-        await tx.taxonomyNode.createMany({ data: nodes as unknown as Prisma.TaxonomyNodeCreateManyInput[] })
-
-        // Create synonyms, linked by node id (the node ids only exist after createMany)
-        const createdNodes = await tx.taxonomyNode.findMany({
-          where: { taxonomyId: existingTaxonomy.id },
-          select: { id: true, code: true }
-        })
-        const nodeIdByCode = new Map(createdNodes.map(n => [n.code, n.id]))
-        const synonymsToCreate: Prisma.TaxonomySynonymCreateManyInput[] = []
-        finalRecords.forEach((record) => {
-          const synonymsStr = String(record.synonyms || '').trim()
-          if (synonymsStr) {
-            const synonymsList = synonymsStr.split(',').map(s => s.trim()).filter(s => s)
-            const nodeId = nodeIdByCode.get(String(record.id).trim())
-            if (!nodeId) return
-            synonymsList.forEach(synonym => {
-              synonymsToCreate.push({
-                taxonomyId: existingTaxonomy.id,
-                nodeId,
-                synonym
-              })
-            })
-          }
-        })
-
-        if (synonymsToCreate.length > 0) {
-          await tx.taxonomySynonym.createMany({ data: synonymsToCreate })
-        }
-      })
-
-      nodesImported = finalRecords.length
+      // The depth follows the file, so label validation accepts its deepest level.
+      updateData.maxDepth = fileDepth
+      nodesImported = parsedNodes.length
     }
 
     // Update taxonomy metadata
@@ -334,64 +175,49 @@ export async function DELETE(
     const taxonomyId = existingTaxonomy.id
     const taxonomyKey = existingTaxonomy.key
 
-    // Notify external AI service before deletion (fire and forget)
-    try {
-      const { startAIJob } = await import('@/lib/ai-labeling')
-      await startAIJob('/taxonomies', {
-        action: 'delete',
-        ...(AI_SOURCE_SLUG ? { sourceSlug: AI_SOURCE_SLUG } : {}),
-        taxonomy: {
-          key: taxonomyKey
-        }
-      })
-    } catch (syncError) {
-      console.error('Failed to notify AI service about taxonomy deletion (continuing anyway):', syncError)
-      // Continue with deletion even if AI sync fails
+    // Deleting under a running AI job would let its monitor write results for a
+    // taxonomy that no longer exists. Cancel or wait for those jobs first.
+    const activeJobs = await prisma.$transaction([
+      prisma.aILabelingJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
+      prisma.aILearningJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
+    ])
+    if (activeJobs[0] + activeJobs[1] > 0) {
+      return NextResponse.json({
+        ok: false,
+        error: 'This taxonomy has running AI jobs. Cancel them or wait until they finish, then delete it.'
+      }, { status: 409 })
     }
 
-    // Hard delete: Delete all related data in a transaction
+    // Hard delete: local data first, in one transaction. The AI service is only
+    // told afterwards, so a failed local delete never leaves it out of step.
     const deletionResult = await prisma.$transaction(async (tx) => {
-      // Delete AI suggestions for this taxonomy
       const deletedAISuggestions = await tx.sentenceAISuggestion.deleteMany({
         where: { taxonomyId }
       })
 
-      // Delete annotations (submitted labels) for this taxonomy
+      // Annotations (submitted labels) for this taxonomy
       const deletedAnnotations = await tx.sentenceAnnotation.deleteMany({
         where: { taxonomyId }
       })
 
-      // Delete taxonomy synonyms (they reference nodes, so delete before nodes)
+      // Synonyms reference nodes, so they go first
       const deletedSynonyms = await tx.taxonomySynonym.deleteMany({
         where: { taxonomyId }
       })
 
-      // Delete taxonomy nodes (this will cascade to synonyms, but we already deleted them)
       const deletedNodes = await tx.taxonomyNode.deleteMany({
         where: { taxonomyId }
       })
 
-      // Delete taxonomy settings
       await tx.taxonomySetting.deleteMany({
         where: { taxonomyId }
       })
 
-      // Delete AI labeling jobs for this taxonomy
-      await tx.aILabelingJob.deleteMany({
-        where: { taxonomyId }
-      })
+      // Finished AI job history for this taxonomy (every job table references it)
+      await tx.aILabelingJob.deleteMany({ where: { taxonomyId } })
+      await tx.aILearningJob.deleteMany({ where: { taxonomyId } })
+      await tx.aIExternalTrainingJob.deleteMany({ where: { taxonomyId } })
 
-      // Delete external training jobs for this taxonomy
-      try {
-        await tx.aIExternalTrainingJob.deleteMany({
-          where: { taxonomyId }
-        })
-      } catch (error) {
-        // Table might not exist in older databases, ignore
-        console.warn('Could not delete external training jobs (table may not exist):', error)
-      }
-
-      // Finally, delete the taxonomy itself
       await tx.taxonomy.delete({
         where: { id: taxonomyId }
       })
@@ -404,9 +230,29 @@ export async function DELETE(
       }
     })
 
+    // Tell the AI service, if one is configured. Failure is reported, not fatal:
+    // the taxonomy is already gone here.
+    let aiNotified = false
+    if (process.env.AI_LABELING_API_URL) {
+      try {
+        const { startAIJob } = await import('@/lib/ai-labeling')
+        await startAIJob('/taxonomies', {
+          action: 'delete',
+          ...(AI_SOURCE_SLUG ? { sourceSlug: AI_SOURCE_SLUG } : {}),
+          taxonomy: {
+            key: taxonomyKey
+          }
+        })
+        aiNotified = true
+      } catch (syncError) {
+        console.error('Taxonomy deleted, but notifying the AI service failed:', syncError)
+      }
+    }
+
     return NextResponse.json({ 
       ok: true, 
       message: 'Taxonomy and all associated data deleted successfully',
+      aiNotified,
       deleted: {
         nodes: deletionResult.deletedNodes,
         annotations: deletionResult.deletedAnnotations,

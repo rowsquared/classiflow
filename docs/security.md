@@ -69,7 +69,7 @@ password. "In scope" = the record is visible under the table above.
 | `/api/sentences/bulk-label` | POST | any; **every** record in scope |
 | `/api/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target user in the caller's team. DELETE without `userIds` only removes the caller's team. |
 | `/api/sentences/import` | POST | admin |
-| `/api/imports` | GET | admin |
+| `/api/imports` | GET | any (queue import filter) |
 | `/api/imports/[id]` | DELETE | admin |
 | `/api/taxonomies`, `/active`, `/[key]/nodes` | GET | any |
 | `/api/taxonomies` | POST | admin |

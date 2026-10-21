@@ -3,12 +3,15 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { Prisma, SentenceStatus } from '@prisma/client'
+import { toCsv, type CsvColumn } from '@/lib/csv'
 
 /**
- * GET /api/export?status=...&dateRange=...
- * 
- * Exports labeled sentences with annotations
- * Handles -99 as UNKNOWN in the export
+ * GET /api/export?status=...&dateRange=...&formulaSafe=false
+ *
+ * Exports labeled sentences with annotations. Free-text cells that would run as
+ * spreadsheet formulas get a leading apostrophe unless formulaSafe=false
+ * (lib/csv.ts); ids and codes are never changed.
+ * Handles unknown codes (-9, -99, ...) as UNKNOWN in the export
  */
 export async function GET(req: NextRequest) {
   try {
@@ -19,6 +22,7 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams
     const statusFilter = searchParams.get('status') || 'all'
     const dateRange = searchParams.get('dateRange') || 'all'
+    const neutralizeFormulas = searchParams.get('formulaSafe') !== 'false'
 
     // Build where clause
     const where: Prisma.SentenceWhereInput = {}
@@ -161,6 +165,9 @@ export async function GET(req: NextRequest) {
       }
     }
     
+    // Original field/support columns hold free text; everything else is ids, codes, numbers and states.
+    const textHeaders = new Set<string>([...fieldColumnOrder, ...supportColumnOrder, 'last_editor', 'comments'])
+
     // Add field columns to headers
     headers.push(...fieldColumnOrder)
     // Add support columns to headers
@@ -184,7 +191,7 @@ export async function GET(req: NextRequest) {
     headers.push('status', 'flagged', 'last_editor', 'last_edited', 'comments')
 
     // Build CSV rows
-    const rows: string[][] = [headers]
+    const rows: string[][] = []
 
     for (const sentence of sentences) {
       const row: string[] = [sentence.id]
@@ -204,7 +211,7 @@ export async function GET(req: NextRequest) {
           if (fieldMapping[String(i)] === originalFieldName) {
             const fieldKey = `field${i}` as keyof typeof sentence
             const value = sentence[fieldKey]
-            row.push(value ? String(value).replace(/"/g, '""') : '')
+            row.push(value ? String(value) : '')
             found = true
             break
           }
@@ -226,7 +233,7 @@ export async function GET(req: NextRequest) {
           if (supportMapping[String(i)] === originalFieldName) {
             const supportKey = `support${i}` as keyof typeof sentence
             const value = sentence[supportKey]
-            row.push(value ? String(value).replace(/"/g, '""') : '')
+            row.push(value ? String(value) : '')
             found = true
             break
           }
@@ -281,15 +288,13 @@ export async function GET(req: NextRequest) {
       const commentText = sentence.comments.map(c => 
         `[${c.author.name || 'Unknown'}]: ${c.body}`
       ).join(' | ')
-      row.push(commentText.replace(/"/g, '""'))
+      row.push(commentText)
 
       rows.push(row)
     }
 
-    // Convert to CSV string
-    const csv = rows.map(row => 
-      row.map(cell => `"${cell}"`).join(',')
-    ).join('\n')
+    const columns: CsvColumn[] = headers.map(header => ({ header, text: textHeaders.has(header) }))
+    const csv = toCsv(columns, rows, { neutralizeFormulas })
 
     // Return as downloadable CSV
     return new NextResponse(csv, {
@@ -301,8 +306,7 @@ export async function GET(req: NextRequest) {
 
   } catch (error) {
     console.error('Export error:', error)
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    return NextResponse.json({ error: 'Export failed' }, { status: 500 })
   }
 }
 

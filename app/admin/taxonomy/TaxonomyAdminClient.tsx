@@ -293,7 +293,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
     }
   }
 
-  async function handleEdit() {
+  async function handleEdit(confirmOrphans = false) {
     if (!selectedTaxonomy) return
 
     setSubmitting(true)
@@ -306,6 +306,9 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       if (formData.file) {
         formDataToSend.append('file', formData.file)
       }
+      if (confirmOrphans) {
+        formDataToSend.append('confirmOrphans', 'true')
+      }
 
       const res = await fetch(`/api/taxonomies/${selectedTaxonomy.key}`, {
         method: 'PUT',
@@ -313,6 +316,15 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       })
 
       const data = await res.json()
+
+      // The new file drops codes that existing labels use: replace only if the admin agrees.
+      if (res.status === 409 && data.code === 'ORPHANED_LABELS') {
+        setSubmitting(false)
+        if (window.confirm(`${data.error}\n\nReplace the taxonomy anyway?`)) {
+          await handleEdit(true)
+        }
+        return
+      }
 
       if (res.ok) {
         const nodesMsg = data.nodesReplaced > 0 ? ` and replaced ${data.nodesReplaced} nodes` : ''
@@ -965,7 +977,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                 Cancel
               </button>
               <button
-                onClick={handleEdit}
+                onClick={() => handleEdit()}
                 disabled={submitting}
                 className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
