@@ -1,17 +1,24 @@
 # User management: implementation plan
 
 **Status:** proposed 21 October 2026. Not started; nothing here is implemented.
-**Scope:** the admin **Team** page (`/admin/team`) and the user APIs behind it.
+**Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
+and outgoing email for accounts (invitations, forgotten passwords, notices).
 **Reference:** [`rowsquared/survey-hub`](https://github.com/rowsquared/survey-hub/tree/dev)
-(`dev` branch) already ships most of what is wanted here: its Users page
-(`frontend/pages/users.vue`), the last-seen rule (`backend/core/last_seen.py`),
-CSV user import (`backend/apps/users/import_*.py`, archived plan
-`docs/legacy/USER_IMPORT_PLAN_2026-09-18.md`), deactivation and the last-admin
-lock (`backend/apps/users/views.py`), identity rules
-(`backend/apps/users/account_validation.py`) and session ending
-(`backend/apps/users/sessions.py`). Its contract is written up in
-`docs/architecture/TABLES_AUTH.md` § "The Users page". Borrow the rules and the
-reasoning, not the code: survey-hub is Django/Nuxt, classiflow is Next.js/Prisma.
+(`dev` branch) already ships most of what is wanted here:
+
+| Survey-hub file | What to borrow |
+| --- | --- |
+| `frontend/pages/users.vue` | Users table: search, filters, sorting, last seen |
+| `backend/core/last_seen.py`, `core/middleware.py` | The last-seen rule and where it is written |
+| `backend/core/mail.py`, settings "Outgoing email" | Mail transport: n8n webhook, SMTP fallback, the on/off gate, sent/failed/unknown |
+| `backend/apps/users/emails.py`, `core/email_layout.py` | Credentials mail and the email-safe HTML layout |
+| `backend/apps/users/forgot_password*.py` | One-time password links |
+| `backend/apps/users/import_*.py`, `docs/legacy/USER_IMPORT_PLAN_2026-09-18.md` | CSV user import |
+| `backend/apps/users/views.py`, `account_validation.py`, `sessions.py` | Deactivation, last-admin lock, identity rules, ending sessions |
+| `docs/architecture/TABLES_AUTH.md` § "The Users page", § "Forgotten passwords"; `MAPS_MAIL.md` § "Outgoing email" | The written contracts and their reasoning |
+
+Borrow the rules and the reasoning, not the code: survey-hub is Django/Nuxt
+with a Celery worker; classiflow is a single Next.js/Prisma app without one.
 
 Read [AGENTS.md](../../AGENTS.md) and the
 [hardening handoff](hardening-handoff.md) first. This plan builds on what the
@@ -24,7 +31,8 @@ undo any of its decisions.
 | --- | --- | --- |
 | Team table | `app/admin/team/TeamPageClient.tsx`: one unsorted table, no search or filters, `lastLogin` as a UTC date | No way to find a user, sort, or tell who is active |
 | Activity | `User.lastLogin`, written in `lib/auth.config.ts` `authorize()` | JWT sessions last 30 days, so `lastLogin` means "last typed a password", not "last used the app". Its `prisma.user.update` also bumps `updatedAt` |
-| Creating users | One at a time; admin types a temporary password; `mustResetPassword` forced | No bulk path, no generated password, no "show once / copy" |
+| Email | None. No transport, no templates, no env vars | Credentials are handed over by hand; no forgotten-password flow; a locked-out user needs an admin |
+| Creating users | One at a time; admin types a temporary password; `mustResetPassword` forced | No bulk path, no invitations, no generated password, no "show once / copy" |
 | Leaving users | Delete only; 409 if the user wrote comments or started AI jobs | No reversible revocation. [ideas.md](../ideas.md) already asks for deactivation |
 | Identity | `username` and `email` unique, case-sensitive; login matches either exactly | `Jane@x.org` and `jane@x.org` can both exist; login is case-sensitive on email |
 | Passwords | `min(8).max(256)` in three zod schemas | No shared policy; bcrypt silently ignores bytes past 72; nothing stops `password = username` |
@@ -34,10 +42,15 @@ undo any of its decisions.
 
 ## Work packages
 
-Six packages, each one reviewable commit series with its own tests. U1 and U2
-deliver what was asked first (last seen, a better page); U4 is the CSV import.
-U3 should land before U4 so the importer and the single form share one set of
-rules. U5 and U6 are smaller security items that can go in any order after U1.
+Seven packages, each one reviewable commit series with its own tests.
+
+- U1 and U2 deliver what was asked first: last seen and a better page.
+- U3 holds the shared account rules. Land it before U4 so the single form and
+  the CSV import agree.
+- U7 is email. Its transport (U7a) is small and independent and should land
+  early, because invitations change how U2's create form and U4's import hand
+  over access. The forgotten-password flow (U7c) can come later.
+- U5 and U6 are smaller security and audit items.
 
 ### U1. "Last seen" column
 
@@ -101,28 +114,34 @@ modals into `components/team/` so the file stops growing. Keep the server
 component + client component pattern and `serverFetchJSON`.
 
 - **Toolbar:** search (username, name, email), filters for role, supervisor,
-  status (active / deactivated / must reset password) and activity
-  ("not seen for 7 / 30 days", "never signed in"); a **Clear** button and a
-  "12 of 40 users" count. Filtering is client-side: the list is unpaginated
-  and small.
-- **Columns:** Username (badges: *must reset*, *deactivated*), Name, Email,
-  Role, Supervisor, Team size, Open assignments (assigned records not yet
-  submitted, instead of the total), Last seen, Last login, Actions.
+  status (active / deactivated / must reset password / invitation pending) and
+  activity ("not seen for 7 / 30 days", "never signed in"); a **Clear** button
+  and a "12 of 40 users" count. Filtering is client-side: the list is
+  unpaginated and small. A small **Email: on / off** indicator shows whether
+  mail is configured (U7a), so admins know which create flow they will get.
+- **Columns:** Username (badges: *must reset*, *invited*, *deactivated*), Name,
+  Email, Role, Supervisor, Team size, Open assignments (assigned records not
+  yet submitted, instead of the total), Last seen, Last login, Actions.
   Every column except Actions sorts. Follow survey-hub's sort rules: cycle
   asc → desc → default, **nulls last in both directions** (a "Never" must not
   bury the active users), username as tiebreaker, Role by privilege
   (admin > supervisor > labeller) rather than alphabetically.
 - **Detail drawer** (click a row): profile and edit form, supervisor chain and
-  direct reports, counts (assignments, submitted labels, comments), the
-  account's audit history (U6), and the account actions (reset password,
-  sign out everywhere, deactivate/reactivate, delete).
-- **Create user:** a **Generate** button (18 characters from an unambiguous
-  alphabet, `crypto.getRandomValues`), show/hide toggle, and a result dialog
-  that shows the credentials once with **Copy** (as in survey-hub). There is no
-  mail in classiflow, so this dialog is how the admin hands them over.
-- **Replace `confirm()`/`alert()`** with the shared modal and toast patterns
-  that W09 introduced. Delete gets a typed confirmation and explains when
-  deactivation is the better choice.
+  direct reports, counts (assignments, submitted labels, comments), invitation
+  and last mail outcome (U7), the account's audit history (U6), and the
+  account actions (send password link / set temporary password, resend
+  invitation, sign out everywhere, deactivate/reactivate, delete).
+- **Create user**, two modes chosen by whether mail is on (U7b):
+  - **Mail on (default): "Send invitation".** No password field. The account
+    is created without a usable password and the user gets a link to choose
+    one.
+  - **Mail off, or the admin unticks "Send invitation": temporary password.**
+    A **Generate** button (18 characters from an unambiguous alphabet,
+    `crypto.getRandomValues`), show/hide toggle, and a result dialog that shows
+    the credentials once with **Copy** (as in survey-hub).
+- **Replace `confirm()`/`alert()`** with the shared `Modal` and
+  `components/Toast.tsx` that W09 introduced. Delete gets a typed confirmation
+  and explains when deactivation is the better choice.
 - **Accessibility:** `aria-sort` on sortable headers, buttons inside headers,
   focus handling via the existing `Modal`. Wrap the table in
   `overflow-x-auto` (survey-hub lost its Actions column to `overflow-hidden`
@@ -141,15 +160,17 @@ a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
   - `User.deactivatedAt DateTime?` (+ `deactivatedById String?` optional).
   - `authorize()` refuses a deactivated user with the same generic failure as
     a wrong password; `checkSession()` returns 401 for them. Deactivating bumps
-    `sessionVersion`, so open sessions end at once.
+    `sessionVersion`, so open sessions end at once. Deactivated accounts get
+    no mail of any kind and their open invitation or password links stop
+    working (U7).
   - Deactivated users disappear from assignment pickers
     (`components/queue/AssignmentModal.tsx`, which uses `GET /api/users`) and
     supervisor pickers; add `?includeInactive=1` for the Team page only.
     Their labels, comments, AI jobs and imports keep their author.
   - Deactivation dialog offers, unchecked by default, "Also remove their
     assignments on records that are not submitted" so work can be reassigned.
-  - Reactivation clears the flag; the admin may set a new temporary password
-    in the same step.
+  - Reactivation clears the flag; the admin may send a password link or set a
+    temporary password in the same step.
   - Delete stays for accounts with no history (today's 409 rule); the 409
     message points to deactivation.
   - Audit: `user.deactivated`, `user.reactivated`.
@@ -162,8 +183,8 @@ a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
   Today `isLastAdmin()` runs before a separate write. Add a concurrency test
   with two parallel requests (survey-hub `tests_admin_race.py` is the model).
 - **Identity rules:**
-  - Store emails lowercased-domain at least (or fully lowercased; decide in
-    review) on every create path.
+  - Store emails with at least the domain lowercased (or fully lowercased;
+    decide in review) on every create path.
   - Refuse a new username or email that equals an existing one **after
     case-folding**, active or deactivated. Apply in `POST /api/users`, the
     importer and `scripts/init-admin.js`.
@@ -171,16 +192,22 @@ a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
     a wrong password (survey-hub `backends.py`). Usernames stay exact.
   - Before adding a unique index on `lower(email)`, ship a read-only check
     script that lists case-only pairs in each environment. The index is a
-    later step, after the data is clean.
+    later step, after the data is clean. Email now matters more: it is where
+    invitations and password links go (U7).
+  - **Changing a user's email** (admin, from the drawer): today the edit form
+    cannot. Allow it with the same uniqueness rule; it invalidates open links
+    (U7c token covers the email) and sends a notice to the **old** address
+    when mail is on. Audit `user.email_changed` (no addresses in the payload).
 - **Password policy** in `lib/password-policy.ts`, used by user create,
-  admin reset, self-service reset (`app/api/auth/reset-password/route.ts`) and
-  the importer:
+  admin reset, self-service reset (`app/api/auth/reset-password/route.ts`),
+  the set-password link (U7c) and the importer:
   - length 10 to 256 characters **and at most 72 bytes in UTF-8** (bcrypt
     ignores the rest, so two different long passwords would match);
   - not equal to or contained in username, email local part or name;
   - not in a short bundled list of common passwords;
-  - self-service reset: the new password must differ from the current one
-    (otherwise the forced reset can be satisfied with the handed-out password).
+  - self-service reset and link reset: the new password must differ from the
+    current one (otherwise the forced reset can be satisfied with the
+    handed-out password).
   - Server returns field-level messages; the forms show them.
   - Generated passwords use `crypto.randomInt` on the server and the same
     alphabet as the client generator.
@@ -190,12 +217,15 @@ a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
 
 ### U4. Bulk user import (CSV)
 
-Adapted from survey-hub's importer, made smaller where classiflow allows it.
-Survey-hub needs durable `UserImport`/`UserImportRow` tables because it mails
-credentials one row at a time and must survive a crash between "account
-created" and "mail sent". Classiflow has no mail, so the import can be
-**stateless and all-or-nothing**, following the record importer's dry-run
-pattern in `app/api/sentences/import/route.ts`.
+Adapted from survey-hub's importer. Survey-hub mails each new account its
+**password**, so it needs durable `UserImport`/`UserImportRow` tables, a
+per-row mail claim and at-most-once sending: a password mail sent twice, or
+lost after the response, is a security and support problem. This plan avoids
+that by mailing **invitation links** instead (U7b): a link is not a password,
+sending a second one is harmless, and an admin can resend from the Team page
+at any time. So account creation can stay **stateless and all-or-nothing**,
+following the record importer's dry-run pattern in
+`app/api/sentences/import/route.ts`, and mail goes out after the commit.
 
 **Flow** (an **Import users** button next to **Add user**):
 
@@ -204,20 +234,28 @@ pattern in `app/api/sentences/import/route.ts`.
    admin can edit an export and re-import new rows).
 2. Upload. `POST /api/users/import?dryRun=true` parses and validates the
    whole file and returns every row with its errors and warnings. Nothing is
-   written.
-3. Preview: counts, errors by row and field, new admins called out, and
-   labellers with no supervisor flagged. **Create N users** is enabled only
-   when there are no errors. An explicit **Create valid rows only (skips M)**
-   option may be added; never choose it silently.
+   written, nothing is mailed.
+3. Preview: counts, errors by row and field, new admins called out, labellers
+   with no supervisor flagged, and how each account gets access (invitation
+   mail / supplied password / generated password). If mail is off, the
+   `access` column may not be `invite` and the preview says so. **Create N
+   users** is enabled only when there are no errors. An explicit **Create
+   valid rows only (skips M)** option may be added; never choose it silently.
 4. Commit: the browser uploads the **same file** again with `dryRun=false`.
    The server re-validates everything (data may have changed since the
    preview) and creates all accounts in **one transaction**, or none.
    Re-submitting after success fails on duplicates instead of creating twice.
-5. Result: one row per account. Generated temporary passwords appear **only
-   in this response** (`Cache-Control: no-store`), are shown once with copy,
-   and can be downloaded once as a credentials CSV built in the browser. The
-   modal warns that closing it loses them; the fix afterwards is an admin
-   password reset. Nothing with a password is stored or logged.
+5. Mail: after the commit, invitations are queued in the `OutgoingMail`
+   table (U7a) and sent in the background with low concurrency. The result
+   dialog shows each account's mail status and keeps updating it (poll
+   `GET /api/users/invitations?ids=…` while visible). Failed or unknown ones
+   get **Resend**.
+6. Passwords: rows with `access = generate` get a temporary password that
+   appears **only in the commit response** (`Cache-Control: no-store`), shown
+   once with copy and downloadable once as a credentials CSV built in the
+   browser. The modal warns that closing it loses them; the fix afterwards is
+   a password link or an admin reset. Nothing with a password is stored,
+   mailed or logged.
 
 **File format:** UTF-8 (BOM allowed), comma-delimited, quoted fields allowed,
 parsed with the existing `csv-parse` dependency. Limits: **500 rows** and
@@ -232,13 +270,14 @@ errors (a misspelled column must not vanish silently).
 | `name` | Required (matches the current form) |
 | `role` | `labeller`, `supervisor` or `admin`, case-insensitive |
 | `supervisor` | Optional. Username of an existing admin/supervisor **or of a supervisor row in the same file**. No cycles |
-| `password` | Required when `generate_password` is `false`, else empty. Checked against U3's policy; never trimmed |
-| `generate_password` | Required `true`/`false`; no default |
+| `access` | Required: `invite` (mail a link; needs mail on), `generate` (temporary password shown once to the admin) or `password` (use the `password` column) |
+| `password` | Required when `access` is `password`, else empty. Checked against U3's policy; never trimmed |
 
 ```csv
-username,email,name,role,supervisor,password,generate_password
-maria,maria@example.org,Maria Rossi,supervisor,,,true
-ahmed,ahmed@example.org,Ahmed Ali,labeller,maria,,true
+username,email,name,role,supervisor,access,password
+maria,maria@example.org,Maria Rossi,supervisor,,invite,
+ahmed,ahmed@example.org,Ahmed Ali,labeller,maria,invite,
+li,li@example.org,Li Wei,labeller,maria,generate,
 ```
 
 **Rules worth keeping from survey-hub:**
@@ -248,8 +287,9 @@ ahmed,ahmed@example.org,Ahmed Ali,labeller,maria,,true
 - A partly filled row with an empty username is an error; only fully blank
   rows are skipped.
 - An in-file collision rejects **every** row involved, not the first one wins.
-- The import **never updates** existing accounts. It only creates.
-- Every created account has `mustResetPassword = true`.
+- The import **never updates** existing accounts and never mails them.
+- Every created account has `mustResetPassword = true` (password rows) or no
+  usable password until the invitation is used (invite rows).
 - Supervisors in the same file: create in dependency order inside the
   transaction (supervisors first), and run `validateSupervisor` logic against
   the planned set so cycles in the file are caught at preview time.
@@ -259,12 +299,12 @@ ahmed,ahmed@example.org,Ahmed Ali,labeller,maria,,true
 
 **Performance:** bcrypt at cost 10 runs in JavaScript (`bcryptjs`) and takes
 tens of milliseconds per password. Hash **before** opening the transaction,
-then `createMany` inside it, so the transaction stays short. Measure 500 rows
-in CI; if the request is too slow, lower the row cap rather than adding a job
-queue.
+then `createMany` inside it, so the transaction stays short. Invite rows need
+no hash. Measure 500 rows in CI; if the request is too slow, lower the row cap
+rather than adding a job queue.
 
-**Audit:** one `users.imported` entry (count, roles, file name, no
-identities beyond IDs), plus the usual `user.created` per account if cheap.
+**Audit:** one `users.imported` entry (count, roles, access modes, file name,
+no identities beyond IDs), plus the usual `user.created` per account if cheap.
 Add the action to `AuditAction` and the `/admin/audit` filter list.
 
 **Code layout:** `lib/user-import.ts` (parse, plan, validate; pure and
@@ -274,12 +314,13 @@ unit-tested), `app/api/users/import/route.ts` (admin only via
 `lib/csv.ts` (formula neutralising for free text).
 
 **Tests:** unit tests for the parser (BOM, CRLF, quoted commas and newlines,
-missing/unknown/duplicate headers, row limit, bad booleans, password rules,
-supervisor-in-file, cycles, in-file collisions, case-only collisions).
-Integration tests: non-admins get 403; dry run writes nothing; commit is
-all-or-nothing when one row became invalid after the preview; passwords never
-appear in the database outside the hash, in audit payloads or in logs; a
-second commit of the same file creates nothing.
+missing/unknown/duplicate headers, row limit, bad `access` values, password
+rules, `invite` while mail is off, supervisor-in-file, cycles, in-file
+collisions, case-only collisions). Integration tests: non-admins get 403; dry
+run writes and mails nothing; commit is all-or-nothing when one row became
+invalid after the preview; invitations are queued only after the commit;
+passwords never appear in the database outside the hash, in mail, audit
+payloads or logs; a second commit of the same file creates and mails nothing.
 
 ### U5. Sessions and sign-in security
 
@@ -295,11 +336,7 @@ Small items, each borrowed from survey-hub or left open by W02:
 - **Show locked-out users** on the Team page (badge from the throttle state)
   with an **Unlock** action. The throttle is in-process; say so in the UI
   tooltip and keep the limit documented in [security.md](../security.md).
-- **Forgotten-password and invite links** need outgoing mail, which classiflow
-  does not have. Survey-hub's one-time link design (token in the URL
-  fragment, identical answer for unknown addresses, per-account cooldown,
-  ends all sessions) is the model if mail is added. Out of scope here;
-  listed under decisions.
+- **Login page:** "Forgot password?" appears only when mail is on (U7c).
 - Admin MFA/SSO stays the open W02 product decision.
 
 ### U6. Audit and accountability on the Team page
@@ -311,33 +348,215 @@ Small items, each borrowed from survey-hub or left open by W02:
   from the URL so the link works.
 - **Richer `user.updated` payloads:** keep "fields changed" and the role and
   supervisor `from`/`to` that exist today; add name changes as a flag only (no
-  values), and deactivation/reactivation as their own actions (U3).
+  values), and deactivation, reactivation and email changes as their own
+  actions (U3).
+- **Mail events** in the audit log: `mail.invitation_sent`,
+  `mail.password_link_requested` (by an admin; self-service requests are not
+  audited per request, see U7c), `mail.failed`. IDs and outcomes only.
 - **"Created by" / "Created at"** in the drawer, from the `user.created` audit
   entry or a new nullable `createdById` column. Prefer the audit entry; add
   the column only if the drawer query gets awkward.
 - **Retention:** survey-hub purges expired records daily. The audit-log
   retention period is already a maintainer decision in the hardening handoff;
   do not invent one here. When it is decided, the purge should not delete
-  `user.*` entries sooner than the rest.
+  `user.*` entries sooner than the rest. `OutgoingMail` rows (U7a) get their
+  own short retention (proposal: 30 days).
+
+### U7. Outgoing email (n8n webhook)
+
+Classiflow has no mail today. Survey-hub sends through the shared rowsquared
+**"E-MAIL API" n8n workflow** (it owns the SMTP credentials), with plain SMTP
+as a fallback. Use the same workflow and **the same environment variable
+names**, so one Coolify secret setup works for both apps.
+
+#### U7a. Transport, configuration and outbox
+
+**Environment variables** (add to `ENV_SETUP.md` in a new "Email (optional)"
+section, `.env.example` commented out, and `docker-compose.yml` passthrough):
+
+| Variable | Default | Secret | Purpose |
+| --- | --- | --- | --- |
+| `N8N_EMAIL_WEBHOOK_SECRET` | empty | yes | Header value the workflow checks. **Empty means mail is off.** Set means the n8n transport is used |
+| `N8N_EMAIL_WEBHOOK_URL` | `https://n8n.rowsquared.com/webhook/send-email` | no | Workflow endpoint (not a secret; same default as survey-hub) |
+| `N8N_EMAIL_WEBHOOK_HEADER` | `send-email-api` | no | Name of the header that carries the secret |
+| `N8N_EMAIL_WEBHOOK_TIMEOUT` | `15` (seconds) | no | The workflow answers only after its SMTP send finished, so this bounds a real delivery |
+| `APP_BASE_URL` | falls back to `AUTH_URL`, then `NEXTAUTH_URL` | no | Public URL used in mail links. **Never** taken from the request: `AUTH_TRUST_HOST=true` means the `Host` header is trusted for auth, and a forged host must not end up in a password link. If empty, mails that need a link are not sent (feature off) |
+| `INVITATION_LINK_HOURS` | `72` | no | Lifetime of an invitation link |
+| `PASSWORD_RESET_LINK_MINUTES` | `60` | no | Lifetime of a forgotten-password link (same name as survey-hub) |
+| `EMAIL_HOST`, `EMAIL_PORT` (`587`), `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` (`true`), `EMAIL_TIMEOUT` (`10`), `DEFAULT_FROM_EMAIL` | empty | password: yes | **Phase 2, optional:** SMTP fallback for self-hosters without the n8n workflow. Needs a new dependency (`nodemailer`), so only add it if someone outside rowsquared needs it |
+
+**Transport choice** (one decision, in `lib/mail/config.ts`, read once):
+`N8N_EMAIL_WEBHOOK_SECRET` set → n8n; else `EMAIL_HOST` set → SMTP (phase 2);
+else **off**. Unlike survey-hub there is no "console" transport in
+development: credential and link mails must never be written to a log. For
+local testing add `scripts/mock-mail-webhook.mjs`, a tiny HTTP server that
+accepts the webhook and prints only `to` and `subject` (and the link, clearly
+marked dev-only), and point `N8N_EMAIL_WEBHOOK_URL` at it. Tests use an
+in-memory transport.
+
+**`lib/mail/`** (server only):
+
+- `transport.ts`: `mailEnabled()` (the single gate every caller checks,
+  never the env vars directly) and `sendMail({ to, subject, html, text })`.
+- `n8n.ts`: one `fetch` POST per message with
+  `{ to, subject, body }` JSON (`body` is HTML) and the secret header,
+  bounded by `AbortSignal.timeout(N8N_EMAIL_WEBHOOK_TIMEOUT)`. Rules from
+  survey-hub `core/mail.py`:
+  - The workflow fixes the sender; there is no `from`, `cc`, `bcc` or
+    attachment. The API has no such fields, so they cannot be dropped silently.
+  - Fold the subject to one line.
+  - **Outcomes:** 2xx → `sent`; 4xx → `failed` (definite refusal: wrong secret,
+    bad payload; resending is safe); timeout, network error or 5xx →
+    `unknown` (the workflow may already have sent it). Never report
+    `unknown` as `failed`.
+  - Never log the payload or the secret. Error detail may quote a short excerpt
+    of the **response** for non-credential mail only.
+- `layout.ts`: the email-safe HTML shell (table layout, inline styles on
+  every element, no `<style>` block, no images, a hidden preheader). Port the
+  structure of survey-hub `core/email_layout.py`. Escape every interpolated
+  value. Keep secrets (passwords, links) out of the preheader, which shows on
+  lock screens.
+- `templates/`: one module per mail, each returning `{ subject, html, text }`:
+  invitation, password link, password changed notice, temporary password (only
+  if decision 5 says so), email address changed notice.
+
+**Outbox table** `OutgoingMail` (new migration): `id`, `userId` (nullable,
+`SetNull`), `purpose` (`invitation` | `password_link` | `password_changed` |
+`email_changed` | `credentials`), `status` (`pending` | `sending` | `sent` |
+`failed` | `unknown`), `attempts`, `detail` (safe text only), `requestedById`,
+`createdAt`, `sentAt`. It never stores the body, the link or a password. It
+gives the Team page a mail status per user, makes bulk sending resumable, and
+lets an admin see "unknown" instead of guessing.
+
+- **Sending** happens after the response, using Next's `after()` (stable in
+  Next 15.1+; classiflow is on 15.5): claim rows (`pending` → `sending` in one
+  `UPDATE … RETURNING`), build the mail **at send time** (a link is minted
+  then, so nothing secret sits in the table), send with a concurrency of 2–3,
+  record the outcome.
+- **Restarts:** a row left in `sending` longer than the timeout becomes
+  `unknown`, never resent automatically (survey-hub's at-most-once rule). A
+  row left in `pending` (process died before claiming) is picked up by the same
+  rate-limited recovery hook pattern as `ensureJobsMonitored()` in
+  `lib/ai-job-monitor.ts`, or shown as "not sent – resend". Consider multiple
+  app instances: the claim `UPDATE` makes double sends impossible.
+- **Admin visibility:** `GET /api/system/mail` (admin) returns
+  `{ enabled, transport: 'n8n' | 'smtp' | 'off', baseUrl }` with no secrets.
+  The Team page shows it (U2), and the drawer shows each user's last mail per
+  purpose with **Resend** for links.
+
+**Tests:** unit tests for the outcome mapping (2xx, 401, 422, 500, 502,
+timeout, DNS error), subject folding, HTML escaping (a name containing
+`<script>` and `&`), no secret in the preheader, and that the payload never
+appears in captured `console` output. Integration tests for the outbox claim
+under two concurrent senders and the `sending` → `unknown` recovery.
+
+#### U7b. Invitations
+
+The upgrade survey-hub's `emails.py` names but never built: instead of mailing
+a password, mail a link where the user sets their own.
+
+- **Creating** with "Send invitation": the account gets an unusable password
+  hash (random, never shown) and `mustResetPassword = false` (they will choose
+  their own), plus `invitedAt`. Login with any password fails as for a wrong
+  password. An `OutgoingMail(purpose=invitation)` row is queued after the
+  account commits; the create response returns at once with mail status
+  `pending`. A mail problem never undoes or fails the account creation.
+- **The link:** `{APP_BASE_URL}/set-password#t=<token>` with the token in the
+  **fragment**, so it never reaches a server log, the proxy or a `Referer`.
+  The token is the U7c token with `purpose=invitation` and
+  `INVITATION_LINK_HOURS`.
+- **Using it** is the same set-password page and endpoints as U7c. On success
+  `invitedAt` stays, `invitationAcceptedAt` is set, and the Team page badge
+  "invited" disappears.
+- **Resend invitation** (drawer, bulk result dialog, or a Team-page bulk
+  action "Resend to all pending"): queues a new mail. Older links keep working
+  until they expire or the user sets a password, because the token covers the
+  password hash; that is acceptable for a link, not for a password.
+- **Expired invitation:** the page says so and tells the user to ask their
+  admin; the Team page shows "invitation expired" with Resend.
+- **Mail off:** the option is hidden and creation falls back to a temporary
+  password (U2). An admin can still send an invitation later once mail is on.
+
+#### U7c. Forgotten-password links
+
+Port survey-hub's flow (`forgot_password.py`, TABLES_AUTH § "Forgotten
+passwords"); classiflow has no Celery, so `after()` plus the outbox take the
+worker's role.
+
+- **Pages** `/forgot-password` and `/set-password` work signed out. Add them
+  to the public paths in `middleware.ts` (today only `/login` is), and keep
+  them reachable for a signed-in user who still has to reset.
+- **`POST /api/auth/forgot-password`** takes an email, validates its shape,
+  answers **identically** for every address and does **no database lookup in
+  the request**: the lookup and send run in `after()`. So neither the answer
+  nor its timing reveals whether an account exists. Who gets a mail: active
+  (not deactivated) accounts whose stored email matches case-insensitively; the
+  mail goes to the **stored** address and names the username.
+- **Token:** stateless, no table. HMAC-SHA256 with a key derived from
+  `NEXTAUTH_SECRET` via HKDF and a purpose label (`classiflow:password-link:v1`),
+  over `userId`, purpose, expiry **and** the current password hash, email,
+  `sessionVersion` and `deactivatedAt`. So a link dies when the password
+  changes, the email changes, sessions are revoked, the account is
+  deactivated, or `NEXTAUTH_SECRET` rotates; otherwise after
+  `PASSWORD_RESET_LINK_MINUTES`. Put it in `lib/account-links.ts` with unit
+  tests for each invalidation.
+- **Opening spends nothing:** `POST /api/auth/set-password/check` only says
+  whether the token is good, so a mail scanner that fetches links cannot use
+  it up. The page moves the token out of the address bar into
+  `sessionStorage` for that tab, so a reload still works.
+- **`POST /api/auth/set-password/confirm`:** in one transaction, lock the user
+  row (`SELECT … FOR UPDATE`), re-check the token, run the U3 password policy,
+  refuse the current password, set the new hash, clear `mustResetPassword`,
+  bump `sessionVersion` (ends all sessions), then queue a "your password was
+  changed" notice. Returns no session: the user signs in with the new password.
+- **Limits:** one link per account per 15 minutes (a
+  `passwordLinkSentAt` column, so it holds across instances), plus per-IP
+  throttles on request and confirm in the style of `lib/login-throttle.ts`.
+  A definite `failed` releases the cooldown; `unknown` keeps it.
+- **Availability:** the "Forgot password?" link on `/login` and the endpoints
+  exist only when `mailEnabled()` and a base URL are present; otherwise the
+  endpoints answer 404 and the recovery path stays the admin reset and
+  `scripts/reset-admin-password.js`.
+- **Admins** can trigger the same link for a user from the drawer ("Send
+  password link") instead of inventing a temporary password. Audited (U6).
+- **Never logged:** links and tokens follow the credential rules: not in
+  logs, error messages, audit payloads or the preheader.
+
+**Tests (U7b/U7c):** the identical-answer rule (same status and body for
+known, unknown and deactivated addresses; no query in the request, checked
+with a Prisma query counter); token invalidation by each field; replay of a
+used link; two concurrent confirms (only one succeeds); cooldown; throttle;
+reset-required users can use the link; deactivated users get nothing; e2e
+journey: invite a user through the mock webhook, open the link, set a
+password, sign in.
+
+**Documentation:** a "Mail" section in `DEPLOYMENT.md` and
+`COOLIFY_DEPLOYMENT.md` (which secrets to set, how to test with the mock
+webhook), the new variables in `ENV_SETUP.md`, the public pages and endpoints
+in [security.md](../security.md), and the outbox in AGENTS.md's architecture
+section.
 
 ## Order and size
 
 | Step | Package | Size | Depends on |
 | --- | --- | --- | --- |
 | 1 | U1 last seen (schema, write, poll exclusions, column) | S | — |
-| 2 | U2 Team page overhaul (table, filters, sort, drawer, generated password) | M | U1 |
-| 3 | U3 deactivation + last-admin lock | M | — |
-| 4 | U3 identity and password rules (+ case-pair check script) | S–M | — |
-| 5 | U4 CSV import | M–L | U3 rules |
-| 6 | U5 sign out everywhere, lockout audit/unlock | S | U2 drawer |
-| 7 | U6 per-user history, audit filters from URL | S | U2 drawer |
+| 2 | U7a mail transport, env vars, outbox, mock webhook | M | — |
+| 3 | U2 Team page overhaul (table, filters, sort, drawer, create modes) | M | U1 (U7a for the invitation mode) |
+| 4 | U3 deactivation + last-admin lock | M | — |
+| 5 | U3 identity and password rules (+ case-pair check script) | S–M | — |
+| 6 | U7c password links (token, pages, forgot password) | M | U7a, U3 password policy |
+| 7 | U7b invitations | S | U7c token and page |
+| 8 | U4 CSV import | M–L | U3 rules, U7b |
+| 9 | U5 sign out everywhere, lockout audit/unlock | S | U2 drawer |
+| 10 | U6 per-user history, mail events, audit filters from URL | S | U2 drawer |
 
-Steps 1 and 3/4 can run in parallel. Each step: typecheck, lint, unit tests,
-the integration suite, and for UI steps `npm run build` + `npm run test:e2e`
-(see the handoff for commands). For every behaviour change, show that the new
-integration test fails on the old code. Update [security.md](../security.md)
-and the "Authentication and authorization" section of
-[AGENTS.md](../../AGENTS.md) when the rules change.
+Steps 1, 2 and 4/5 can run in parallel. Each step: typecheck, lint, unit
+tests, the integration suite, and for UI steps `npm run build` +
+`npm run test:e2e` (see the handoff for commands). For every behaviour
+change, show that the new integration test fails on the old code. Update
+[security.md](../security.md) and the "Authentication and authorization"
+section of [AGENTS.md](../../AGENTS.md) when the rules change.
 
 ## Decisions for the maintainer
 
@@ -350,18 +569,29 @@ and the "Authentication and authorization" section of
    are not affected until they are next changed.
 4. **Import scope:** create-only (proposed), or also "update existing users"
    (role/supervisor) from the same file? Survey-hub deliberately never updates.
-5. **Credentials CSV download:** acceptable to offer generated passwords as a
+5. **Invitation links vs mailed passwords:** this plan proposes links only and
+   never mails a password. Survey-hub mails the temporary password. Keep the
+   option to mail passwords as well (adds the at-most-once machinery back), or
+   links only?
+6. **Credentials CSV download:** acceptable to offer generated passwords as a
    one-time browser download, or copy-only?
-6. **Supervisors:** should supervisors see last-seen for their subtree (on
-   the progress team view), or is it admin-only?
-7. **Outgoing mail:** is SMTP/webhook mail on the roadmap? It unlocks
-   credential mails, invite links and forgotten-password links, and would
-   change U4 to survey-hub's durable per-row design.
+7. **Supervisors:** should supervisors see last-seen for their subtree (on
+   the progress team view), or is it admin-only? Should supervisors be able to
+   resend an invitation to someone in their team?
+8. **SMTP fallback:** n8n only (no new dependency), or also SMTP via
+   `nodemailer` for self-hosters?
+9. **Link lifetimes:** invitations 72 hours, password links 60 minutes?
+10. **The n8n secret:** reuse survey-hub's `N8N_EMAIL_WEBHOOK_SECRET` value, or
+    issue classiflow its own so it can be rotated separately? (The workflow
+    would need to accept both.)
 
 ## Out of scope
 
 - Independent double annotation and anything that changes labelling.
 - SSO/MFA (open W02 decision).
+- Notification mails about work (assignments, comments, digests). The
+  transport makes them possible later; they need their own plan and an
+  opt-out.
 - Organisation/project multi-tenancy or per-taxonomy permissions.
 - Survey-hub's per-survey page permissions: classiflow's roles plus the
   supervisor tree are the access model ([security.md](../security.md)).
