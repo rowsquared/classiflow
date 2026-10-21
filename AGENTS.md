@@ -52,7 +52,7 @@ Browser: React client components
 | Authentication | `lib/auth.config.ts`, `lib/auth.ts`, `middleware.ts`, `types/next-auth.d.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`init-admin.js` runs on every start, `reset-admin-password.js` for admin recovery, `promote-main.mjs`) |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.js`, `init-admin.js`, server; `reset-admin-password.js` for admin recovery; `restore-drill.sh` for backups; `promote-main.mjs`) |
 
 ## Domain model and behavior to preserve
 
@@ -189,7 +189,9 @@ regressions.
 
 Production uses Next's standalone output in a Node 24 Alpine image (pinned by
 digest) with production dependencies only. The Compose
-startup command applies migrations, initializes the admin, then runs `server.js`;
+startup command (`scripts/start.sh`) applies migrations as the schema owner,
+optionally switches to a least-privilege runtime role, initializes the admin,
+then runs `server.js`;
 the Dockerfile alone only starts `server.js`. Production Compose leaves app/DB
 ports internal for reverse-proxy hosting. `/api/health` checks database
 connectivity. See `DEPLOYMENT.md`, `COOLIFY_DEPLOYMENT.md`, and the actual workflow

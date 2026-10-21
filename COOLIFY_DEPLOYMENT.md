@@ -40,7 +40,7 @@ Add the following environment variables in Coolify:
 ```env
 # PostgreSQL Configuration (will be used by the embedded database)
 POSTGRES_USER=classiflow
-POSTGRES_PASSWORD=generate-a-secure-password-here
+POSTGRES_PASSWORD=generate-a-secure-password-here  # required: the deploy fails without it
 POSTGRES_DB=classiflow
 
 # NextAuth Configuration
@@ -53,6 +53,21 @@ DEFAULT_ADMIN_PASSWORD=<a long random password>  # required for the first start;
 DEFAULT_ADMIN_NAME=Admin User
 DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 ```
+
+Existing deployments that never set `POSTGRES_PASSWORD` ran on the old fallback
+`classiflow_password`; see "Upgrading an existing Compose deployment" in
+[DEPLOYMENT.md](DEPLOYMENT.md) before the first deploy of the new Compose file.
+
+#### Recommended
+
+```env
+# Run the server as a least-privilege database role (see DEPLOYMENT.md "Database roles")
+APP_DB_USER=classiflow_app
+APP_DB_PASSWORD=<another long random password>
+```
+
+Also turn on **Include Source Commit in Build** in the application's settings so
+`/api/health` reports the deployed commit.
 
 #### Optional AI Labeling Variables
 
@@ -113,7 +128,8 @@ Expected response:
 {
   "status": "healthy",
   "timestamp": "2025-11-25T...",
-  "database": "connected"
+  "database": "connected",
+  "release": "<the deployed commit>"
 }
 ```
 
@@ -204,7 +220,7 @@ DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
 In Coolify, set the start command to run migrations and initialize admin:
 
 ```bash
-sh -c "npx prisma migrate deploy && node scripts/init-admin.js && node server.js"
+sh scripts/start.sh
 ```
 
 **Note**: The `init-admin.js` script creates the default admin only while the database has no admin, using the environment variables you configured. If it cannot (for example no or a placeholder password), it exits with an error and the container does not start.
@@ -346,7 +362,7 @@ To scale the application:
 ### Migration Issues
 
 **Issue**: Migrations don't run
-- **Solution**: Ensure start command includes `npx prisma migrate deploy`
+- **Solution**: Ensure the start command is `sh scripts/start.sh` (it runs `npx prisma migrate deploy` first)
 - Check write permissions for Prisma
 
 **Issue**: Migration fails with permissions error

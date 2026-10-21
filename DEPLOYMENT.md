@@ -23,6 +23,8 @@ cd classiflow
 ```bash
 cp .env.example .env
 ```
+Compose refuses to start without `POSTGRES_PASSWORD` and `NEXTAUTH_SECRET`; there
+are no built-in fallbacks.
 
 3. Start the stack:
 ```bash
@@ -42,9 +44,11 @@ Use this when you already manage PostgreSQL elsewhere.
 3. Ensure the container start command runs migrations and initializes the admin user:
 
 ```bash
-sh -c "npx prisma migrate deploy && node scripts/init-admin.js && node server.js"
+sh scripts/start.sh
 ```
 
+It applies migrations, optionally sets up the runtime database role (see
+[Database roles](#database-roles)), creates the first admin and starts the server.
 The default Dockerfile runs `node server.js` only, so you must override the start command in your platform (Kubernetes, ECS, Fly.io, etc.).
 
 ## Environment Variables
@@ -69,10 +73,45 @@ Optional AI labeling (Taxomind service):
 - AI_JOB_POLL_TIMEOUT_MS
 - AI_SOURCE_SLUG — scopes taxonomy keys per deployment. Set to the subdomain-domain of your app host (strip `www` and the final TLD, join with `-`). Example: `https://classiflow.app.rowsquared.org` → `classiflow-app-rowsquared`. If empty, the AI API infers it from the request host.
 
+Docker Compose (Option 1) also requires:
+- POSTGRES_PASSWORD (POSTGRES_USER and POSTGRES_DB default to `classiflow`)
+
+Optional database and release settings:
+- APP_DB_USER, APP_DB_PASSWORD: run the server as a least-privilege role; see [Database roles](#database-roles).
+- SOURCE_COMMIT (build argument): the commit being built, reported by `/api/health`.
+
 Optional:
 - INTERNAL_APP_URL: where server-rendered pages reach the app's own API. Defaults to `http://127.0.0.1:$PORT`; only set it if the server does not listen on loopback.
 
 See `ENV_SETUP.md` for details.
+
+## Database roles
+
+`DATABASE_URL` is the schema owner: it applies migrations, and recovery scripts
+run as it. By default the server uses it too. To run the server with row access
+only, set `APP_DB_USER` (a lower-case name different from the owner) and
+`APP_DB_PASSWORD` (16+ characters). On every start `scripts/start.sh` then runs
+`scripts/db-runtime-role.js`, which creates or updates that role with
+`SELECT/INSERT/UPDATE/DELETE` on the application tables (also tables added by
+later migrations) and nothing else: no DDL, no `TRUNCATE`, no access to the
+migration history. The server and admin bootstrap then connect as that role.
+Changing `APP_DB_PASSWORD` and restarting rotates the password. The CI smoke job
+runs the stack this way. To go back, unset both variables and restart.
+
+## Upgrading an existing Compose deployment
+
+Earlier versions of `docker-compose.yml` fell back to the public password
+`classiflow_password` when `POSTGRES_PASSWORD` was unset. PostgreSQL keeps the
+password it was initialised with, so set `POSTGRES_PASSWORD` to the password the
+database actually has (`classiflow_password` if it was never set) before
+deploying, then rotate it:
+
+```bash
+docker compose exec -T postgres psql -U classiflow -d classiflow \
+  -c "ALTER ROLE classiflow PASSWORD 'the-new-password'"
+```
+
+and set `POSTGRES_PASSWORD` to the new value and redeploy.
 
 ## Reverse proxy
 
@@ -88,6 +127,12 @@ Use the health endpoint to verify the deployment:
 GET /api/health
 ```
 
+It answers 200 with `"database": "connected"` and `"release": "<commit>"` (the
+`SOURCE_COMMIT` build argument, `null` when the build did not pass it), or 503
+when the database does not answer. Compare `release` with the commit you meant
+to deploy; with the repository variable `PROD_HEALTH_URL` set, the CI
+`deploy-prod` job waits for production to report the promoted commit.
+
 ## Admin User
 
 On every start, `scripts/init-admin.js` creates an admin from `DEFAULT_ADMIN_USERNAME` (default `admin`), `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` **only if the database has no admin yet**. The password must be changed at first sign-in. In production the script refuses a missing or well-known placeholder password and stops startup with an error, so set a real one before the first deploy. It never prints the password.
@@ -102,11 +147,28 @@ The account must change it at next sign-in, and its existing sessions are signed
 
 ## Backups
 
-Back up your PostgreSQL database regularly. Example with Docker Compose, run from the project directory:
+All state is in PostgreSQL (uploads are parsed into the database; nothing on the
+app container's disk needs backing up). Take custom-format dumps, keep them off
+the host, encrypted, and restore one regularly:
 
 ```bash
-docker compose exec -T postgres pg_dump --no-owner -U classiflow classiflow > backup.sql
+# Backup, from the project directory (or the Coolify server)
+docker compose exec -T postgres pg_dump -U classiflow -Fc classiflow > classiflow-$(date +%F).dump
+
+# Restore drill: restores into a throwaway PostgreSQL 16 container, prints the
+# latest migration and row counts, and how long the restore took.
+scripts/restore-drill.sh classiflow-2026-10-21.dump
 ```
+
+Decide and record: how much data loss is tolerable (backup frequency), how long
+a restore may take, where encrypted copies live and for how long, and who is
+alerted when a backup fails. Run the drill after every change to the backup job
+and at least quarterly.
+
+To restore for real, stop the app, restore into an empty database with
+`pg_restore --no-owner --no-privileges -U classiflow -d classiflow`, then start
+the app: migrations bring an older dump up to date and, with `APP_DB_USER` set,
+the runtime role's grants are re-applied.
 
 ## Troubleshooting
 

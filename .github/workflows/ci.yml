@@ -34,6 +34,11 @@ jobs:
       NEXTAUTH_SECRET: ci-only-not-a-real-secret
       DEFAULT_ADMIN_EMAIL: admin@classiflow.local
       DEFAULT_ADMIN_PASSWORD: ci-password
+      POSTGRES_PASSWORD: ci-only-db-password
+      # Exercise the least-privilege runtime role the way production can run it.
+      APP_DB_USER: classiflow_app
+      APP_DB_PASSWORD: ci-only-app-db-password
+      SOURCE_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Build and start the stack
@@ -45,6 +50,16 @@ jobs:
           body=$(docker compose exec -T app wget -qO- http://localhost:3000/api/health)
           echo "$body"
           echo "$body" | grep -q '"database":"connected"'
+      - name: Health endpoint reports the commit that was built
+        run: |
+          docker compose exec -T app wget -qO- http://localhost:3000/api/health \
+            | grep -q "\"release\":\"$SOURCE_COMMIT\""
+      - name: Server connects as the runtime role, not the schema owner
+        run: |
+          users=$(docker compose exec -T postgres psql -U classiflow -d classiflow -tAc \
+            "SELECT DISTINCT usename FROM pg_stat_activity WHERE datname = 'classiflow' AND usename <> 'classiflow'")
+          echo "app connections as: $users"
+          [ "$users" = "$APP_DB_USER" ]
       - name: Default admin exists
         run: |
           count=$(docker compose exec -T postgres psql -U classiflow -d classiflow -tAc \
@@ -146,9 +161,30 @@ jobs:
           cat response.json || true
           echo
           case "$http_code" in
-            2*) echo "Deployment queued. Watch it finish in the Coolify UI." ;;
+            2*) echo "Deployment queued." ;;
             405) echo "::error::Coolify rejected both POST and GET (HTTP 405). The stored URL is probably the git webhook, not /api/v1/deploy."; exit 1 ;;
             401|403) echo "::error::Coolify rejected the token (HTTP $http_code). Check COOLIFY_API_TOKEN has deploy permission."; exit 1 ;;
             404) echo "::error::Coolify does not recognise that uuid (HTTP 404). Check COOLIFY_PROD_WEBHOOK points at the production application."; exit 1 ;;
             *) echo "::error::Coolify refused the deploy request (HTTP $http_code). Production was NOT updated."; exit 1 ;;
           esac
+      - name: Wait for production to run this commit
+        # A queued deploy is not a healthy one. With the repository variable
+        # PROD_HEALTH_URL (https://<prod-host>/api/health) set, wait until
+        # production reports this commit as its release and a connected database.
+        env:
+          PROD_HEALTH_URL: ${{ vars.PROD_HEALTH_URL }}
+        run: |
+          if [ -z "$PROD_HEALTH_URL" ]; then
+            echo "::warning::PROD_HEALTH_URL is not set, so the deploy is not verified. Check the Coolify UI."
+            exit 0
+          fi
+          for attempt in $(seq 1 60); do
+            body=$(curl --silent --max-time 10 "$PROD_HEALTH_URL" || true)
+            if echo "$body" | grep -q "\"release\":\"$GITHUB_SHA\"" && echo "$body" | grep -q '"database":"connected"'; then
+              echo "Production runs $GITHUB_SHA: $body"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production did not report release $GITHUB_SHA within 20 minutes. Last response: $body"
+          exit 1

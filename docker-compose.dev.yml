@@ -14,7 +14,8 @@ services:
       POSTGRES_PASSWORD: classiflow_password
       POSTGRES_DB: classiflow
     ports:
-      - "5434:5432"
+      # Loopback only: the dev password is public, so keep the port off the network.
+      - "127.0.0.1:5434:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:

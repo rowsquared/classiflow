@@ -4,7 +4,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-classiflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-classiflow_password}
+      # Required: no fallback, so a deployment never runs on a published password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:-classiflow}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -22,6 +23,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Commit being built; /api/health reports it so a deploy can be checked.
+        # Coolify sets it when "Include Source Commit in Build" is on.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
     restart: unless-stopped
     # Port mapping removed for Coolify compatibility - Coolify manages ports externally
     # Uncomment the next 2 lines for local development if you need direct access
@@ -31,14 +36,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-classiflow}:${POSTGRES_PASSWORD:-classiflow_password}@postgres:5432/${POSTGRES_DB:-classiflow}?schema=public
+      # Database. This is the schema owner: it runs migrations (and recovery
+      # scripts via `docker compose exec`).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-classiflow}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-classiflow}?schema=public
+      # Optional: run the server as a least-privilege role instead of the owner.
+      # scripts/start.sh creates/updates it on every start (see DEPLOYMENT.md).
+      APP_DB_USER: ${APP_DB_USER:-}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-}
 
       # NextAuth
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?}
 
       # Default Admin User
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
@@ -55,7 +65,8 @@ services:
       AI_JOB_POLL_INTERVAL_MS: ${AI_JOB_POLL_INTERVAL_MS:-5000}
       AI_JOB_POLL_TIMEOUT_MS: ${AI_JOB_POLL_TIMEOUT_MS:-600000}
       AI_SOURCE_SLUG: ${AI_SOURCE_SLUG:-}
-    command: sh -c "npx prisma migrate deploy && node scripts/init-admin.js && node server.js"
+    # Migrations, optional runtime DB role, admin bootstrap, then the server.
+    command: sh scripts/start.sh
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s

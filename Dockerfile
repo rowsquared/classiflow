@@ -52,6 +52,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 
+# Last, so a new commit does not invalidate the layers above.
+ARG SOURCE_COMMIT=""
+ENV SOURCE_COMMIT=${SOURCE_COMMIT}
+
 EXPOSE 3000
 
 ENV PORT=3000
