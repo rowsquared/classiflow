@@ -1,8 +1,10 @@
 'use client'
-import { workspaceApi } from '@/lib/workspace/urls'
-
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Modal from '@/components/Modal'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { queryKeys } from '@/lib/query/keys'
+import { fetchJson } from '@/lib/query/fetch'
 
 type User = {
   id: string
@@ -17,52 +19,42 @@ type AssignmentModalProps = {
   onSuccess: () => void
 }
 
+const NONE: ReadonlySet<string> = new Set()
+
 export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: AssignmentModalProps) {
-  const [users, setUsers] = useState<User[]>([])
-  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
-  const [initialUserIds, setInitialUserIds] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
+  const { workspaceId, api } = useWorkspacePaths()
+  const idsParam = sentenceIds.join(',')
+
+  // /users returns only the people the caller may assign to (everyone for
+  // admins, themselves and their team for supervisors).
+  const members = useQuery({
+    queryKey: queryKeys.members(workspaceId),
+    queryFn: ({ signal }) => fetchJson<{ users: User[] }>(api('/users'), { signal }).then(d => d.users)
+  })
+  // Who is assigned to the selected records now; always asked fresh.
+  const current = useQuery({
+    queryKey: queryKeys.assignments(workspaceId, idsParam),
+    queryFn: ({ signal }) =>
+      fetchJson<{ userAssignments?: Record<string, string[]> }>(api(`/sentences/assign?sentenceIds=${idsParam}`), {
+        signal
+      }).then(d => new Set(Object.keys(d.userAssignments ?? {})) as ReadonlySet<string>),
+    staleTime: 0,
+    gcTime: 0
+  })
+
+  const users = members.data ?? []
+  const initialUserIds = current.data ?? NONE
+  // The user's choice; until they change something it is the current assignment.
+  const [choice, setChoice] = useState<ReadonlySet<string> | null>(null)
+  const selectedUserIds = choice ?? initialUserIds
+  const setSelectedUserIds = (ids: ReadonlySet<string>) => setChoice(ids)
+  const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const initialised = useRef(false)
-
-  const loadData = useCallback(async () => {
-    try {
-      // Fetch users and current assignments in parallel
-      const [usersRes, assignRes] = await Promise.all([
-        fetch(workspaceApi('/users')),
-        fetch(workspaceApi(`/sentences/assign?sentenceIds=${sentenceIds.join(',')}`))
-      ])
-
-      if (usersRes.ok) {
-        const usersData = await usersRes.json()
-        setUsers(usersData.users)
-      } else {
-        setError('Failed to load users')
-      }
-
-      if (assignRes.ok) {
-        const assignData = await assignRes.json()
-        // userAssignments is { userId: [sentenceId, ...] }
-        const currentlyAssigned = new Set<string>(Object.keys(assignData.userAssignments || {}))
-        setSelectedUserIds(currentlyAssigned)
-        setInitialUserIds(currentlyAssigned)
-      }
-    } catch (err) {
-      console.error('Failed to load data:', err)
-      setError('Failed to load data')
-    } finally {
-      setLoading(false)
-    }
-  }, [sentenceIds])
-
-  // Load once on open; sentenceIds is a fresh array on every parent render
-  useEffect(() => {
-    if (!initialised.current) {
-      initialised.current = true
-      loadData()
-    }
-  }, [loadData])
+  const [saveError, setSaveError] = useState('')
+  const loading = members.isPending || current.isPending
+  const error =
+    saveError || (members.isError ? 'Failed to load users' : current.isError ? 'Failed to load assignments' : '')
+  const setError = setSaveError
 
   const handleToggleUser = (userId: string) => {
     const newSet = new Set(selectedUserIds)
@@ -74,12 +66,11 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     setSelectedUserIds(newSet)
   }
 
-  const handleSelectAll = (assignableUsers: User[]) => {
-    if (selectedUserIds.size === assignableUsers.length && assignableUsers.length > 0) {
-      setSelectedUserIds(new Set())
-    } else {
-      setSelectedUserIds(new Set(assignableUsers.map(u => u.id)))
-    }
+  const handleSelectAll = (shown: User[]) => {
+    const next = new Set(selectedUserIds)
+    if (allShownSelected) shown.forEach(u => next.delete(u.id))
+    else shown.forEach(u => next.add(u.id))
+    setSelectedUserIds(next)
   }
 
   const handleSave = async () => {
@@ -102,7 +93,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       // Add new assignments
       if (toAdd.length > 0) {
         promises.push(
-          fetch(workspaceApi('/sentences/assign'), {
+          fetch(api('/sentences/assign'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toAdd })
@@ -113,7 +104,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       // Remove assignments
       if (toRemove.length > 0) {
         promises.push(
-          fetch(workspaceApi('/sentences/assign'), {
+          fetch(api('/sentences/assign'), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toRemove })
@@ -154,9 +145,11 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     }
   }
 
-  // /api/users already returns only the users the caller may assign to
-  // (everyone for admins, themselves and their team for supervisors).
-  const assignableUsers = users
+  const needle = search.trim().toLowerCase()
+  const assignableUsers = needle
+    ? users.filter(u => [u.name ?? '', u.email, u.role].some(text => text.toLowerCase().includes(needle)))
+    : users
+  const allShownSelected = assignableUsers.length > 0 && assignableUsers.every(u => selectedUserIds.has(u.id))
 
   // Compute diff for button label
   const toAdd = Array.from(selectedUserIds).filter(id => !initialUserIds.has(id))
@@ -195,7 +188,9 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{error}</div>
+          <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
         )}
 
         {loading ? (
@@ -204,16 +199,34 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
           </div>
         ) : (
           <>
+            {users.length > 5 && (
+              <div className="mb-3">
+                <label htmlFor="assignment-search" className="sr-only">
+                  Search people
+                </label>
+                <input
+                  id="assignment-search"
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search by name, email or role"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            )}
+
             {/* Select All */}
             <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={selectedUserIds.size === assignableUsers.length && assignableUsers.length > 0}
+                  checked={allShownSelected}
                   onChange={() => handleSelectAll(assignableUsers)}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
                 />
-                <span className="text-sm font-medium text-gray-700">Select All ({assignableUsers.length} users)</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Select all ({assignableUsers.length} {needle ? 'shown' : 'users'})
+                </span>
               </label>
               <div className="flex items-center gap-3 text-sm text-gray-600">
                 {selectedUserIds.size > 0 && <span>{selectedUserIds.size} selected</span>}
@@ -226,7 +239,9 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
             {/* User List */}
             <div className="flex-1 overflow-y-auto space-y-2">
               {assignableUsers.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No users available for assignment</div>
+                <div className="text-center py-8 text-gray-600">
+                  {needle ? 'Nobody matches this search' : 'No users available for assignment'}
+                </div>
               ) : (
                 assignableUsers.map(user => {
                   const isSelected = selectedUserIds.has(user.id)

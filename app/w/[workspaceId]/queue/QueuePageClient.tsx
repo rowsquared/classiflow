@@ -1,15 +1,30 @@
 'use client'
-import { workspaceApi } from '@/lib/workspace/urls'
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryStates } from 'nuqs'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { queryKeys } from '@/lib/query/keys'
+import { fetchJson } from '@/lib/query/fetch'
+import { useLastSuccessful } from '@/lib/query/use-last-successful'
+import { useStoredBoolean } from '@/lib/use-local-storage'
+import {
+  EMPTY_QUEUE_FILTERS,
+  countActiveFilters,
+  pickQueueFilters,
+  queueListParams,
+  queueParsers,
+  queueStatsParams,
+  type QueueFilterValues,
+  type QueueTab
+} from '@/lib/queue-url'
 import PageHeader from '@/components/PageHeader'
-import FilterPanel, { countActiveFilters, type QueueFilters } from '@/components/queue/FilterPanel'
+import FilterPanel from '@/components/queue/FilterPanel'
 import QueueToolbar from '@/components/queue/QueueToolbar'
 import SentenceRow from '@/components/queue/SentenceRow'
 import PaginationControls from '@/components/queue/PaginationControls'
 import BulkLabelPanel from '@/components/queue/BulkLabelPanel'
 import AssignmentModal from '@/components/queue/AssignmentModal'
 import { ToastContainer, type Toast } from '@/components/Toast'
-import { createLatestRequest, isAbortError } from '@/lib/latest-request'
 
 export type Sentence = {
   id: string
@@ -91,97 +106,106 @@ type UserRole = 'admin' | 'supervisor' | 'labeller'
 
 type QueuePageClientProps = {
   initialQueue: QueueResponse | null
+  /** The list parameters the server loaded initialQueue with (see lib/queue-url.ts). */
+  initialListParams: string
   initialStats: Stats
+  initialStatsParams: string
   initialTaxonomies: Taxonomy[]
   initialUsers: QueueUser[]
   initialCanAssign: boolean
-  initialStatsPrefetched: boolean
   currentUser: { id: string; role: UserRole } | null
 }
 
-const DEFAULT_FILTERS: QueueFilters = {
-  status: [],
-  userId: null,
-  userScope: 'all',
-  assignedToUserId: null,
-  lastEditorId: null,
-  dateRange: { from: null, to: null },
-  taxonomyKey: null,
-  level: null,
-  code: null,
-  source: null,
-  aiTaxonomyKey: null,
-  aiLevel: null,
-  aiCode: null,
-  aiConfidenceMin: null,
-  aiConfidenceMax: null,
-  flagged: null,
-  hasComments: null,
-  hasSubmittedLabels: null,
-  hasAISuggestions: null,
-  importId: null,
-  supportFilters: {}
-}
+type StatsResponse = { ok?: boolean; stats?: Stats }
+
+const NO_SELECTION: ReadonlySet<string> = new Set()
 
 export default function QueuePageClient({
   initialQueue,
+  initialListParams,
   initialStats,
-  initialTaxonomies,
-  initialUsers,
-  initialCanAssign,
-  initialStatsPrefetched,
+  initialStatsParams,
+  initialTaxonomies: taxonomies,
+  initialUsers: users,
+  initialCanAssign: canAssign,
   currentUser
 }: QueuePageClientProps) {
-  // UI State - remember filter panel state in localStorage
-  const [filterCollapsed, setFilterCollapsed] = useState(true)
+  const { workspaceId, api } = useWorkspacePaths()
+  const queryClient = useQueryClient()
+
+  // The view (tab, search, filters, page) is the URL: back/forward and shared
+  // links reproduce it, and the server page rendered the same view.
+  const [url, setUrl] = useQueryStates(queueParsers)
+  const activeTab = url.tab
+  const filters = pickQueueFilters(url)
+  const activeFilterCount = countActiveFilters(filters)
+
+  // Filter panel open/closed is a per-browser preference.
+  const [filterCollapsed, setFilterCollapsed] = useStoredBoolean('queueFilterCollapsed', true)
+  const toggleFilterPanel = () => setFilterCollapsed(!filterCollapsed)
+
+  // What the user types; the URL (and so the request) follows once they pause.
+  const [searchInput, setSearchInput] = useState(url.q)
+  const [syncedQuery, setSyncedQuery] = useState(url.q)
+  if (url.q !== syncedQuery) {
+    // The URL changed under us (back/forward, reset): show its search.
+    setSyncedQuery(url.q)
+    setSearchInput(url.q)
+  }
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const saved = localStorage.getItem('queueFilterCollapsed')
-    setFilterCollapsed(saved !== null ? JSON.parse(saved) : true)
-  }, [])
-  const toggleFilterPanel = useCallback(() => {
-    setFilterCollapsed(prev => {
-      const next = !prev
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('queueFilterCollapsed', JSON.stringify(next))
-      }
-      return next
-    })
-  }, [])
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'submitted' | 'skipped'>('pending')
-  // What the user types, and the debounced value that queries the server.
-  const [searchInput, setSearchInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+    if (searchInput === url.q) return
+    const timeout = setTimeout(() => setUrl({ q: searchInput || null, page: null }), 300)
+    return () => clearTimeout(timeout)
+  }, [searchInput, url.q, setUrl])
+
   const [bulkLabelOpen, setBulkLabelOpen] = useState(false)
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
-
-  // Data State
-  const [queue, setQueue] = useState<QueueResponse | null>(initialQueue)
-  const [stats, setStats] = useState<Stats>(initialStats)
-  const [statsStale, setStatsStale] = useState(false)
-  const [taxonomies] = useState<Taxonomy[]>(initialTaxonomies)
-  const [loading, setLoading] = useState(false)
-  // Set when the last queue request failed; the previous results stay visible.
-  const [queueError, setQueueError] = useState<string | null>(null)
-  const queueRequest = useRef(createLatestRequest())
-  const statsRequest = useRef(createLatestRequest())
-  const [canAssign] = useState(initialCanAssign)
-  const [users] = useState<QueueUser[]>(initialUsers)
-  const skipInitialQueueFetch = useRef(initialQueue !== null)
-  const skipInitialStatsFetch = useRef(initialStatsPrefetched)
   const [sendingToAI, setSendingToAI] = useState(false)
 
-  // Filter & Pagination State
-  const [filters, setFilters] = useState<QueueFilters>(DEFAULT_FILTERS)
-  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters])
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(100)
+  // The list. One query per view: a slow answer for an older view lands in
+  // that view's cache entry and can never replace what is on screen now, and
+  // switching views cancels the request that is no longer needed. Not polled
+  // (rows would move under the user's selection); changes made here
+  // invalidate it.
+  const listParams = queueListParams(url)
+  const queueQuery = useQuery({
+    queryKey: queryKeys.queueList(workspaceId, listParams),
+    queryFn: ({ signal }) => fetchJson<QueueResponse>(api(`/sentences?${listParams}`), { signal }),
+    initialData: listParams === initialListParams && initialQueue ? initialQueue : undefined,
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+    retry: false
+  })
+  // A failed request keeps the last results on screen, marked out of date,
+  // instead of an empty list that would read as "no records".
+  const queue = useLastSuccessful(queueQuery.data) ?? null
+  const queueError = queueQuery.isError ? 'Could not load records. The list below may be out of date.' : null
 
-  // Selection State
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // Tab counts for the same filters, refreshed every 30 s while the tab is visible.
+  const statsParams = queueStatsParams(url)
+  const statsQuery = useQuery({
+    queryKey: queryKeys.queueStats(workspaceId, statsParams),
+    queryFn: async ({ signal }) => {
+      const data = await fetchJson<StatsResponse>(api(`/sentences/stats?${statsParams}`), { signal })
+      if (!data.ok || !data.stats) throw new Error('Statistics unavailable')
+      return data.stats
+    },
+    initialData: statsParams === initialStatsParams ? initialStats : undefined,
+    placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
+    retry: false
+  })
+  const stats = useLastSuccessful(statsQuery.data) ?? initialStats
+  const statsStale = statsQuery.isError
 
-  // Auto-refresh State
-  const [lastRefresh, setLastRefresh] = useState(() => Date.now())
+  // Selection belongs to one view (tab, search, filters; not the page).
+  const selectionScope = `${activeTab}|${statsParams}`
+  const [selection, setSelection] = useState<{ scope: string; ids: ReadonlySet<string> }>({
+    scope: selectionScope,
+    ids: NO_SELECTION
+  })
+  const selectedIds = selection.scope === selectionScope ? selection.ids : NO_SELECTION
+  const setSelectedIds = (ids: ReadonlySet<string>) => setSelection({ scope: selectionScope, ids })
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -196,244 +220,32 @@ export default function QueuePageClient({
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
-  // Fetch stats with current filters applied
-  const fetchStats = useCallback(async () => {
-    const request = statsRequest.current.start()
-    try {
-      const params = new URLSearchParams()
-
-      // Add search query
-      if (searchQuery) params.set('q', searchQuery)
-
-      // Add filters (same logic as fetchQueue)
-      if (filters.status.length > 0) {
-        filters.status.forEach(s => params.append('status', s))
-      }
-      if (filters.userId) params.set('userId', filters.userId)
-      if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
-      if (filters.lastEditorId) params.set('lastEditorId', filters.lastEditorId)
-      if (filters.dateRange.from) params.set('lastEditedFrom', filters.dateRange.from)
-      if (filters.dateRange.to) params.set('lastEditedTo', filters.dateRange.to)
-      if (filters.taxonomyKey) params.set('taxonomyKey', filters.taxonomyKey)
-      if (filters.level !== null) params.set('level', String(filters.level))
-      if (filters.code !== null) params.set('code', String(filters.code))
-      if (filters.hasSubmittedLabels !== null) params.set('hasSubmittedLabels', String(filters.hasSubmittedLabels))
-      if (filters.source) params.set('source', filters.source)
-      if (filters.aiTaxonomyKey) params.set('aiTaxonomyKey', filters.aiTaxonomyKey)
-      if (filters.aiLevel) params.set('aiLevel', filters.aiLevel)
-      if (filters.aiCode) params.set('aiCode', filters.aiCode)
-      if (filters.aiConfidenceMin !== null) params.set('aiConfidenceMin', filters.aiConfidenceMin)
-      if (filters.aiConfidenceMax !== null) params.set('aiConfidenceMax', filters.aiConfidenceMax)
-      if (filters.hasAISuggestions !== null) params.set('hasAISuggestions', String(filters.hasAISuggestions))
-      if (filters.flagged !== null) params.set('flagged', String(filters.flagged))
-      if (filters.hasComments !== null) params.set('hasComments', String(filters.hasComments))
-      if (filters.importId) params.set('importId', filters.importId)
-
-      // Support filters
-      Object.entries(filters.supportFilters).forEach(([key, value]) => {
-        if (value) params.set(key, value)
-      })
-
-      const res = await fetch(workspaceApi(`/sentences/stats?${params}`), { signal: request.signal })
-      const data = res.ok ? await res.json() : null
-      if (!request.isCurrent()) return
-      if (data?.ok) {
-        setStats(data.stats)
-        setStatsStale(false)
-      } else {
-        // Keep the last numbers but say so; the next refresh may recover.
-        setStatsStale(true)
-      }
-    } catch (error) {
-      // Network errors during polling are expected (e.g. during deploys).
-      if (!isAbortError(error) && request.isCurrent()) setStatsStale(true)
-    }
-  }, [searchQuery, filters])
-
-  useEffect(() => {
-    if (skipInitialStatsFetch.current) {
-      skipInitialStatsFetch.current = false
-      return
-    }
-    fetchStats()
-  }, [fetchStats, lastRefresh])
-
-  // Fetch sentences
-  const fetchQueue = useCallback(async () => {
-    const request = queueRequest.current.start()
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-
-      // Search
-      if (searchQuery) params.set('q', searchQuery)
-
-      // Tab-based status filter
-      if (activeTab !== 'all') {
-        params.set('status', activeTab)
-      }
-
-      // Additional status filters from filter panel
-      if (filters.status.length > 0 && activeTab === 'all') {
-        params.set('status', filters.status.join(','))
-      }
-
-      // Other filters
-      if (filters.userId) params.set('userId', filters.userId)
-      if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
-      if (filters.lastEditorId) params.set('lastEditorId', filters.lastEditorId)
-      if (filters.dateRange.from) params.set('lastEditedFrom', filters.dateRange.from)
-      if (filters.dateRange.to) params.set('lastEditedTo', filters.dateRange.to)
-      if (filters.taxonomyKey) params.set('taxonomyKey', filters.taxonomyKey)
-      if (filters.level) params.set('level', filters.level)
-      if (filters.code) params.set('code', filters.code)
-      if (filters.hasSubmittedLabels !== null) params.set('hasSubmittedLabels', String(filters.hasSubmittedLabels))
-      if (filters.source) params.set('source', filters.source)
-      if (filters.aiTaxonomyKey) params.set('aiTaxonomyKey', filters.aiTaxonomyKey)
-      if (filters.aiLevel) params.set('aiLevel', filters.aiLevel)
-      if (filters.aiCode) params.set('aiCode', filters.aiCode)
-      if (filters.aiConfidenceMin !== null) params.set('aiConfidenceMin', filters.aiConfidenceMin)
-      if (filters.aiConfidenceMax !== null) params.set('aiConfidenceMax', filters.aiConfidenceMax)
-      if (filters.hasAISuggestions !== null) params.set('hasAISuggestions', String(filters.hasAISuggestions))
-      if (filters.flagged !== null) params.set('flagged', String(filters.flagged))
-      if (filters.hasComments !== null) params.set('hasComments', String(filters.hasComments))
-      if (filters.importId) params.set('importId', filters.importId)
-
-      // Support filters
-      Object.entries(filters.supportFilters).forEach(([key, value]) => {
-        if (value) params.set(key, value)
-      })
-
-      // Pagination
-      params.set('page', String(page))
-      params.set('limit', String(pageSize))
-      params.set('sort', 'createdAt')
-      params.set('order', 'asc')
-
-      const res = await fetch(workspaceApi(`/sentences?${params}`), { signal: request.signal })
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`)
-      }
-      const data = await res.json()
-      if (!request.isCurrent()) return
-      setQueue(data)
-      setQueueError(null)
-    } catch (error) {
-      // A newer request replaced this one: its outcome no longer matters.
-      if (isAbortError(error) || !request.isCurrent()) return
-      console.error('Failed to fetch queue:', error)
-      // Keep the last good results on screen and say they could not be refreshed,
-      // instead of showing an empty queue that looks like "no records".
-      setQueueError('Could not load records. The list below may be out of date.')
-    } finally {
-      if (request.isCurrent()) setLoading(false)
-    }
-  }, [searchQuery, activeTab, filters, page, pageSize])
-
-  useEffect(() => {
-    if (skipInitialQueueFetch.current) {
-      skipInitialQueueFetch.current = false
-      return
-    }
-    fetchQueue()
-  }, [fetchQueue])
-
-  // Auto-refresh polling (every 30 seconds)
-  // Skipped while the tab is hidden; refreshes as soon as it is visible again.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') setLastRefresh(Date.now())
-    }, 30000)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') setLastRefresh(Date.now())
-    }
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [])
-
-  // Debounce typing: one request when the user pauses, not one per keystroke.
-  useEffect(() => {
-    if (searchInput === searchQuery) return
-    const timeout = setTimeout(() => {
-      setSearchQuery(searchInput)
-      setPage(1)
-      setSelectedIds(new Set())
-    }, 300)
-    return () => clearTimeout(timeout)
-  }, [searchInput, searchQuery])
-
-  // Abandon in-flight requests when leaving the page.
-  useEffect(() => {
-    const queue = queueRequest.current
-    const stats = statsRequest.current
-    return () => {
-      queue.cancel()
-      stats.cancel()
-    }
-  }, [])
-
-  // Handle tab change
-  const handleTabChange = (tab: typeof activeTab) => {
-    setActiveTab(tab)
-    setPage(1)
-    setSelectedIds(new Set())
+  const handleTabChange = (tab: QueueTab) => {
+    setUrl({ tab, page: null }, { history: 'push' })
   }
 
-  // Handle filter apply
-  const handleApplyFilters = (newFilters: QueueFilters) => {
-    setFilters(newFilters)
-    setPage(1)
-    setSelectedIds(new Set())
+  const handleApplyFilters = (newFilters: QueueFilterValues) => {
+    setUrl({ ...newFilters, page: null }, { history: 'push' })
   }
 
-  // Handle filter reset
   const handleResetFilters = () => {
-    setFilters(DEFAULT_FILTERS)
+    setUrl({ ...EMPTY_QUEUE_FILTERS, q: null, page: null }, { history: 'push' })
     setSearchInput('')
-    setSearchQuery('')
-    setPage(1)
-    setSelectedIds(new Set())
   }
 
-  // Handle search
-  const handleSearch = (query: string) => {
-    setSearchInput(query)
-  }
-
-  // Handle selection
   const handleSelectAll = (checked: boolean) => {
-    if (checked && queue) {
-      setSelectedIds(new Set(queue.sentences.map(s => s.id)))
-    } else {
-      setSelectedIds(new Set())
-    }
+    setSelectedIds(checked && queue ? new Set(queue.sentences.map(s => s.id)) : NO_SELECTION)
   }
 
   const handleSelect = (id: string, checked: boolean) => {
-    const newSelected = new Set(selectedIds)
-    if (checked) {
-      newSelected.add(id)
-    } else {
-      newSelected.delete(id)
-    }
-    setSelectedIds(newSelected)
+    const next = new Set(selectedIds)
+    if (checked) next.add(id)
+    else next.delete(id)
+    setSelectedIds(next)
   }
 
-  // Refresh queue after any changes
-  const refreshQueue = async () => {
-    await fetchQueue()
-    await fetchStats()
-  }
-
-  // Handle page size change
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize)
-    setPage(1)
-  }
+  // After labels or assignments change: list and counts of every view.
+  const refreshQueue = () => queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) })
 
   const allSelected = !!queue && queue.sentences.length > 0 && selectedIds.size === queue.sentences.length
   const someSelected = selectedIds.size > 0
@@ -470,7 +282,7 @@ export default function QueuePageClient({
       // Fire all taxonomy jobs concurrently — server splits into batches
       const results = await Promise.allSettled(
         syncedTaxonomies.map(async taxonomy => {
-          const res = await fetch(workspaceApi('/ai-labeling/jobs'), {
+          const res = await fetch(api('/ai-labeling/jobs'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -509,7 +321,7 @@ export default function QueuePageClient({
         }
       }
 
-      setSelectedIds(new Set())
+      setSelectedIds(NO_SELECTION)
     } catch (error) {
       console.error('Failed to send sentences to AI:', error)
       addToast('error', error instanceof Error ? error.message : 'Failed to send to AI')
@@ -531,8 +343,8 @@ export default function QueuePageClient({
         {/* Filter Panel */}
         {!filterCollapsed && (
           <FilterPanel
-            collapsed={filterCollapsed}
-            onToggle={toggleFilterPanel}
+            key={JSON.stringify(filters)}
+            onClose={toggleFilterPanel}
             filters={filters}
             onApply={handleApplyFilters}
             onReset={handleResetFilters}
@@ -548,7 +360,7 @@ export default function QueuePageClient({
           <QueueToolbar
             searchQuery={searchInput}
             statsStale={statsStale}
-            onSearchChange={handleSearch}
+            onSearchChange={setSearchInput}
             stats={stats}
             onToggleFilters={toggleFilterPanel}
             activeFilterCount={activeFilterCount}
@@ -565,7 +377,8 @@ export default function QueuePageClient({
               ].map(tab => (
                 <button
                   key={tab.key}
-                  onClick={() => handleTabChange(tab.key as typeof activeTab)}
+                  onClick={() => handleTabChange(tab.key as QueueTab)}
+                  aria-current={activeTab === tab.key ? 'page' : undefined}
                   className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.key
                       ? 'border-indigo-600 text-indigo-600'
@@ -588,14 +401,14 @@ export default function QueuePageClient({
                 <span>{queueError}</span>
                 <button
                   type="button"
-                  onClick={() => fetchQueue()}
+                  onClick={() => queueQuery.refetch()}
                   className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   Retry
                 </button>
               </div>
             )}
-            {loading ? (
+            {!queue ? (
               <div className="p-12 text-center text-gray-600">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                 <p className="mt-2">Loading sentences...</p>
@@ -607,7 +420,10 @@ export default function QueuePageClient({
               </div>
             ) : (
               <>
-                <table className="w-full">
+                <table
+                  className={`w-full transition-opacity ${queueQuery.isPlaceholderData ? 'opacity-60' : ''}`}
+                  aria-busy={queueQuery.isFetching}
+                >
                   <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                     <tr>
                       <th className="pl-4 pr-2 py-3 text-left w-12">
@@ -669,12 +485,12 @@ export default function QueuePageClient({
                 {/* Pagination - below table */}
                 {queue && queue.pagination.total > 0 && (
                   <PaginationControls
-                    page={page}
-                    pageSize={pageSize}
+                    page={url.page}
+                    pageSize={url.limit}
                     total={queue.pagination.total}
                     totalPages={queue.pagination.pages}
-                    onPageChange={setPage}
-                    onPageSizeChange={handlePageSizeChange}
+                    onPageChange={page => setUrl({ page }, { history: 'push' })}
+                    onPageSizeChange={limit => setUrl({ limit, page: null }, { history: 'push' })}
                   />
                 )}
               </>
@@ -708,7 +524,7 @@ export default function QueuePageClient({
                   {canAssign && (
                     <button
                       onClick={() => setAssignmentModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 transition-colors text-sm font-medium"
                       title="Manage user assignments for selected sentences"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -732,7 +548,7 @@ export default function QueuePageClient({
                           unsyncedTaxonomies.length > 0 ||
                           syncedTaxonomies.length === 0
                         }
-                        className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         title={
                           unsyncedTaxonomies.length > 0
                             ? 'Sync all taxonomies with AI before sending sentences.'
@@ -758,7 +574,7 @@ export default function QueuePageClient({
                   )}
                 </div>
                 <button
-                  onClick={() => setSelectedIds(new Set())}
+                  onClick={() => setSelectedIds(NO_SELECTION)}
                   className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm"
                 >
                   Clear Selection
@@ -785,7 +601,7 @@ export default function QueuePageClient({
           onClose={() => setAssignmentModalOpen(false)}
           onSuccess={() => {
             setAssignmentModalOpen(false)
-            setSelectedIds(new Set())
+            setSelectedIds(NO_SELECTION)
             refreshQueue()
           }}
         />

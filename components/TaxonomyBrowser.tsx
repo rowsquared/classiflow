@@ -1,9 +1,17 @@
 'use client'
-import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Info } from 'lucide-react'
 import Tooltip from '@/components/Tooltip'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { queryKeys } from '@/lib/query/keys'
+import { fetchJson } from '@/lib/query/fetch'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
+import { useStoredBoolean } from '@/lib/use-local-storage'
+import { aiSuggestionPath, labelsSignature, positionForLabels, sameLabelPath, type SelectedLabel } from '@/lib/labeling'
+
+export type { SelectedLabel }
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -25,18 +33,6 @@ export type TaxonomyNode = {
   isLeaf: boolean
   definition?: string
   examples?: string
-}
-
-export type SelectedLabel = {
-  level: number
-  nodeCode: string
-  taxonomyKey: string
-  label?: string
-  definition?: string
-  examples?: string
-  isLeaf?: boolean
-  source?: 'user' | 'ai'
-  confidenceScore?: number
 }
 
 export type Taxonomy = {
@@ -65,53 +61,53 @@ interface TaxonomyBrowserProps {
   taxonomy: Taxonomy
   selectedLabels: SelectedLabel[]
   onLabelsChange: (labels: SelectedLabel[]) => void
-  onNavigate?: (level: number, parent: string | null) => void
   taxonomyIndex?: number // Index of this taxonomy (0 = first, uses primary/teal color)
   onCurrentLevelChange?: (level: number) => void // Callback to expose current level to parent
   showTabs?: boolean
 }
 
+type NodesResponse = { items?: TaxonomyNode[]; total?: number }
+
+/**
+ * Browse one taxonomy level by level, or search it, and choose a path of
+ * labels. Mount it with a key per record and taxonomy: the level shown
+ * follows the selected labels (the deepest chosen non-leaf opens its
+ * children), and moving around (Up, a chip, the restore button) is kept until
+ * the labels change again.
+ */
 export default function TaxonomyBrowser({
   taxonomy,
   selectedLabels,
   onLabelsChange,
-  onNavigate,
   taxonomyIndex = 0,
   onCurrentLevelChange,
   showTabs = false
 }: TaxonomyBrowserProps) {
-  const { href } = useWorkspacePaths()
-  const [currentLevel, setCurrentLevel] = useState(1)
-  const [currentParent, setCurrentParent] = useState<string | null>(null)
+  const { href, api, workspaceId } = useWorkspacePaths()
   const [searchQuery, setSearchQuery] = useState('')
-  const [taxonomyNodes, setTaxonomyNodes] = useState<TaxonomyNode[]>([])
-  const [breadcrumb, setBreadcrumb] = useState<TaxonomyNode[]>([])
-  const [isLoadingNodes, setIsLoadingNodes] = useState(true)
-  const hasInitializedRef = useRef(false)
-  const lastSelectedLabelsRef = useRef<string>('')
-  const initialAISuggestionRef = useRef<SelectedLabel[] | null>(null)
-  const initialAISuggestionSignatureRef = useRef<string | null>(null)
-  const normalizeLabels = (labels: SelectedLabel[]) =>
-    [...labels]
-      .filter(l => l.level > 0)
-      .sort((a, b) => a.level - b.level)
-      .map(l => ({ level: l.level, code: l.nodeCode }))
+  const [showLevelNames, setShowLevelNames] = useStoredBoolean('showLevelNames', true)
 
-  const arePathsEqual = (a: SelectedLabel[] | null, b: SelectedLabel[] | null) => {
-    if (!a || !b) return false
-    const normA = normalizeLabels(a)
-    const normB = normalizeLabels(b)
-    if (normA.length !== normB.length) return false
-    return normA.every((entry, idx) => entry.level === normB[idx]?.level && entry.code === normB[idx]?.code)
+  // Where the browser is: derived from the selected labels unless the user
+  // moved since they last changed (that move is remembered with the labels'
+  // signature, so the next label change takes over again).
+  const signature = labelsSignature(selectedLabels)
+  const [moved, setMoved] = useState<{ level: number; parent: string | null; signature: string } | null>(null)
+  const position = moved && moved.signature === signature ? moved : positionForLabels(selectedLabels, taxonomy.maxDepth)
+  const currentLevel = position.level
+  const currentParent = position.parent
+  const navigate = (level: number, parent: string | null, forLabels = selectedLabels) =>
+    setMoved({ level, parent, signature: labelsSignature(forLabels) })
+
+  useEffect(() => {
+    onCurrentLevelChange?.(currentLevel)
+  }, [currentLevel, onCurrentLevelChange])
+
+  // The AI suggestion as it first arrived, so it can be restored after edits.
+  const [storedAISuggestions, setStoredAISuggestions] = useState(() => aiSuggestionPath(selectedLabels))
+  if (storedAISuggestions === null) {
+    const arrived = aiSuggestionPath(selectedLabels)
+    if (arrived) setStoredAISuggestions(arrived)
   }
-
-  const [showLevelNames, setShowLevelNames] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('showLevelNames')
-      return saved !== null ? JSON.parse(saved) : true
-    }
-    return true
-  })
 
   // Helper to get level label
   const getLevelLabel = (level: number): string => {
@@ -191,227 +187,22 @@ export default function TaxonomyBrowser({
 
   const colors = getTaxonomyColors(taxonomyIndex)
 
-  // Reset flags when taxonomy changes
-  useEffect(() => {
-    hasInitializedRef.current = false
-    lastSelectedLabelsRef.current = ''
-    setIsLoadingNodes(true)
-    setTaxonomyNodes([])
-    setCurrentLevel(1)
-    setCurrentParent(null)
-    initialAISuggestionRef.current = null
-    initialAISuggestionSignatureRef.current = null
-  }, [taxonomy.key])
-
-  // Cache initial AI suggestions when they first appear
-  useEffect(() => {
-    // Only cache if we don't already have cached AI suggestions (preserve original even after deletion)
-    if (initialAISuggestionRef.current !== null) {
-      return
-    }
-
-    // Find AI suggestions in the current selectedLabels
-    const aiLabels = selectedLabels.filter(label => label.source === 'ai')
-
-    if (aiLabels.length > 0) {
-      const sortedAIPath = [...aiLabels].sort((a, b) => a.level - b.level)
-      const signature = JSON.stringify(normalizeLabels(sortedAIPath))
-      initialAISuggestionRef.current = sortedAIPath.map(label => ({ ...label }))
-      initialAISuggestionSignatureRef.current = signature
-    }
-  }, [selectedLabels])
-
-  useLayoutEffect(() => {
-    if (!taxonomy) return
-
-    const labelsSignature = JSON.stringify(
-      selectedLabels
-        .map(l => ({ level: l.level, code: l.nodeCode, taxonomy: l.taxonomyKey, isLeaf: l.isLeaf }))
-        .sort((a, b) => a.level - b.level || a.code.localeCompare(b.code))
-    )
-
-    if (hasInitializedRef.current && lastSelectedLabelsRef.current === labelsSignature) {
-      return
-    }
-
-    if (selectedLabels.length === 0) {
-      hasInitializedRef.current = true
-      lastSelectedLabelsRef.current = labelsSignature
-      if (currentLevel !== 1) {
-        setCurrentLevel(1)
-        onCurrentLevelChange?.(1)
-      }
-      if (currentParent !== null) {
-        setCurrentParent(null)
-      }
-      setBreadcrumb([])
-      onNavigate?.(1, null)
-      return
-    }
-
-    let nextLevel = 1
-    let nextParent: string | null = null
-
-    if (selectedLabels.length > 0) {
-      const sorted = [...selectedLabels].sort((a, b) => a.level - b.level)
-      const last = sorted[sorted.length - 1]
-      const prev = sorted.length > 1 ? sorted[sorted.length - 2] : undefined
-
-      if (last) {
-        const isLeaf = Boolean(last.isLeaf) || last.level >= (taxonomy.maxDepth || Number.MAX_SAFE_INTEGER)
-        if (isLeaf) {
-          nextLevel = last.level
-          nextParent = prev ? prev.nodeCode : null
-        } else {
-          nextLevel = Math.min(last.level + 1, taxonomy.maxDepth || last.level + 1)
-          nextParent = last.nodeCode
-        }
-      }
-    }
-
-    hasInitializedRef.current = true
-    lastSelectedLabelsRef.current = labelsSignature
-
-    const normalizedParent = nextParent ?? null
-    const levelChanged = currentLevel !== nextLevel
-    const parentChanged = (currentParent ?? null) !== normalizedParent
-
-    if (levelChanged) {
-      setCurrentLevel(nextLevel)
-      onCurrentLevelChange?.(nextLevel)
-    }
-    if (parentChanged) {
-      setCurrentParent(normalizedParent)
-    }
-
-    if (onNavigate && (levelChanged || parentChanged)) {
-      onNavigate(nextLevel, normalizedParent)
-    }
-  }, [selectedLabels, taxonomy, currentLevel, currentParent, onCurrentLevelChange, onNavigate])
-
-  // Build breadcrumb asynchronously after level is set
-  useEffect(() => {
-    if (selectedLabels.length === 0 || !hasInitializedRef.current) return
-
-    const sortedLabels = [...selectedLabels].filter(l => l.level > 0).sort((a, b) => a.level - b.level)
-
-    const buildBreadcrumb = async () => {
-      try {
-        const breadcrumbNodes: TaxonomyNode[] = []
-        const targetLevel = Math.max(...selectedLabels.map(l => l.level))
-        const labelsToShow = sortedLabels.filter(l => l.level < targetLevel)
-
-        for (const label of labelsToShow) {
-          try {
-            const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${label.level}`))
-            if (res.ok) {
-              const data = await res.json()
-              const node = data.items?.find((n: TaxonomyNode) => n.code === label.nodeCode)
-              if (node) {
-                breadcrumbNodes.push(node)
-              }
-            }
-          } catch (error) {
-            console.error('Failed to fetch node for breadcrumb:', error)
-          }
-        }
-        setBreadcrumb(breadcrumbNodes)
-      } catch (error) {
-        console.error('Failed to build breadcrumb:', error)
-      }
-    }
-
-    buildBreadcrumb()
-  }, [selectedLabels, taxonomy.key])
-
   // Toggle level names
-  const toggleLevelNames = () => {
-    const newValue = !showLevelNames
-    setShowLevelNames(newValue)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('showLevelNames', JSON.stringify(newValue))
-    }
-  }
+  const toggleLevelNames = () => setShowLevelNames(!showLevelNames)
 
-  // Load taxonomy nodes for the current level (when not searching)
-  useEffect(() => {
-    if (!taxonomy || searchQuery) return
-    const waitingForInitialization = selectedLabels.length > 0 && !hasInitializedRef.current
-    if (waitingForInitialization) return
-
-    let cancelled = false
-    setIsLoadingNodes(true)
-
-    const params = new URLSearchParams({
-      level: String(currentLevel)
-    })
-    if (currentParent !== null) {
-      params.set('parentCode', currentParent)
-    }
-
-    const loadNodes = async () => {
-      try {
-        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?${params}`))
-        if (!res.ok) throw new Error('Failed to fetch nodes')
-        const data = await res.json()
-        if (!cancelled) {
-          setTaxonomyNodes(data.items || [])
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to load nodes:', error)
-          setTaxonomyNodes([])
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingNodes(false)
-        }
-      }
-    }
-
-    loadNodes()
-    return () => {
-      cancelled = true
-    }
-  }, [taxonomy, currentLevel, currentParent, searchQuery, selectedLabels.length])
-
-  // Search across all levels
-  useEffect(() => {
-    if (!taxonomy || !searchQuery) return
-
-    let cancelled = false
-    setIsLoadingNodes(true)
-
-    const searchNodes = async () => {
-      try {
-        const params = new URLSearchParams({
-          q: searchQuery
-        })
-
-        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?${params}`))
-        if (!res.ok) throw new Error('Failed to search')
-        const data = await res.json()
-        if (!cancelled) {
-          setTaxonomyNodes(data.items || [])
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to search:', error)
-          setTaxonomyNodes([])
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingNodes(false)
-        }
-      }
-    }
-
-    const timer = setTimeout(searchNodes, 300)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [taxonomy, searchQuery])
+  // Nodes of the current level (browsing) or matches across all levels (searching).
+  const debouncedSearch = useDebouncedValue(searchQuery, 300)
+  const browseParams = new URLSearchParams({ level: String(currentLevel) })
+  if (currentParent !== null) browseParams.set('parentCode', currentParent)
+  const nodesParams = searchQuery ? new URLSearchParams({ q: debouncedSearch }).toString() : browseParams.toString()
+  const nodesQuery = useQuery({
+    queryKey: queryKeys.taxonomyNodes(workspaceId, taxonomy.key, nodesParams),
+    queryFn: ({ signal }) =>
+      fetchJson<NodesResponse>(api(`/taxonomies/${taxonomy.key}/nodes?${nodesParams}`), { signal }),
+    enabled: !searchQuery || debouncedSearch === searchQuery
+  })
+  const taxonomyNodes = nodesQuery.data?.items ?? []
+  const isLoadingNodes = nodesQuery.isPending || (Boolean(searchQuery) && debouncedSearch !== searchQuery)
 
   // Build full path by recursively fetching parents
   const buildFullPath = async (node: TaxonomyNode): Promise<TaxonomyNode[]> => {
@@ -422,9 +213,7 @@ export default function TaxonomyBrowser({
       try {
         // Fetch all nodes at the parent's level with a higher limit to ensure we get the parent
         // The default limit is 100, but some taxonomies might have more nodes at a level
-        const res = await fetch(
-          workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`)
-        )
+        const res = await fetch(api(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`))
         if (!res.ok) {
           console.warn(`Failed to fetch nodes at level ${currentNode.level - 1}`)
           break
@@ -444,9 +233,7 @@ export default function TaxonomyBrowser({
             let found = false
             for (let offset = data.items.length; offset < data.total && offset < 2000; offset += 500) {
               const moreRes = await fetch(
-                workspaceApi(
-                  `/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`
-                )
+                api(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`)
               )
               if (!moreRes.ok) break
               const moreData = await moreRes.json()
@@ -477,7 +264,6 @@ export default function TaxonomyBrowser({
 
     return path
   }
-  const storedAISuggestions = initialAISuggestionRef.current
   const hasAISuggestions = Boolean(storedAISuggestions && storedAISuggestions.length > 0)
 
   // Check if we've diverged from AI suggestions:
@@ -485,7 +271,7 @@ export default function TaxonomyBrowser({
   // 2. User deleted some AI suggestions (current labels are subset or different)
   const hasDivergedFromAISuggestions =
     hasAISuggestions &&
-    (!arePathsEqual(selectedLabels, storedAISuggestions) ||
+    (!sameLabelPath(selectedLabels, storedAISuggestions) ||
       // Also show if user deleted AI suggestions (current labels don't include all cached AI labels)
       selectedLabels.filter(l => l.source === 'ai').length < (storedAISuggestions?.length ?? 0))
 
@@ -520,7 +306,7 @@ export default function TaxonomyBrowser({
 
       onLabelsChange(newLabels)
 
-      // Clear search (navigation will be handled by effect)
+      // Clear search; the new labels decide the level shown
       setSearchQuery('')
     } else {
       // Normal navigation mode
@@ -538,89 +324,38 @@ export default function TaxonomyBrowser({
       const newLabels = selectedLabels.filter(l => l.level < node.level)
       newLabels.push(newLabel)
       onLabelsChange(newLabels)
-
-      // Update breadcrumb
-      const newBreadcrumb = [...breadcrumb]
-      if (node.level > currentLevel) {
-        // Shouldn't happen but handle it
-        newBreadcrumb.push(node)
-      } else if (node.level === currentLevel) {
-        newBreadcrumb.push(node)
-      }
-      setBreadcrumb(newBreadcrumb)
     }
   }
 
-  // Handle breadcrumb click
-  const handleBreadcrumbClick = (index: number) => {
-    if (index < 0) {
-      // Go to root
-      setCurrentLevel(1)
-      setCurrentParent(null)
-      setBreadcrumb([])
-      onNavigate?.(1, null)
-    } else {
-      const targetNode = breadcrumb[index]
-      if (!targetNode) return
-      setCurrentLevel(targetNode.level + 1)
-      setCurrentParent(targetNode.code)
-      setBreadcrumb(breadcrumb.slice(0, index + 1))
-      onNavigate?.(targetNode.level + 1, targetNode.code)
-    }
+  // One level up: the parent level, showing the siblings of the label chosen there.
+  const handleUp = () => {
+    const level = currentLevel - 1
+    if (level < 1) return
+    navigate(level, level === 1 ? null : (selectedLabels.find(l => l.level === level - 1)?.nodeCode ?? null))
   }
 
   // Handle chip click (navigate to that level)
   const handleChipClick = (label: SelectedLabel) => {
     if (label.level === -1) return // Don't navigate for Unknown
-
-    // Rebuild breadcrumb up to this level
-    const newBreadcrumb = selectedLabels
-      .filter(l => l.level < label.level && l.level > 0)
-      .sort((a, b) => a.level - b.level)
-      .map(l => ({
-        code: l.nodeCode,
-        label: l.label || '',
-        level: l.level,
-        parentCode: null,
-        isLeaf: false
-      }))
-
-    setBreadcrumb(newBreadcrumb)
-    setCurrentLevel(label.level)
-    setCurrentParent(label.level === 1 ? null : selectedLabels.find(l => l.level === label.level - 1)?.nodeCode || null)
+    navigate(
+      label.level,
+      label.level === 1 ? null : selectedLabels.find(l => l.level === label.level - 1)?.nodeCode || null
+    )
     setSearchQuery('')
   }
 
   // Handle chip delete
   const handleChipDelete = (label: SelectedLabel) => {
     // Remove this label and any labels at higher levels
-    const remainingLabels = selectedLabels.filter(l => l.level < label.level)
+    const remainingLabels = selectedLabels.filter(l => l.level < label.level).sort((a, b) => a.level - b.level)
     onLabelsChange(remainingLabels)
 
-    // Navigate back to this level to select a different path
-    const newBreadcrumb = remainingLabels
-      .sort((a, b) => a.level - b.level)
-      .map(l => ({
-        code: l.nodeCode,
-        label: l.label || '',
-        level: l.level,
-        parentCode: null,
-        isLeaf: false
-      }))
-
-    setBreadcrumb(newBreadcrumb)
-
-    // Navigate to show children at the level we just deleted
-    const lastRemainingLabel = remainingLabels.length > 0 ? remainingLabels[remainingLabels.length - 1] : null
-
+    // Show the children of the deepest remaining label to choose a different path
+    const lastRemainingLabel = remainingLabels.at(-1)
     if (lastRemainingLabel) {
-      setCurrentLevel(lastRemainingLabel.level + 1)
-      setCurrentParent(lastRemainingLabel.nodeCode)
-      onNavigate?.(lastRemainingLabel.level + 1, lastRemainingLabel.nodeCode)
+      navigate(lastRemainingLabel.level + 1, lastRemainingLabel.nodeCode, remainingLabels)
     } else {
-      setCurrentLevel(1)
-      setCurrentParent(null)
-      onNavigate?.(1, null)
+      navigate(1, null, remainingLabels)
     }
 
     setSearchQuery('')
@@ -636,7 +371,7 @@ export default function TaxonomyBrowser({
             {selectedLabels.length === 0 ? (
               <span className="text-gray-500 text-sm">No labels selected</span>
             ) : (
-              selectedLabels
+              [...selectedLabels]
                 .sort((a, b) => a.level - b.level)
                 .map((label, i) => {
                   const chipContent = (
@@ -740,24 +475,7 @@ export default function TaxonomyBrowser({
               )}
               {currentLevel > 1 && (
                 <button
-                  onClick={() => {
-                    if (breadcrumb.length > 0) {
-                      handleBreadcrumbClick(breadcrumb.length - 2)
-                    } else {
-                      // Fallback: go up one level
-                      const parentLabel = selectedLabels.find(l => l.level === currentLevel - 1)
-                      if (parentLabel) {
-                        handleChipClick(parentLabel)
-                      } else {
-                        setCurrentLevel(currentLevel - 1)
-                        setCurrentParent(
-                          currentLevel > 2
-                            ? selectedLabels.find(l => l.level === currentLevel - 2)?.nodeCode || null
-                            : null
-                        )
-                      }
-                    }
-                  }}
+                  onClick={handleUp}
                   className="text-gray-600 hover:text-gray-800 text-xs px-2 py-1 border rounded"
                 >
                   ↑ Up

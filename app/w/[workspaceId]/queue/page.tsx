@@ -6,25 +6,29 @@ import { withWorkspace } from '@/lib/workspace/db'
 import { getQueueStats, listQueue } from '@/lib/server/sentences'
 import { listActiveTaxonomies } from '@/lib/server/taxonomies'
 import { getVisibleUser, listVisibleUsers } from '@/lib/server/users'
+import { loadQueueUrlState, queueListParams, queueStatsParams } from '@/lib/queue-url'
 
-export default async function QueuePage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function QueuePage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ workspaceId: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { workspaceId } = await params
   const user = await requirePageUser(workspaceId)
 
-  const queueParams = new URLSearchParams({
-    page: '1',
-    limit: '100',
-    sort: 'createdAt',
-    order: 'asc',
-    status: 'pending'
-  })
+  // The same view the client shows for this URL (tab, search, filters, page).
+  const view = await loadQueueUrlState(searchParams)
+  const listParams = queueListParams(view)
+  const statsParams = queueStatsParams(view)
 
   let data
   try {
     const [queue, stats, taxonomies, users, self] = await withWorkspace(workspaceId, () =>
       Promise.all([
-        listQueue(user, queueParams),
-        getQueueStats(user, new URLSearchParams()),
+        listQueue(user, new URLSearchParams(listParams)),
+        getQueueStats(user, new URLSearchParams(statsParams)),
         listActiveTaxonomies(workspaceId),
         user.role === 'admin' || user.role === 'supervisor' ? listVisibleUsers(user) : null,
         user.role === 'supervisor' ? getVisibleUser(user, user.id) : null
@@ -44,11 +48,12 @@ export default async function QueuePage({ params }: { params: Promise<{ workspac
   return (
     <QueuePageClient
       initialQueue={data.queue as QueueResponse}
+      initialListParams={listParams}
       initialStats={data.stats as Stats}
+      initialStatsParams={statsParams}
       initialTaxonomies={data.taxonomies as Taxonomy[]}
       initialUsers={users}
       initialCanAssign={canAssign}
-      initialStatsPrefetched
       currentUser={{ id: user.id, role: user.role }}
     />
   )

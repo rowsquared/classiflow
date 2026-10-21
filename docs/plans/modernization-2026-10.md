@@ -68,7 +68,33 @@ Still open from this plan:
   `pg_trgm` indexes for the queue search (through `app_search_sentences()`,
   because row security keeps them from the runtime role's ILIKE) and one
   grouped query for the team metrics instead of ~8 per member.
-- M06, the rest of M08 (above), the open points under M09, and the "Carried over
+- **M06 part 1** done 22 October 2026 (lane C1): TanStack Query
+  (`components/QueryProvider.tsx` per workspace/user/role, `lib/query/` keys and
+  fetch), nuqs for the queue view (`lib/queue-url.ts`, shared with the server
+  page), Radix `Combobox` (popover) for the queue filter pickers and Radix
+  `DropdownMenu` for the user menu, a searchable assignment dialog, the
+  labelling page split into `components/labeling/` (data hooks, record panel,
+  action bar, comments dialog) with its rules in `lib/labeling.ts` (unit
+  tested), `TaxonomyBrowser` deriving its level from the labels instead of
+  syncing in effects (Up now goes one level up; it used to jump to the top
+  from the third level), the React Compiler warnings in those files fixed
+  (lint warnings 25 → 7), and `@axe-core/playwright` on the main pages
+  (`tests/e2e/accessibility.spec.ts`; contrast and naming fixes in the queue,
+  labelling and sidebar). Conventions are in AGENTS.md "Frontend conventions".
+  Behaviour changes: the queue list no longer replaces the table with a
+  spinner on every change (old rows stay, dimmed, until the new ones arrive);
+  saving a comment keeps the dialog open with the comment listed.
+- **M06 part 2 (lane C2, open):** taxonomy admin split
+  (`app/w/[workspaceId]/admin/taxonomy/TaxonomyAdminClient.tsx`); AI jobs page,
+  taxonomy admin polling and `components/AIJobStatusBadge.tsx` on Query
+  (`refetchInterval`), deleting their `setInterval`/abort code and then
+  `lib/latest-request.ts` (last user: the audit page); team and audit filters
+  on nuqs; the team supervisor/member pickers on `Combobox`; TanStack Table for
+  the team list (optional); the remaining React Compiler warnings
+  (`AccountsClient.tsx`, audit page), then make those rules errors; the login
+  button contrast entry in `tests/e2e/a11y.ts`; axe on the taxonomy admin, AI
+  jobs, export and accounts pages.
+- The rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
 - Watch: Prisma 7.10's query interpreter runs the sub-queries of one
   operation (relation `include`s) in parallel on an interactive

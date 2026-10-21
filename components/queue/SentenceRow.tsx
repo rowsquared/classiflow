@@ -1,6 +1,7 @@
 'use client'
 import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
+import { storeNavigationList } from '@/lib/labeling-navigation'
 import { useRouter } from 'next/navigation'
 
 // Custom AI suggestion icon
@@ -102,17 +103,8 @@ export default function SentenceRow({
     // Store list and index in sessionStorage for navigation context
     // This avoids URL length limits (431 errors) and keeps URLs clean
     if (sentenceIds.length > 0) {
-      const storageKey = `sentence-list-${sentence.id}`
-      sessionStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          sentenceIds,
-          currentIndex,
-          timestamp: Date.now()
-        })
-      )
       const params = new URLSearchParams()
-      params.set('list', storageKey)
+      params.set('list', storeNavigationList(sentenceIds, currentIndex))
       router.push(workspaceHref(`/queue/${sentence.id}?${params.toString()}`))
     } else {
       router.push(workspaceHref(`/queue/${sentence.id}`))

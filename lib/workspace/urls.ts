@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useParams } from 'next/navigation'
 
 // Links and API calls name their workspace explicitly (the URL is the source
@@ -12,16 +13,19 @@ export function useWorkspaceId(): string | null {
   return typeof params?.workspaceId === 'string' ? params.workspaceId : null
 }
 
-/** Page and API paths for the workspace in the current URL. */
+/** Page and API paths for the workspace in the current URL (stable per workspace, safe in effect deps). */
 export function useWorkspacePaths() {
   const workspaceId = useWorkspaceId() ?? ''
-  return {
-    workspaceId,
-    /** `/w/<id><path>` for links and navigation. */
-    href: (path: string) => `/w/${workspaceId}${path}`,
-    /** `/api/workspaces/<id><path>` for fetch. */
-    api: (path: string) => `/api/workspaces/${workspaceId}${path}`
-  }
+  return useMemo(
+    () => ({
+      workspaceId,
+      /** `/w/<id><path>` for links and navigation. */
+      href: (path: string) => `/w/${workspaceId}${path}`,
+      /** `/api/workspaces/<id><path>` for fetch. */
+      api: (path: string) => `/api/workspaces/${workspaceId}${path}`
+    }),
+    [workspaceId]
+  )
 }
 
 /**

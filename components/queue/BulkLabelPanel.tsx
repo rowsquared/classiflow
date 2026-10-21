@@ -1,7 +1,8 @@
 'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '../TaxonomyBrowser'
+import { useActiveTaxonomies } from '@/components/labeling/data'
 import ResizablePanel from '../ResizablePanel'
 import { useDialog } from '../Modal'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
@@ -14,7 +15,7 @@ interface BulkLabelPanelProps {
 
 export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: BulkLabelPanelProps) {
   const dialog = useDialog(onClose, 'Bulk label')
-  const [taxonomies, setTaxonomies] = useState<Taxonomy[]>([])
+  const taxonomies: Taxonomy[] = useActiveTaxonomies().data ?? []
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([])
   const [comment, setComment] = useState('')
@@ -29,35 +30,10 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   const activeTaxonomy = taxonomies[activeTaxonomyIndex] || null
 
   const actionButtonBaseClass = 'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors'
-  const primaryActionClasses = 'bg-teal-600 text-white hover:bg-teal-700'
+  const primaryActionClasses = 'bg-indigo-600 text-white hover:bg-indigo-700'
   const commentActiveClasses = 'bg-[#A7ACD9] text-[#1f2238] hover:bg-[#9ea3cf]'
-  const flagActiveClasses = 'bg-[#F56476] text-white hover:bg-[#e8576a]'
-  const disabledSubmitClasses = 'bg-teal-600/40 text-white/85 cursor-not-allowed'
-
-  // Load all active taxonomies
-  useEffect(() => {
-    const loadTaxonomies = async () => {
-      try {
-        const res = await fetch(workspaceApi('/taxonomies/active'))
-        if (!res.ok) throw new Error('Failed to fetch taxonomies')
-        const data = await res.json()
-        if (data.ok && data.taxonomies.length > 0) {
-          const loadedTaxonomies = data.taxonomies.map(
-            (t: { key: string; maxDepth?: number; levelNames?: Record<string, string> }) => ({
-              key: t.key,
-              maxDepth: t.maxDepth || 5,
-              levelNames: t.levelNames
-            })
-          )
-          setTaxonomies(loadedTaxonomies)
-          setActiveTaxonomyIndex(0) // Start with first taxonomy
-        }
-      } catch (error) {
-        console.error('Failed to load taxonomies:', error)
-      }
-    }
-    loadTaxonomies()
-  }, [])
+  const flagActiveClasses = 'bg-[#F56476] text-[#3b0a12] hover:bg-[#e8576a]'
+  const disabledSubmitClasses = 'bg-indigo-600/40 text-white/85 cursor-not-allowed'
 
   // Handle taxonomy tab change
   const handleTaxonomyTabChange = (index: number) => {

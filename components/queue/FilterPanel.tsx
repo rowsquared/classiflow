@@ -1,366 +1,149 @@
 'use client'
-import { workspaceApi } from '@/lib/workspace/urls'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useId, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronLeft } from 'lucide-react'
 import { UNKNOWN_NODE_CODES } from '@/lib/constants'
-
-export type QueueFilters = {
-  status: string[]
-  userId: string | null
-  userScope: 'all' | 'me' | 'specific'
-  assignedToUserId: string | null
-  lastEditorId: string | null
-  dateRange: {
-    from: string | null
-    to: string | null
-  }
-  taxonomyKey: string | null
-  level: string | null
-  code: string | null
-  source: 'all' | 'ai' | 'user' | null
-  aiTaxonomyKey: string | null
-  aiLevel: string | null
-  aiCode: string | null
-  aiConfidenceMin: string | null
-  aiConfidenceMax: string | null
-  flagged: boolean | null
-  hasComments: boolean | null
-  hasSubmittedLabels: boolean | null
-  hasAISuggestions: boolean | null
-  importId: string | null
-  supportFilters: Record<string, string>
-}
-
-export const countActiveFilters = (filters: QueueFilters): number => {
-  return (
-    (filters.flagged !== null ? 1 : 0) +
-    (filters.hasComments !== null ? 1 : 0) +
-    (filters.assignedToUserId ? 1 : 0) +
-    (filters.lastEditorId ? 1 : 0) +
-    (filters.dateRange.from || filters.dateRange.to ? 1 : 0) +
-    (filters.taxonomyKey ? 1 : 0) +
-    (filters.code ? 1 : 0) +
-    (filters.aiTaxonomyKey ? 1 : 0) +
-    (filters.aiCode ? 1 : 0) +
-    (filters.aiConfidenceMin !== null ? 1 : 0) +
-    (filters.aiConfidenceMax !== null ? 1 : 0) +
-    (filters.hasSubmittedLabels !== null ? 1 : 0) +
-    (filters.hasAISuggestions !== null ? 1 : 0) +
-    (filters.importId ? 1 : 0) +
-    (filters.status.length ? 1 : 0) +
-    Object.keys(filters.supportFilters).filter(k => filters.supportFilters[k]).length
-  )
-}
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { queryKeys } from '@/lib/query/keys'
+import { fetchJson } from '@/lib/query/fetch'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
+import { EMPTY_QUEUE_FILTERS, countActiveFilters, type QueueFilterValues } from '@/lib/queue-url'
+import Combobox, { type ComboboxOption } from '@/components/ui/Combobox'
 
 interface FilterPanelProps {
-  collapsed: boolean
-  onToggle: () => void
-  filters: QueueFilters
-  onApply: (filters: QueueFilters) => void
+  /** The applied filters (from the URL). The panel edits a draft until Apply. */
+  filters: QueueFilterValues
+  onApply: (filters: QueueFilterValues) => void
   onReset: () => void
+  onClose: () => void
   taxonomies: Array<{ key: string; levelNames?: Record<string, string> | null }>
   users?: Array<{ id: string; username: string; name: string | null }>
   showAssignedToFilter?: boolean
 }
 
-type NodeOption = {
-  code: string
-  label: string
-  level: number
-}
+type NodeItem = { code: string; label: string; level: number }
 
 type ImportFile = {
   id: string
   fileName: string
-  uploadedAt: string
-  totalRows: number
   sentenceCount: number
 }
 
+const UNKNOWN_OPTIONS: NodeItem[] = Object.entries(UNKNOWN_NODE_CODES).map(([level, code]) => ({
+  code,
+  label: 'Unknown',
+  level: Number(level)
+}))
+
+const nodeOption = (node: NodeItem): ComboboxOption => ({
+  // Value is the code (a string: leading zeros stay), unique per taxonomy.
+  value: node.code,
+  label: `${node.code} — ${node.label}`,
+  hint: `L${node.level}`
+})
+
+/** Label search for one taxonomy: the server's matches plus the unknown codes. */
+function useNodeOptions(taxonomyKey: string | null, query: string) {
+  const { workspaceId, api } = useWorkspacePaths()
+  const q = useDebouncedValue(query.trim(), 200)
+  const params = q ? new URLSearchParams({ q }).toString() : ''
+  const nodes = useQuery({
+    queryKey: queryKeys.taxonomyNodes(workspaceId, taxonomyKey ?? '', params),
+    queryFn: ({ signal }) =>
+      fetchJson<{ items?: NodeItem[] }>(api(`/taxonomies/${taxonomyKey}/nodes${params ? `?${params}` : ''}`), {
+        signal
+      }),
+    enabled: Boolean(taxonomyKey),
+    placeholderData: keepPreviousData
+  })
+  const needle = q.toLowerCase()
+  const unknown = UNKNOWN_OPTIONS.filter(
+    o => !needle || o.label.toLowerCase().includes(needle) || o.code.includes(needle)
+  )
+  return {
+    options: [...(nodes.data?.items ?? []), ...unknown].map(nodeOption),
+    loading: nodes.isFetching
+  }
+}
+
+const fieldBaseClasses =
+  'w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed'
+const getFieldClasses = (active: boolean) =>
+  active ? 'border-teal-500 bg-[#e6fbf8] focus:ring-teal-500' : 'border-gray-300 focus:ring-indigo-500'
+
+const booleanValue = (value: boolean | null) => (value === null ? '' : value ? 'true' : 'false')
+const parseBoolean = (value: string) => (value === '' ? null : value === 'true')
+
 export default function FilterPanel({
-  collapsed,
-  onToggle,
   filters,
   onApply,
   onReset,
+  onClose,
   taxonomies,
   users = [],
   showAssignedToFilter = false
 }: FilterPanelProps) {
-  const [localFilters, setLocalFilters] = useState<QueueFilters>({
-    ...filters,
-    lastEditorId: filters.lastEditorId || null
+  const id = useId()
+  const { workspaceId, api } = useWorkspacePaths()
+  // The parent remounts the panel (key) when the applied filters change, so the
+  // draft starts from them without syncing state in an effect.
+  const [draft, setDraft] = useState<QueueFilterValues>(filters)
+  const set = <K extends keyof QueueFilterValues>(key: K, value: QueueFilterValues[K]) =>
+    setDraft(prev => ({ ...prev, [key]: value }))
+
+  const imports = useQuery({
+    queryKey: queryKeys.imports(workspaceId),
+    queryFn: ({ signal }) => fetchJson<{ ok?: boolean; imports?: ImportFile[] }>(api('/imports'), { signal })
   })
-  const [imports, setImports] = useState<ImportFile[]>([])
-  const [loadingImports, setLoadingImports] = useState(false)
 
-  useEffect(() => {
-    setLocalFilters({
-      ...filters,
-      lastEditorId: filters.lastEditorId || null
-    })
-  }, [filters])
-
-  // Fetch imports on mount
-  useEffect(() => {
-    const fetchImports = async () => {
-      try {
-        setLoadingImports(true)
-        const res = await fetch(workspaceApi('/imports'))
-        const data = await res.json()
-        if (data.ok && data.imports) {
-          setImports(data.imports)
-        }
-      } catch (error) {
-        console.error('Failed to fetch imports:', error)
-      } finally {
-        setLoadingImports(false)
-      }
-    }
-    fetchImports()
-  }, [])
-  const unknownOptions = useMemo(() => {
-    return Object.entries(UNKNOWN_NODE_CODES).map(([lvl, code]) => {
-      const levelNumber = Number(lvl)
-      return {
-        code,
-        label: 'Unknown',
-        level: levelNumber
-      }
-    })
-  }, [])
-  const [submittedLabelQuery, setSubmittedLabelQuery] = useState('')
-  const [submittedLabelResults, setSubmittedLabelResults] = useState<NodeOption[]>([])
-  const [submittedLabelLoading, setSubmittedLabelLoading] = useState(false)
-  const [selectedLabelDisplay, setSelectedLabelDisplay] = useState('')
-  const submittedLabelAbort = useRef<AbortController | null>(null)
-  const [isSubmittedDropdownOpen, setIsSubmittedDropdownOpen] = useState(false)
+  const [labelQuery, setLabelQuery] = useState('')
   const [aiLabelQuery, setAiLabelQuery] = useState('')
-  const [aiLabelResults, setAiLabelResults] = useState<NodeOption[]>([])
-  const [aiLabelLoading, setAiLabelLoading] = useState(false)
-  const [selectedAiLabelDisplay, setSelectedAiLabelDisplay] = useState('')
-  const aiLabelSearchAbort = useRef<AbortController | null>(null)
-  const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false)
-  const fieldBaseClasses =
-    'w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed'
-  const getFieldClasses = (active: boolean) =>
-    active ? 'border-teal-500 bg-[#e6fbf8] focus:ring-teal-500' : 'border-gray-300 focus:ring-indigo-500'
-  const getUnknownMatches = useCallback(
-    (query: string) => {
-      if (!query) return unknownOptions
-      const normalized = query.toLowerCase()
-      return unknownOptions.filter(
-        option => option.label.toLowerCase().includes(normalized) || option.code.toLowerCase().includes(normalized)
-      )
-    },
-    [unknownOptions]
-  )
-  useEffect(() => {
-    if (!localFilters.taxonomyKey || !isSubmittedDropdownOpen) {
-      submittedLabelAbort.current?.abort()
-      setSubmittedLabelResults([])
-      setSubmittedLabelLoading(false)
-      return
-    }
-    const query = submittedLabelQuery.trim()
-    submittedLabelAbort.current?.abort()
-    const controller = new AbortController()
-    submittedLabelAbort.current = controller
-    setSubmittedLabelLoading(true)
-    const timeout = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams()
-        if (query) params.set('q', query)
-        const queryString = params.toString()
-        const url = queryString
-          ? workspaceApi(`/taxonomies/${localFilters.taxonomyKey}/nodes?${queryString}`)
-          : workspaceApi(`/taxonomies/${localFilters.taxonomyKey}/nodes`)
-        const res = await fetch(url, {
-          signal: controller.signal
-        })
-        if (!res.ok) throw new Error('Failed to search submitted labels')
-        const data = await res.json()
-        const fetched: NodeOption[] = (data.items || []).map(
-          (item: { code: string; label: string; level: number }) => ({
-            code: item.code,
-            label: item.label,
-            level: item.level
-          })
-        )
-        if (!controller.signal.aborted) {
-          const unknownMatches = getUnknownMatches(query)
-          setSubmittedLabelResults([...fetched, ...unknownMatches])
-        }
-      } catch (error) {
-        if (controller.signal.aborted) return
-        console.error('Failed to search submitted labels:', error)
-        setSubmittedLabelResults(getUnknownMatches(query))
-      } finally {
-        if (!controller.signal.aborted) {
-          setSubmittedLabelLoading(false)
-        }
-      }
-    }, 200)
-    return () => {
-      clearTimeout(timeout)
-      controller.abort()
-    }
-  }, [submittedLabelQuery, localFilters.taxonomyKey, isSubmittedDropdownOpen, getUnknownMatches])
+  // What to show for a chosen code once its option has scrolled out of the search results.
+  const [codeLabels, setCodeLabels] = useState<Record<string, string>>({})
+  const labelOptions = useNodeOptions(draft.taxonomyKey, labelQuery)
+  const aiLabelOptions = useNodeOptions(draft.aiTaxonomyKey, aiLabelQuery)
 
-  useEffect(() => {
-    if (!localFilters.aiTaxonomyKey || !isAiDropdownOpen) {
-      aiLabelSearchAbort.current?.abort()
-      setAiLabelResults([])
-      setAiLabelLoading(false)
-      return
-    }
-    const query = aiLabelQuery.trim()
-    aiLabelSearchAbort.current?.abort()
-    const controller = new AbortController()
-    aiLabelSearchAbort.current = controller
-    setAiLabelLoading(true)
-    const timeout = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams()
-        if (query) params.set('q', query)
-        const queryString = params.toString()
-        const url = queryString
-          ? workspaceApi(`/taxonomies/${localFilters.aiTaxonomyKey}/nodes?${queryString}`)
-          : workspaceApi(`/taxonomies/${localFilters.aiTaxonomyKey}/nodes`)
-        const res = await fetch(url, {
-          signal: controller.signal
-        })
-        if (!res.ok) throw new Error('Failed to search AI labels')
-        const data = await res.json()
-        const fetched: NodeOption[] = (data.items || []).map(
-          (item: { code: string; label: string; level: number }) => ({
-            code: item.code,
-            label: item.label,
-            level: item.level
-          })
-        )
-        if (!controller.signal.aborted) {
-          const unknownMatches = getUnknownMatches(query)
-          setAiLabelResults([...fetched, ...unknownMatches])
-        }
-      } catch (error) {
-        if (controller.signal.aborted) return
-        console.error('Failed to search AI labels:', error)
-        setAiLabelResults(getUnknownMatches(query))
-      } finally {
-        if (!controller.signal.aborted) {
-          setAiLabelLoading(false)
-        }
-      }
-    }, 200)
-    return () => {
-      clearTimeout(timeout)
-      controller.abort()
-    }
-  }, [aiLabelQuery, localFilters.aiTaxonomyKey, isAiDropdownOpen, getUnknownMatches])
-
-  const handleSubmittedLabelSelect = (option: NodeOption) => {
-    setLocalFilters(prev => ({
-      ...prev,
-      code: option.code
-    }))
-    setSelectedLabelDisplay(`${option.code} — ${option.label}`)
-    setSubmittedLabelQuery('')
-    setSubmittedLabelResults([])
-    setIsSubmittedDropdownOpen(false)
-  }
-
-  const handleAiLabelSelect = (option: NodeOption) => {
-    setLocalFilters(prev => ({
-      ...prev,
-      aiCode: option.code
-    }))
-    setSelectedAiLabelDisplay(`${option.code} — ${option.label}`)
-    setAiLabelQuery('')
-    setAiLabelResults([])
-    setIsAiDropdownOpen(false)
-  }
-
-  const clearSubmittedLabel = () => {
-    setLocalFilters(prev => ({ ...prev, code: null }))
-    setSelectedLabelDisplay('')
-    setSubmittedLabelQuery('')
-    setSubmittedLabelResults([])
-    setSubmittedLabelLoading(false)
-    setIsSubmittedDropdownOpen(false)
-  }
-
-  const clearAiLabel = () => {
-    setLocalFilters(prev => ({ ...prev, aiCode: null }))
-    setSelectedAiLabelDisplay('')
-    setAiLabelQuery('')
-    setAiLabelResults([])
-    setAiLabelLoading(false)
-    setIsAiDropdownOpen(false)
-  }
+  const userOptions: ComboboxOption[] = users.map(u => ({
+    value: u.id,
+    label: u.username,
+    hint: u.name ?? undefined
+  }))
 
   const handleConfidenceChange = (field: 'aiConfidenceMin' | 'aiConfidenceMax', value: string) => {
-    if (value === '') {
-      setLocalFilters(prev => ({ ...prev, [field]: null }))
-      return
-    }
+    if (value === '') return set(field, null)
     const parsed = parseFloat(value)
-    if (Number.isNaN(parsed)) {
-      return
-    }
-    const clamped = Math.min(Math.max(parsed, 0), 1)
-    setLocalFilters(prev => ({ ...prev, [field]: clamped.toString() }))
+    if (Number.isNaN(parsed)) return
+    set(field, Math.min(Math.max(parsed, 0), 1).toString())
   }
 
-  const handleApply = () => {
-    onApply(localFilters)
+  const setDateRange = (days: number | null) => {
+    if (days === null) {
+      setDraft(prev => ({ ...prev, lastEditedFrom: null, lastEditedTo: null }))
+      return
+    }
+    const today = new Date()
+    const from = new Date(today)
+    from.setDate(today.getDate() - days)
+    setDraft(prev => ({
+      ...prev,
+      lastEditedFrom: from.toISOString().slice(0, 10),
+      lastEditedTo: today.toISOString().slice(0, 10)
+    }))
   }
 
   const handleReset = () => {
-    const emptyFilters: QueueFilters = {
-      status: [],
-      userId: null,
-      userScope: 'all',
-      assignedToUserId: null,
-      lastEditorId: null,
-      dateRange: { from: null, to: null },
-      taxonomyKey: null,
-      level: null,
-      code: null,
-      source: null,
-      aiTaxonomyKey: null,
-      aiLevel: null,
-      aiCode: null,
-      aiConfidenceMin: null,
-      aiConfidenceMax: null,
-      flagged: null,
-      hasComments: null,
-      hasSubmittedLabels: null,
-      hasAISuggestions: null,
-      importId: null,
-      supportFilters: {}
-    }
-    setLocalFilters(emptyFilters)
-    onReset()
-    setSubmittedLabelQuery('')
-    setSubmittedLabelResults([])
-    setSelectedLabelDisplay('')
+    setDraft(EMPTY_QUEUE_FILTERS)
+    setLabelQuery('')
     setAiLabelQuery('')
-    setAiLabelResults([])
-    setIsSubmittedDropdownOpen(false)
-    setIsAiDropdownOpen(false)
-    setSelectedAiLabelDisplay('')
+    onReset()
   }
 
-  // Count active filters
   const activeFilterCount = countActiveFilters(filters)
-
-  if (collapsed) {
-    return null
-  }
+  const sectionHeading = 'text-sm font-medium text-gray-700 mb-2'
+  const presetButton = 'px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors'
 
   return (
-    <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
+    <aside aria-label="Filters" className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 flex items-center justify-between min-h-[76px]">
         <div className="flex items-center gap-2">
@@ -371,7 +154,13 @@ export default function FilterPanel({
             </span>
           )}
         </div>
-        <button onClick={onToggle} className="p-1 hover:bg-gray-200 rounded transition-colors" title="Hide filters">
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
+          title="Hide filters"
+          aria-label="Hide filters"
+        >
           <ChevronLeft className="w-5 h-5 text-gray-600" />
         </button>
       </div>
@@ -379,23 +168,23 @@ export default function FilterPanel({
       {/* Filter Sections */}
       <div className="flex-1 p-4 space-y-6 overflow-y-auto">
         {/* Flags & Comments */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Flags & Comments</h3>
+        <fieldset>
+          <legend className={sectionHeading}>Flags & Comments</legend>
           <div className="space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={localFilters.flagged === true}
-                onChange={e =>
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    flagged: e.target.checked ? true : null
-                  }))
-                }
+                checked={draft.flagged === true}
+                onChange={e => set('flagged', e.target.checked ? true : null)}
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
-                <svg className="w-4 h-4 text-[#F56476]" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <svg
+                  className="w-4 h-4 text-[#F56476]"
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
                   <path d="M4 2.2 L5.4 13.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   <path
                     d="M5 3
@@ -412,13 +201,8 @@ export default function FilterPanel({
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={localFilters.hasComments === true}
-                onChange={e =>
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    hasComments: e.target.checked ? true : null
-                  }))
-                }
+                checked={draft.hasComments === true}
+                onChange={e => set('hasComments', e.target.checked ? true : null)}
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
@@ -426,6 +210,7 @@ export default function FilterPanel({
                   className="w-4 h-4 text-[#A7ACD9]"
                   viewBox="0 0 16 16"
                   fill="currentColor"
+                  aria-hidden="true"
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   <path d="M3 3h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 3v-9a1 1 0 0 1 1-1z" />
@@ -434,74 +219,48 @@ export default function FilterPanel({
               </span>
             </label>
           </div>
-        </div>
+        </fieldset>
 
         {/* Assigned To */}
         {showAssignedToFilter && (
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Assigned To</h3>
-            <select
-              value={localFilters.assignedToUserId || ''}
-              onChange={e =>
-                setLocalFilters(prev => ({
-                  ...prev,
-                  assignedToUserId: e.target.value || null
-                }))
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">All users</option>
-              <option value="unassigned">Unassigned</option>
-              {users.length > 0 &&
-                users.map(user => (
-                  <option key={user.id} value={user.id}>
-                    {user.username}
-                  </option>
-                ))}
-            </select>
-          </div>
+          <Combobox
+            label="Assigned to"
+            labelClassName={`block ${sectionHeading}`}
+            options={[{ value: 'unassigned', label: 'Unassigned' }, ...userOptions]}
+            value={draft.assignedToUserId}
+            onChange={value => set('assignedToUserId', value)}
+            placeholder="All users"
+            inputClassName={getFieldClasses(Boolean(draft.assignedToUserId))}
+          />
         )}
 
         {/* Last Editor */}
         {users.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Last Editor</h3>
-            <select
-              value={localFilters.lastEditorId || ''}
-              onChange={e =>
-                setLocalFilters(prev => ({
-                  ...prev,
-                  lastEditorId: e.target.value || null
-                }))
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">All editors</option>
-              {users.map(user => (
-                <option key={user.id} value={user.id}>
-                  {user.username}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Combobox
+            label="Last editor"
+            labelClassName={`block ${sectionHeading}`}
+            options={userOptions}
+            value={draft.lastEditorId}
+            onChange={value => set('lastEditorId', value)}
+            placeholder="All editors"
+            inputClassName={getFieldClasses(Boolean(draft.lastEditorId))}
+          />
         )}
 
         {/* Import File */}
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Import File</h3>
+          <label htmlFor={`${id}-import`} className={`block ${sectionHeading}`}>
+            Import file
+          </label>
           <select
-            value={localFilters.importId || ''}
-            onChange={e =>
-              setLocalFilters(prev => ({
-                ...prev,
-                importId: e.target.value || null
-              }))
-            }
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${getFieldClasses(Boolean(localFilters.importId))}`}
-            disabled={loadingImports}
+            id={`${id}-import`}
+            value={draft.importId || ''}
+            onChange={e => set('importId', e.target.value || null)}
+            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${getFieldClasses(Boolean(draft.importId))}`}
+            disabled={imports.isPending}
           >
             <option value="">All imports</option>
-            {imports.map(imp => (
+            {(imports.data?.imports ?? []).map(imp => (
               <option key={imp.id} value={imp.id}>
                 {imp.fileName} ({imp.sentenceCount.toLocaleString()} sentences)
               </option>
@@ -510,129 +269,69 @@ export default function FilterPanel({
         </div>
 
         {/* Date Range */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Last Edited</h3>
+        <fieldset>
+          <legend className={sectionHeading}>Last edited</legend>
           <div className="space-y-2">
-            {/* Quick preset buttons */}
             <div className="grid grid-cols-2 gap-1">
-              <button
-                onClick={() => {
-                  const today = new Date()
-                  const todayStr = today.toISOString().slice(0, 10)
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    dateRange: { from: todayStr, to: todayStr }
-                  }))
-                }}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={() => setDateRange(0)} className={presetButton}>
                 Today
               </button>
-              <button
-                onClick={() => {
-                  const today = new Date()
-                  const weekAgo = new Date(today)
-                  weekAgo.setDate(today.getDate() - 7)
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    dateRange: {
-                      from: weekAgo.toISOString().slice(0, 10),
-                      to: today.toISOString().slice(0, 10)
-                    }
-                  }))
-                }}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={() => setDateRange(7)} className={presetButton}>
                 Last 7d
               </button>
-              <button
-                onClick={() => {
-                  const today = new Date()
-                  const monthAgo = new Date(today)
-                  monthAgo.setDate(today.getDate() - 30)
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    dateRange: {
-                      from: monthAgo.toISOString().slice(0, 10),
-                      to: today.toISOString().slice(0, 10)
-                    }
-                  }))
-                }}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={() => setDateRange(30)} className={presetButton}>
                 Last 30d
               </button>
-              <button
-                onClick={() => {
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    dateRange: { from: null, to: null }
-                  }))
-                }}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 transition-colors text-gray-600"
-              >
+              <button type="button" onClick={() => setDateRange(null)} className={`${presetButton} text-gray-600`}>
                 Clear
               </button>
             </div>
 
-            {/* Custom date range */}
-            <div className="pt-2 border-t border-gray-200">
-              <div className="space-y-2">
-                <div>
-                  <label className="text-xs text-gray-600 block mb-1">From</label>
-                  <input
-                    type="date"
-                    value={localFilters.dateRange.from || ''}
-                    onChange={e =>
-                      setLocalFilters(prev => ({
-                        ...prev,
-                        dateRange: { ...prev.dateRange, from: e.target.value || null }
-                      }))
-                    }
-                    className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(localFilters.dateRange.from))}`}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 block mb-1">To</label>
-                  <input
-                    type="date"
-                    value={localFilters.dateRange.to || ''}
-                    onChange={e =>
-                      setLocalFilters(prev => ({
-                        ...prev,
-                        dateRange: { ...prev.dateRange, to: e.target.value || null }
-                      }))
-                    }
-                    className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(localFilters.dateRange.to))}`}
-                  />
-                </div>
+            <div className="pt-2 border-t border-gray-200 space-y-2">
+              <div>
+                <label htmlFor={`${id}-from`} className="text-xs text-gray-600 block mb-1">
+                  From
+                </label>
+                <input
+                  id={`${id}-from`}
+                  type="date"
+                  value={draft.lastEditedFrom || ''}
+                  onChange={e => set('lastEditedFrom', e.target.value || null)}
+                  className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(draft.lastEditedFrom))}`}
+                />
+              </div>
+              <div>
+                <label htmlFor={`${id}-to`} className="text-xs text-gray-600 block mb-1">
+                  To
+                </label>
+                <input
+                  id={`${id}-to`}
+                  type="date"
+                  value={draft.lastEditedTo || ''}
+                  onChange={e => set('lastEditedTo', e.target.value || null)}
+                  className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(draft.lastEditedTo))}`}
+                />
               </div>
             </div>
           </div>
-        </div>
+        </fieldset>
 
-        {/* Taxonomy/Labels */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Submitted Labels</h3>
-          <div className="space-y-2">
+        {/* Submitted labels */}
+        <fieldset>
+          <legend className={sectionHeading}>Submitted labels</legend>
+          <div className="space-y-3">
             <div>
-              <label className="text-xs text-gray-600">Taxonomy</label>
+              <label htmlFor={`${id}-taxonomy`} className="text-xs text-gray-600 block mb-1">
+                Taxonomy
+              </label>
               <select
-                value={localFilters.taxonomyKey || ''}
+                id={`${id}-taxonomy`}
+                value={draft.taxonomyKey || ''}
                 onChange={e => {
-                  const value = e.target.value || null
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    taxonomyKey: value,
-                    level: null,
-                    code: null
-                  }))
-                  setSubmittedLabelQuery('')
-                  setSubmittedLabelResults([])
-                  setSelectedLabelDisplay('')
-                  setIsSubmittedDropdownOpen(false)
+                  setDraft(prev => ({ ...prev, taxonomyKey: e.target.value || null, level: null, code: null }))
+                  setLabelQuery('')
                 }}
-                className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.taxonomyKey))}`}
+                className={`${fieldBaseClasses} ${getFieldClasses(Boolean(draft.taxonomyKey))}`}
               >
                 <option value="">Select</option>
                 {taxonomies.map(t => (
@@ -642,107 +341,55 @@ export default function FilterPanel({
                 ))}
               </select>
             </div>
+            <Combobox
+              label="Label"
+              options={labelOptions.options}
+              loading={labelOptions.loading}
+              onQueryChange={setLabelQuery}
+              value={draft.code}
+              selectedLabel={draft.code ? (codeLabels[`user:${draft.code}`] ?? draft.code) : undefined}
+              onChange={(value, option) => {
+                set('code', value)
+                if (value && option) setCodeLabels(prev => ({ ...prev, [`user:${value}`]: option.label }))
+              }}
+              placeholder={draft.taxonomyKey ? 'Search code or text' : 'Select taxonomy first'}
+              disabled={!draft.taxonomyKey}
+              inputClassName={getFieldClasses(Boolean(draft.code))}
+            />
             <div>
-              <label className="text-xs text-gray-600">Label</label>
-              <div className="mt-1 relative">
-                <input
-                  type="text"
-                  value={submittedLabelQuery}
-                  onChange={e => setSubmittedLabelQuery(e.target.value)}
-                  onFocus={() => {
-                    if (localFilters.taxonomyKey && !isSubmittedDropdownOpen) {
-                      setIsSubmittedDropdownOpen(true)
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => setIsSubmittedDropdownOpen(false), 150)
-                  }}
-                  placeholder={localFilters.taxonomyKey ? 'Search code or text' : 'Select taxonomy first'}
-                  disabled={!localFilters.taxonomyKey}
-                  className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.code))}`}
-                />
-                {submittedLabelLoading && isSubmittedDropdownOpen && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">Loading...</span>
-                )}
-                {isSubmittedDropdownOpen && submittedLabelResults.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                    {submittedLabelResults.map(option => (
-                      <button
-                        type="button"
-                        key={`submitted-${option.code}-${option.level}`}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => handleSubmittedLabelSelect(option)}
-                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <span className="text-sm font-semibold text-gray-800">{option.code}</span>
-                        <span className="flex-1 text-sm text-gray-700 truncate">{option.label}</span>
-                        <span className="text-xs text-gray-500">L{option.level}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {localFilters.code && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#D3F2EE] text-[#005c5c] text-xs font-medium px-3 py-1 border border-[#a7e4db]">
-                    <span className="max-w-[220px] truncate">{selectedLabelDisplay || localFilters.code}</span>
-                    <button
-                      type="button"
-                      onClick={clearSubmittedLabel}
-                      className="text-[#005c5c]/80 hover:text-[#003f3f] transition-colors"
-                      aria-label="Remove submitted label filter"
-                    >
-                      ×
-                    </button>
-                  </span>
-                </div>
-              )}
-              <div className="mt-3">
-                <label className="text-xs text-gray-600">Submitted label status</label>
-                <select
-                  value={
-                    localFilters.hasSubmittedLabels === null ? '' : localFilters.hasSubmittedLabels ? 'true' : 'false'
-                  }
-                  onChange={e => {
-                    const value = e.target.value
-                    setLocalFilters(prev => ({
-                      ...prev,
-                      hasSubmittedLabels: value === '' ? null : value === 'true'
-                    }))
-                  }}
-                  className={`${fieldBaseClasses} mt-1 ${getFieldClasses(localFilters.hasSubmittedLabels !== null)}`}
-                >
-                  <option value="">Any</option>
-                  <option value="true">Has labels</option>
-                  <option value="false">No labels</option>
-                </select>
-              </div>
+              <label htmlFor={`${id}-has-labels`} className="text-xs text-gray-600 block mb-1">
+                Submitted label status
+              </label>
+              <select
+                id={`${id}-has-labels`}
+                value={booleanValue(draft.hasSubmittedLabels)}
+                onChange={e => set('hasSubmittedLabels', parseBoolean(e.target.value))}
+                className={`${fieldBaseClasses} ${getFieldClasses(draft.hasSubmittedLabels !== null)}`}
+              >
+                <option value="">Any</option>
+                <option value="true">Has labels</option>
+                <option value="false">No labels</option>
+              </select>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* AI Suggestions */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">AI Suggestions</h3>
-          <div className="space-y-2">
+        <fieldset>
+          <legend className={sectionHeading}>AI suggestions</legend>
+          <div className="space-y-3">
             <div>
-              <label className="text-xs text-gray-600">Taxonomy</label>
+              <label htmlFor={`${id}-ai-taxonomy`} className="text-xs text-gray-600 block mb-1">
+                Taxonomy
+              </label>
               <select
-                value={localFilters.aiTaxonomyKey || ''}
+                id={`${id}-ai-taxonomy`}
+                value={draft.aiTaxonomyKey || ''}
                 onChange={e => {
-                  const value = e.target.value || null
-                  setLocalFilters(prev => ({
-                    ...prev,
-                    aiTaxonomyKey: value,
-                    aiLevel: null,
-                    aiCode: null
-                  }))
+                  setDraft(prev => ({ ...prev, aiTaxonomyKey: e.target.value || null, aiLevel: null, aiCode: null }))
                   setAiLabelQuery('')
-                  setAiLabelResults([])
-                  setSelectedAiLabelDisplay('')
-                  setIsAiDropdownOpen(false)
                 }}
-                className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.aiTaxonomyKey))}`}
+                className={`${fieldBaseClasses} ${getFieldClasses(Boolean(draft.aiTaxonomyKey))}`}
               >
                 <option value="">Select</option>
                 {taxonomies.map(t => (
@@ -752,130 +399,88 @@ export default function FilterPanel({
                 ))}
               </select>
             </div>
+            <Combobox
+              label="Suggested label"
+              options={aiLabelOptions.options}
+              loading={aiLabelOptions.loading}
+              onQueryChange={setAiLabelQuery}
+              value={draft.aiCode}
+              selectedLabel={draft.aiCode ? (codeLabels[`ai:${draft.aiCode}`] ?? draft.aiCode) : undefined}
+              onChange={(value, option) => {
+                set('aiCode', value)
+                if (value && option) setCodeLabels(prev => ({ ...prev, [`ai:${value}`]: option.label }))
+              }}
+              placeholder={draft.aiTaxonomyKey ? 'Search code or text' : 'Select taxonomy first'}
+              disabled={!draft.aiTaxonomyKey}
+              inputClassName={getFieldClasses(Boolean(draft.aiCode))}
+            />
             <div>
-              <label className="text-xs text-gray-600">Label</label>
-              <div className="mt-1 relative">
-                <input
-                  type="text"
-                  value={aiLabelQuery}
-                  onChange={e => setAiLabelQuery(e.target.value)}
-                  onFocus={() => {
-                    if (localFilters.aiTaxonomyKey && !isAiDropdownOpen) {
-                      setIsAiDropdownOpen(true)
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => setIsAiDropdownOpen(false), 150)
-                  }}
-                  placeholder={localFilters.aiTaxonomyKey ? 'Search code or text' : 'Select taxonomy first'}
-                  disabled={!localFilters.aiTaxonomyKey}
-                  className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.aiCode))}`}
-                />
-                {aiLabelLoading && isAiDropdownOpen && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">Loading...</span>
-                )}
-                {isAiDropdownOpen && aiLabelResults.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                    {aiLabelResults.map(option => (
-                      <button
-                        type="button"
-                        key={`ai-${option.code}-${option.level}`}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => handleAiLabelSelect(option)}
-                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        <span className="text-sm font-semibold text-gray-800">{option.code}</span>
-                        <span className="flex-1 text-sm text-gray-700 truncate">{option.label}</span>
-                        <span className="text-xs text-gray-500">L{option.level}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {localFilters.aiCode && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#D3F2EE] text-[#005c5c] text-xs font-medium px-3 py-1 border border-[#a7e4db]">
-                    <span className="max-w-[220px] truncate">{selectedAiLabelDisplay || localFilters.aiCode}</span>
-                    <button
-                      type="button"
-                      onClick={clearAiLabel}
-                      className="text-[#005c5c]/80 hover:text-[#003f3f] transition-colors"
-                      aria-label="Remove AI label filter"
-                    >
-                      ×
-                    </button>
-                  </span>
-                </div>
-              )}
-              <div className="mt-3">
-                <label className="text-xs text-gray-600">AI suggestion status</label>
-                <select
-                  value={localFilters.hasAISuggestions === null ? '' : localFilters.hasAISuggestions ? 'true' : 'false'}
-                  onChange={e => {
-                    const value = e.target.value
-                    setLocalFilters(prev => ({
-                      ...prev,
-                      hasAISuggestions: value === '' ? null : value === 'true'
-                    }))
-                  }}
-                  className={`${fieldBaseClasses} mt-1 ${getFieldClasses(localFilters.hasAISuggestions !== null)}`}
-                >
-                  <option value="">Any</option>
-                  <option value="true">Has suggestion</option>
-                  <option value="false">No suggestion</option>
-                </select>
-              </div>
-              <div className="mt-3">
-                <label className="text-xs text-gray-600 block mb-1">Confidence range</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[11px] text-gray-500">Min</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={localFilters.aiConfidenceMin ?? ''}
-                      onChange={e => handleConfidenceChange('aiConfidenceMin', e.target.value)}
-                      placeholder="0.70"
-                      className={`${fieldBaseClasses} ${getFieldClasses(localFilters.aiConfidenceMin !== null)}`}
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-gray-500">Max</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={localFilters.aiConfidenceMax ?? ''}
-                      onChange={e => handleConfidenceChange('aiConfidenceMax', e.target.value)}
-                      placeholder="0.95"
-                      className={`${fieldBaseClasses} ${getFieldClasses(localFilters.aiConfidenceMax !== null)}`}
-                    />
-                  </div>
-                </div>
-              </div>
+              <label htmlFor={`${id}-has-ai`} className="text-xs text-gray-600 block mb-1">
+                AI suggestion status
+              </label>
+              <select
+                id={`${id}-has-ai`}
+                value={booleanValue(draft.hasAISuggestions)}
+                onChange={e => set('hasAISuggestions', parseBoolean(e.target.value))}
+                className={`${fieldBaseClasses} ${getFieldClasses(draft.hasAISuggestions !== null)}`}
+              >
+                <option value="">Any</option>
+                <option value="true">Has suggestion</option>
+                <option value="false">No suggestion</option>
+              </select>
             </div>
+            <fieldset>
+              <legend className="text-xs text-gray-600 block mb-1">Confidence range</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="text-[11px] text-gray-600">Min</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={draft.aiConfidenceMin ?? ''}
+                    onChange={e => handleConfidenceChange('aiConfidenceMin', e.target.value)}
+                    placeholder="0.70"
+                    className={`${fieldBaseClasses} ${getFieldClasses(draft.aiConfidenceMin !== null)}`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-gray-600">Max</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={draft.aiConfidenceMax ?? ''}
+                    onChange={e => handleConfidenceChange('aiConfidenceMax', e.target.value)}
+                    placeholder="0.95"
+                    className={`${fieldBaseClasses} ${getFieldClasses(draft.aiConfidenceMax !== null)}`}
+                  />
+                </label>
+              </div>
+            </fieldset>
           </div>
-        </div>
+        </fieldset>
       </div>
 
       {/* Actions */}
       <div className="p-4 border-t border-gray-200 space-y-2">
         <button
-          onClick={handleApply}
+          type="button"
+          onClick={() => onApply(draft)}
           className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
         >
           Apply Filters
         </button>
         <button
+          type="button"
           onClick={handleReset}
           className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
         >
           Reset
         </button>
       </div>
-    </div>
+    </aside>
   )
 }

@@ -134,9 +134,12 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    runs in its workspace transaction with its audit entry, and workspace
    creation writes `workspace.created` and the first admin's `member.added` in
    its own transaction (`auditInTransaction()`).
-9. **Still open:** import/lint boundary check against the `prisma`
-   singleton; a searchable header switcher (today: "Switch workspace" link to
-   the chooser); Taxomind namespace isolation verified live (release gate for
+9. ~~Searchable header switcher~~ done (`components/WorkspaceSwitcher.tsx`:
+   current workspace and effective role in the sidebar, searchable keyboard
+   list, asks before leaving unsaved labels; the query cache is per
+   workspace, user and role).
+10. **Still open:** import/lint boundary check against the `prisma`
+   singleton; Taxomind namespace isolation verified live (release gate for
    AI: two namespaces with one credential, identical taxonomy keys; until then
    give independent workspaces separate Taxomind credentials or instances).
 

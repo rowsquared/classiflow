@@ -42,18 +42,54 @@ Browser: React client components
 - Query schemas shared by handlers and pages go in `lib/contracts/` (zod 4).
   Response envelopes vary (`ok`, `success`, bare data); update callers with any
   handler change.
-- Interactive `*Client.tsx` components then use browser `fetch` and React hooks
-  for updates. Some pages, including the individual labeling screen, are
-  entirely client-side.
+- Interactive `*Client.tsx` components then keep their data up to date with
+  **TanStack Query** (see "Frontend conventions"). Some pages, including the
+  individual labeling screen, are entirely client-side.
+
+### Frontend conventions
+
+- **Data:** TanStack Query. `components/QueryProvider.tsx` holds one cache per
+  workspace page tree; the workspace layout keys it by workspace, user and
+  role, so nothing fetched under one scope is shown under another, and sign-out
+  clears it. Keys come from `lib/query/keys.ts` and always start with
+  `['ws', workspaceId]` (except the control-plane workspace list); query
+  functions use `fetchJson` (`lib/query/fetch.ts`: passes the abort signal,
+  throws `HttpError` on non-2xx). Pass server-rendered data as `initialData`
+  only when the query's parameters match what the server loaded (the queue
+  compares parameter strings). After a write, invalidate the affected prefix
+  (`queryKeys.queue(workspaceId)` after labels, flags or assignments). Use
+  `refetchInterval` for polling (it pauses in hidden tabs), `keepPreviousData`
+  plus `useLastSuccessful` (`lib/query/use-last-successful.ts`) where a failed
+  refresh must keep the last results on screen. Do not hand-roll `setInterval`
+  polling, abort controllers or "latest request" guards in new code.
+- **URL state:** nuqs (`useQueryStates`, adapter in the workspace layout). A
+  screen's parsers live in a shared module the server page also reads with
+  `createLoader` (queue: `lib/queue-url.ts`, whose parameter names are the
+  API's), so the server renders the view the URL names. Use `history: 'push'`
+  for deliberate view changes (tab, filters, page), the default replace for
+  typing.
+- **Widgets:** Radix primitives. `components/ui/Combobox.tsx` (searchable
+  single choice, ARIA combobox on a Radix popover) for user, label and other
+  pickers; Radix `DropdownMenu` for menus; `components/Modal.tsx` for dialogs;
+  native `<select>` with a `<label>` where search is not needed. Keep the teal
+  theme (`indigo-*` is teal; white text needs `indigo-600` or darker).
+- **Effects:** the React Compiler lint rules flag state synced in effects and
+  refs read during render. Derive values while rendering, key a component to
+  reset its state (the labelling screen is keyed by record, the filter panel
+  by the applied filters), or adjust state during render; per-browser
+  preferences use `useStoredBoolean` (`lib/use-local-storage.ts`).
+- **Accessibility:** `tests/e2e/accessibility.spec.ts` runs axe-core on the
+  main pages and fails on serious or critical findings; add a page there when
+  you add one.
 
 ## Where to look
 
 | Area | Entry points and responsibilities |
 | --- | --- |
-| Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, sidebar), `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
+| Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, query cache, nuqs adapter, sidebar), `components/Sidebar.tsx`, `components/WorkspaceSwitcher.tsx`, `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
 | Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan and status in `docs/plans/workspace-isolation.md` |
-| Work queue | `app/queue/page.tsx`, `app/queue/QueuePageClient.tsx`, `components/queue/`; filtering, sorting, pagination, selection, bulk labels, assignments |
-| Individual labeling | `app/queue/[sentenceId]/page.tsx`, `components/TaxonomyBrowser.tsx`; hierarchical selection, suggestions, keyboard navigation, comments, flags |
+| Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments |
+| Individual labeling | `app/w/[workspaceId]/queue/[sentenceId]/page.tsx`, `components/labeling/` (screen, data hooks, panels, comments dialog), `components/TaxonomyBrowser.tsx`, `lib/labeling.ts` (submit and navigation rules), `lib/labeling-navigation.ts` (previous/next list); hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/taxonomies/[key]/page.tsx` |
 | Administration | `app/admin/taxonomy/`, `sentences/`, `team/`, `export/`, `ai-jobs/`; `/admin` redirects to `/admin/taxonomy` |
 | Progress | `app/w/[workspaceId]/progress/`, `lib/server/progress.ts`, `app/api/workspaces/[workspaceId]/progress/`: the page still uses `stats`, `timeline`, `team`; the dashboard reports `overview`, `activity`, `people` (fixed query count, `lib/reporting-dates.ts` for days/weeks in the reporting time zone) wait for their UI (plan D3) |
@@ -247,7 +283,7 @@ lockfile together. Do not introduce a different package manager.
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
 | Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Benchmarks | `npm run bench:progress` on a database seeded by `scripts/bench/seed-progress.ts` (DEVELOPMENT.md "Benchmarks") |
-| Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright; see `tests/e2e/README.md`) |
+| Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright, with axe-core accessibility checks; see `tests/e2e/README.md`) |
 | Production build | `npm run build` (Prisma generation + Next build) |
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database and `npx prisma generate`; commit generated SQL. The history starts at one baseline (`20261021120000_init`, fresh start) |
 

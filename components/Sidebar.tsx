@@ -1,9 +1,13 @@
 'use client'
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useState, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
+import { ToastContainer, type Toast } from '@/components/Toast'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import Image from 'next/image'
 import { Tags } from 'lucide-react'
@@ -28,10 +32,12 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [logoHovered, setLogoHovered] = useState(false)
-  const [showLogoutMenu, setShowLogoutMenu] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])
   const initializedRef = useRef(false)
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
   const { data: session } = useSession()
   const workspace = useWorkspaceInfo()
   const { href: workspaceHref } = useWorkspacePaths()
@@ -67,25 +73,6 @@ export default function Sidebar() {
     })
   }, [])
 
-  // Close logout menu when clicking outside
-  useEffect(() => {
-    if (!showLogoutMenu) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      if (!target.closest('.user-profile-section')) {
-        setShowLogoutMenu(false)
-      }
-    }
-
-    // Use setTimeout to avoid closing immediately when opening
-    setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-    }, 0)
-
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [showLogoutMenu])
-
   // Hide sidebar on login and reset-password pages (after all hooks)
   if (pathname === '/login' || pathname === '/reset-password') {
     return null
@@ -99,13 +86,18 @@ export default function Sidebar() {
 
   // Ends this person's sessions in every other browser; this one stays.
   const handleSignOutElsewhere = async () => {
-    setShowLogoutMenu(false)
     const { error } = await revokeOtherSessions()
-    alert(error ? 'Could not sign out the other sessions.' : 'Signed out on all other devices.')
+    setToasts([
+      error
+        ? { id: 'sessions', type: 'error', message: 'Could not sign out the other sessions.' }
+        : { id: 'sessions', type: 'success', message: 'Signed out on all other devices.' }
+    ])
   }
 
   const handleLogout = async () => {
     await signOut()
+    // Nothing fetched for this user may outlive the session.
+    queryClient.clear()
     router.push('/login')
     router.refresh()
   }
@@ -272,6 +264,7 @@ export default function Sidebar() {
 
   return (
     <aside
+      aria-label="Main"
       className="bg-gray-50 border-r border-gray-200 flex flex-col sidebar-container"
       suppressHydrationWarning
       style={{
@@ -340,8 +333,15 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Current workspace and switcher */}
+      {workspace && (
+        <div className="border-b border-gray-200" style={{ padding: collapsed ? '8px 10px' : '8px 12px' }}>
+          <WorkspaceSwitcher workspace={workspace} collapsed={collapsed} />
+        </div>
+      )}
+
       {/* Navigation Items */}
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 py-4" aria-label="Workspace pages">
         {visibleNavItems.map(item => {
           const active = isActive(item.href)
           return (
@@ -379,72 +379,67 @@ export default function Sidebar() {
 
       {/* Bottom Section - User, Footer Logo */}
       <div>
-        {/* User Profile - Fixed position from bottom */}
+        {/* User menu */}
         {user && (
-          <div className="relative user-profile-section">
-            <button
-              onClick={() => setShowLogoutMenu(!showLogoutMenu)}
-              className="flex items-center gap-3 w-full hover:bg-gray-100 transition-colors"
-              style={{
-                paddingTop: '12px',
-                paddingBottom: '12px',
-                paddingLeft: `${SPACING}px`,
-                paddingRight: `${SPACING}px`
-              }}
-            >
-              <div
-                className="bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}
-              >
-                {user.initials}
-              </div>
-              <div
-                className="flex-1 min-w-0 overflow-hidden text-left"
-                suppressHydrationWarning
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                className="flex items-center gap-3 w-full hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
                 style={{
-                  opacity: collapsed ? 0 : 1,
-                  width: collapsed ? 0 : 'auto',
-                  transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
+                  paddingTop: '12px',
+                  paddingBottom: '12px',
+                  paddingLeft: `${SPACING}px`,
+                  paddingRight: `${SPACING}px`
                 }}
               >
-                <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
-                {workspace && (
-                  <div className="text-xs text-gray-500 truncate" title={`${workspace.name} (${workspace.role})`}>
-                    {workspace.name} · {workspace.role}
-                  </div>
-                )}
-              </div>
-            </button>
-
-            {/* Logout Menu */}
-            {showLogoutMenu && (
-              <div
-                className="absolute bottom-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50"
-                style={{
-                  left: collapsed ? `${SPACING}px` : `${SPACING}px`,
-                  right: collapsed ? 'auto' : `${SPACING}px`,
-                  marginBottom: '4px',
-                  minWidth: collapsed ? '120px' : 'auto'
-                }}
+                <div
+                  className="bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+                  style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}
+                  aria-hidden="true"
+                >
+                  {user.initials}
+                </div>
+                <div
+                  className="flex-1 min-w-0 overflow-hidden text-left"
+                  suppressHydrationWarning
+                  style={{
+                    opacity: collapsed ? 0 : 1,
+                    width: collapsed ? 0 : 'auto',
+                    transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
+                  }}
+                >
+                  <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
+                </div>
+                <span className="sr-only">{collapsed ? `${user.name}, account menu` : 'Account menu'}</span>
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                side="top"
+                align="start"
+                sideOffset={4}
+                className="z-50 min-w-[12rem] bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden py-1"
               >
-                <button
-                  onClick={handleSignOutElsewhere}
-                  className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
+                <DropdownMenu.Item
+                  onSelect={handleSignOutElsewhere}
+                  className="px-4 py-2 text-sm text-gray-700 cursor-pointer outline-none data-[highlighted]:bg-gray-100"
                 >
                   Sign out other devices
-                </button>
-                <Link
-                  href="/workspaces"
-                  onClick={() => setShowLogoutMenu(false)}
-                  className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
+                </DropdownMenu.Item>
+                <DropdownMenu.Item asChild>
+                  <Link
+                    href="/workspaces"
+                    className="block px-4 py-2 text-sm text-gray-700 outline-none data-[highlighted]:bg-gray-100"
+                  >
+                    All workspaces
+                  </Link>
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="my-1 h-px bg-gray-100" />
+                <DropdownMenu.Item
+                  onSelect={handleLogout}
+                  className="px-4 py-2 text-sm text-gray-700 cursor-pointer outline-none data-[highlighted]:bg-gray-100 flex items-center gap-2"
                 >
-                  Switch workspace
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -453,10 +448,10 @@ export default function Sidebar() {
                     />
                   </svg>
                   Logout
-                </button>
-              </div>
-            )}
-          </div>
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         )}
 
         {/* R2 Footer Logo - Always takes same space to prevent jump */}
@@ -482,6 +477,7 @@ export default function Sidebar() {
           </a>
         </div>
       </div>
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </aside>
   )
 }
