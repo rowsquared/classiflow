@@ -10,7 +10,7 @@ import { audit } from '@/lib/audit'
 // No request-wide transaction: the AI service is called in between, and its
 // failure must still be recorded. Each database step is its own workspace
 // transaction (writes refuse an archived workspace).
-export const POST = workspaceRoute(
+export const POST = workspaceRoute<'key'>(
   ['admin'],
   async (req, { user: actor, params: routeParams }) => {
     const workspaceId = actor.workspaceId

@@ -8,7 +8,7 @@ const MAX_COMMENT_LENGTH = 10_000
 // Comment access follows record access: anyone who can see the record can read,
 // add and resolve its comments. Only the author or an admin may delete one.
 
-export const POST = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
@@ -51,7 +51,7 @@ export const POST = workspaceRoute([], async (req, { user, params: routeParams }
   }
 })
 
-export const GET = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
@@ -90,7 +90,7 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
   }
 })
 
-export const PATCH = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const PATCH = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
@@ -133,7 +133,7 @@ export const PATCH = workspaceRoute([], async (req, { user, params: routeParams 
   }
 })
 
-export const DELETE = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const DELETE = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])

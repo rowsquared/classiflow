@@ -4,7 +4,7 @@ import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 
-export const GET = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])

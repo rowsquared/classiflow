@@ -64,7 +64,10 @@ describe('least-privilege runtime database role', () => {
 
   it('sees workspace rows only inside a transaction opened for that workspace', async () => {
     // Two workspaces with one record each, written as the owner.
-    const [w1, w2] = await Promise.all(['RLS 1', 'RLS 2'].map(name => prisma.workspace.create({ data: { name } })))
+    const [w1, w2] = await Promise.all([
+      prisma.workspace.create({ data: { name: 'RLS 1' } }),
+      prisma.workspace.create({ data: { name: 'RLS 2' } })
+    ])
     for (const w of [w1, w2]) {
       const imp = await prisma.sentenceImport.create({ data: { workspaceId: w.id, fileName: 'x.csv', totalRows: 1 } })
       await prisma.sentence.create({

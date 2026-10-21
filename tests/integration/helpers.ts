@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import type { WorkspaceRole as Role } from '@/lib/generated/prisma/client'
+import type { WorkspaceRole as Role, Sentence } from '@/lib/generated/prisma/client'
 import { createPrismaClient } from '@/lib/prisma'
 import { testDatabaseUrl } from './global-setup'
 import { withWorkspace } from '@/lib/workspace/db'
@@ -102,15 +102,22 @@ export async function sessionFor(): Promise<AuthSession | null> {
   return { session: rest, user } as AuthSession
 }
 
+/** `N` items as a tuple when `N` is a literal, so `const [a, b] = ...` needs no checks. */
+type Many<T, N extends number, R extends T[] = []> = number extends N
+  ? T[]
+  : R['length'] extends N
+    ? R
+    : Many<T, N, [...R, T]>
+
 /** Records in the current workspace, assigned to the given users (user ids). */
-export async function createSentences(count: number, assignTo: string[] = []) {
+export async function createSentences<N extends number>(count: N, assignTo: string[] = []): Promise<Many<Sentence, N>> {
   const ws = currentWorkspace()
   const memberships = await prisma.workspaceMembership.findMany({
     where: { workspaceId: ws, userId: { in: assignTo } },
     select: { id: true }
   })
   const imp = await prisma.sentenceImport.create({ data: { workspaceId: ws, fileName: 'test.csv', totalRows: count } })
-  const sentences = []
+  const sentences: Sentence[] = []
   for (let i = 0; i < count; i++) {
     sentences.push(
       await prisma.sentence.create({
@@ -126,7 +133,7 @@ export async function createSentences(count: number, assignTo: string[] = []) {
       })
     )
   }
-  return sentences
+  return sentences as Many<Sentence, N>
 }
 
 /**

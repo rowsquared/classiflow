@@ -8,7 +8,7 @@ const flagSchema = z.object({
   flagged: z.boolean()
 })
 
-export const POST = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])

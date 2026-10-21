@@ -43,8 +43,11 @@ production build, and `npm audit --omit=dev` (0 findings):
 
 Still open from this plan:
 
-- M03: `noUncheckedIndexedAccess` (149 findings, 83 in tests); a formatter
-  with a single reformat commit.
+- ~~M03 formatter and `noUncheckedIndexedAccess`~~ done 21 October 2026:
+  Prettier (`npm run format`, checked in CI; the reformat commit is in
+  `.git-blame-ignore-revs`) and `noUncheckedIndexedAccess` on. Workspace route
+  handlers name their segments (`workspaceRoute<'sentenceId'>(...)`), so
+  route parameters are typed instead of an index signature.
 - M01: remove hand-written `useMemo`/`useCallback` where the compiler covers
   them (optional).
 - M06, M07, M08 logs/traces, the open points under M09, and the "Carried over

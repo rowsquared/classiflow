@@ -45,6 +45,6 @@ export const GET = workspaceRoute(['admin'], async (req, { user }) => {
   return NextResponse.json({
     ok: true,
     entries: page,
-    nextCursor: hasMore ? page[page.length - 1].id : null
+    nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null
   })
 })

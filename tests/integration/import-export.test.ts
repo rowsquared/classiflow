@@ -216,7 +216,7 @@ describe('record import and export', () => {
 
     const res = await exportRoute.GET(request('/api/export'), params())
     expect(res.status).toBe(200)
-    const [header, row] = parse(await res.text()) as string[][]
+    const [header, row] = parse(await res.text()) as [string[], string[]]
     const cell = (name: string) => row[header.indexOf(name)]
     expect(cell('id')).toBe('007')
     expect(cell('field_title')).toBe('Baker, "head"\nline 2')
@@ -226,7 +226,7 @@ describe('record import and export', () => {
     expect(cell('comments')).toBe(`[${admin.name}]: +1 "agree", see row`)
 
     const raw = await exportRoute.GET(request('/api/export?formulaSafe=false'), params())
-    const [h2, r2] = parse(await raw.text()) as string[][]
+    const [h2, r2] = parse(await raw.text()) as [string[], string[]]
     expect(r2[h2.indexOf('support_region')]).toBe('=SUM(1)')
   })
 
@@ -290,7 +290,7 @@ describe('record import and export', () => {
 
     const res = await exportRoute.GET(request('/api/export'), params())
     expect(res.status).toBe(200)
-    const [header, ...rows] = parse(await res.text()) as string[][]
+    const [header, ...rows] = parse(await res.text()) as [string[], ...string[][]]
 
     expect(header).toEqual([
       'id',

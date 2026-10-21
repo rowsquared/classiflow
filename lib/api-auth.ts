@@ -175,8 +175,11 @@ async function checkWorkspace(workspaceId: string, roles: Role[], passive: boole
 
 type RouteContext<P> = { params: Promise<P> }
 
-/** Route parameters of a handler under /api/workspaces/[workspaceId]/... */
-export type WorkspaceParams = { workspaceId: string; [segment: string]: string }
+/**
+ * Route parameters of a handler under /api/workspaces/[workspaceId]/..., plus
+ * the route's own dynamic segments: `workspaceRoute<'sentenceId'>(...)`.
+ */
+export type WorkspaceParams<Segment extends string = never> = { workspaceId: string } & Record<Segment, string>
 
 type WorkspaceHandler<P> = (
   req: NextRequest,
@@ -192,16 +195,16 @@ type WorkspaceHandler<P> = (
  * `transaction: false` leaves opening transactions to the handler, for work
  * that must not hold one open (streamed exports, calls to the AI service).
  */
-export function workspaceRoute<P extends WorkspaceParams = WorkspaceParams>(
+export function workspaceRoute<Segment extends string = never>(
   roles: Role[],
-  handler: WorkspaceHandler<P>,
+  handler: WorkspaceHandler<WorkspaceParams<Segment>>,
   {
     transaction = true,
     timeoutMs,
     passive = false
   }: { transaction?: boolean; timeoutMs?: number; passive?: boolean } = {}
 ) {
-  return async (req: NextRequest, { params }: RouteContext<P>): Promise<Response> => {
+  return async (req: NextRequest, { params }: RouteContext<WorkspaceParams<Segment>>): Promise<Response> => {
     const resolved = await params
     const { user, session, error } = await checkWorkspace(resolved.workspaceId, roles, passive)
     if (error) return error

@@ -256,7 +256,7 @@ describe('AI job monitor against a stub service', () => {
     expect(done.failedSentences).toBe(1)
     expect(done.leaseOwner).toBeNull()
     expect(started).toHaveLength(1)
-    expect(started[0].body).toEqual({
+    expect(started[0]?.body).toEqual({
       taxonomyKey: 'ISCO',
       sourceSlug: `stub-deployment--${wsId()}`,
       batchId: job.id,
@@ -361,7 +361,7 @@ describe('AI job monitor against a stub service', () => {
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
-    expect(started[0].polls).toBe(3)
+    expect(started[0]?.polls).toBe(3)
   })
 
   it('treats malformed status responses like failed requests and keeps polling', async () => {
@@ -382,7 +382,7 @@ describe('AI job monitor against a stub service', () => {
     const done = await settle(job.id)
 
     expect(done.status).toBe('completed')
-    expect(started[0].polls).toBe(5)
+    expect(started[0]?.polls).toBe(5)
     const messages = warn.mock.calls.map(call => String(call[0]))
     expect(messages.some(m => m.includes('not JSON'))).toBe(true)
     expect(
@@ -543,8 +543,8 @@ describe('AI job monitor against a stub service', () => {
 
     const done = await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })
     expect(done.externalJobId).toBe('ext-1') // read from `jobId`, the learning endpoint's key
-    expect(started[0].resource).toBe('learn')
-    expect(started[0].body).toEqual({
+    expect(started[0]?.resource).toBe('learn')
+    expect(started[0]?.body).toEqual({
       taxonomyKey: 'ISCO',
       sourceSlug: `stub-deployment--${wsId()}`,
       sentences: [
@@ -583,7 +583,7 @@ describe('taxonomy sync against a stub service', () => {
     expect(await res.json()).toEqual({ ok: true, jobId: 'ext-1' })
 
     await expect.poll(syncStatus).toBe('completed')
-    const body = started[0].body as {
+    const body = started[0]?.body as {
       action: string
       sourceSlug: string
       taxonomy: { key: string; nodes: Array<{ code: string }> }

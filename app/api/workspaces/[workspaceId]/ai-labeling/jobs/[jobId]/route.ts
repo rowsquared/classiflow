@@ -3,7 +3,7 @@ import { workspaceRoute } from '@/lib/api-auth'
 import { db } from '@/lib/workspace/db'
 import type { CaughtError } from '@/lib/utils'
 
-export const GET = workspaceRoute(['admin'], async (req, { params: routeParams }) => {
+export const GET = workspaceRoute<'jobId'>(['admin'], async (req, { params: routeParams }) => {
   try {
     const { jobId } = routeParams
     const job = await db().aILabelingJob.findUnique({

@@ -261,7 +261,7 @@ export async function getProgressTimeline(user: CurrentUser, { start, end }: Dat
   const allDates: string[] = []
   const currentDate = new Date(start)
   while (currentDate <= end) {
-    allDates.push(currentDate.toISOString().split('T')[0])
+    allDates.push(currentDate.toISOString().slice(0, 10))
 
     if (granularity === 'week') {
       currentDate.setDate(currentDate.getDate() + 7)
@@ -274,7 +274,7 @@ export async function getProgressTimeline(user: CurrentUser, { start, end }: Dat
   const timeline = allDates.map(dateStr => {
     const sentencesOnDate = sentences.filter(s => {
       if (!s.lastEditedAt) return false
-      const sentenceDate = s.lastEditedAt.toISOString().split('T')[0]
+      const sentenceDate = s.lastEditedAt.toISOString().slice(0, 10)
       return sentenceDate === dateStr
     })
 

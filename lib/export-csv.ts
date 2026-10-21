@@ -57,10 +57,11 @@ async function* pages<T extends { id: string }>(
       take: BATCH_SIZE,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
     })
-    if (batch.length === 0) return
+    const last = batch.at(-1)
+    if (!last) return
     yield batch
     if (batch.length < BATCH_SIZE) return
-    cursor = batch[batch.length - 1].id
+    cursor = last.id
   }
 }
 

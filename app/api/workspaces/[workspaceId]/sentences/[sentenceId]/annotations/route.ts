@@ -32,7 +32,7 @@ class RequestError extends Error {}
  * the shared rules in lib/annotation-status.ts. An empty `annotations` array is
  * a flag/comment/skip-only save.
  */
-export const POST = workspaceRoute([], async (req, { user, params: routeParams }) => {
+export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
     const { sentenceId } = routeParams
 
@@ -64,9 +64,10 @@ export const POST = workspaceRoute([], async (req, { user, params: routeParams }
     }
 
     let taxonomy: { id: string; maxDepth: number } | null = null
-    if (annotations.length > 0) {
+    const first = annotations[0]
+    if (first) {
       taxonomy = await db().taxonomy.findUnique({
-        where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key: annotations[0].taxonomyKey } },
+        where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key: first.taxonomyKey } },
         select: { id: true, maxDepth: true }
       })
       if (!taxonomy) {

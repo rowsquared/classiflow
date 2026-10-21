@@ -17,7 +17,7 @@ const updateSchema = z.object({
 })
 
 // GET: admins see any member, supervisors their team, everyone themselves.
-export const GET = workspaceRoute([], async (_req, { user: currentUser, params }) => {
+export const GET = workspaceRoute<'userId'>([], async (_req, { user: currentUser, params }) => {
   const member =
     currentUser.id === params.userId
       ? await getVisibleUser({ ...currentUser, role: 'admin' }, params.userId)
@@ -45,7 +45,7 @@ async function mayManageAccount(actor: CurrentUser, userId: string): Promise<boo
 
 // PUT: role, supervisor and status are this workspace's; name and password are
 // the account's (see mayManageAccount).
-export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params }) => {
+export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor, params }) => {
   const parsed = updateSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
@@ -145,7 +145,7 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params }
 // Their labels, comments and history stay; the account itself is untouched.
 // Body `{ unassignOpen: true }` also drops their assignments on records that
 // are not submitted, so the work can be given to someone else.
-export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, params }) => {
+export const DELETE = workspaceRoute<'userId'>(['admin'], async (req, { user: actor, params }) => {
   const userId = params.userId
   const body = (await req.json().catch(() => ({}))) as { unassignOpen?: unknown }
   const unassignOpen = body?.unassignOpen === true

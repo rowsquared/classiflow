@@ -12,7 +12,7 @@ import { audit } from '@/lib/audit'
  * be changed here (replace the whole taxonomy with PUT /api/taxonomies/[key]).
  * ?dryRun=true (default) only validates; the commit runs the same parser.
  */
-export const POST = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   const { key } = routeParams
   const taxonomy = await db().taxonomy.findUnique({
     where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } }

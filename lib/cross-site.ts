@@ -20,5 +20,5 @@ export function isCrossSiteMutation(request: NextRequest): boolean {
     return true
   }
   const allowed = [request.headers.get('host'), request.headers.get('x-forwarded-host'), request.nextUrl.host]
-  return !allowed.some(h => h && h.split(',')[0].trim() === originHost)
+  return !allowed.some(h => h && h.split(',')[0]?.trim() === originHost)
 }

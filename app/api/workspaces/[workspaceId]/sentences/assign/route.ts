@@ -111,7 +111,7 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
       actorId: user.id,
       action: 'assignments.added',
       entityType: 'assignment',
-      entityId: sentenceIds[0],
+      entityId: sentenceIds[0]!, // validated non-empty above
       payload: { records: sentenceIds.length, userIds }
     })
     return NextResponse.json({
@@ -162,7 +162,7 @@ export const DELETE = workspaceRoute(['admin', 'supervisor'], async (req, { user
       actorId: user.id,
       action: 'assignments.removed',
       entityType: 'assignment',
-      entityId: sentenceIds[0],
+      entityId: sentenceIds[0]!, // validated non-empty above
       payload: { records: sentenceIds.length, userIds: userIds ?? 'all visible', removed: deleted.count }
     })
 

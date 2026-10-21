@@ -6,7 +6,7 @@ import { audit } from '@/lib/audit'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
-export const POST = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { key } = routeParams
 

@@ -518,7 +518,7 @@ export default function FilterPanel({
               <button
                 onClick={() => {
                   const today = new Date()
-                  const todayStr = today.toISOString().split('T')[0]
+                  const todayStr = today.toISOString().slice(0, 10)
                   setLocalFilters(prev => ({
                     ...prev,
                     dateRange: { from: todayStr, to: todayStr }
@@ -536,8 +536,8 @@ export default function FilterPanel({
                   setLocalFilters(prev => ({
                     ...prev,
                     dateRange: {
-                      from: weekAgo.toISOString().split('T')[0],
-                      to: today.toISOString().split('T')[0]
+                      from: weekAgo.toISOString().slice(0, 10),
+                      to: today.toISOString().slice(0, 10)
                     }
                   }))
                 }}
@@ -553,8 +553,8 @@ export default function FilterPanel({
                   setLocalFilters(prev => ({
                     ...prev,
                     dateRange: {
-                      from: monthAgo.toISOString().split('T')[0],
-                      to: today.toISOString().split('T')[0]
+                      from: monthAgo.toISOString().slice(0, 10),
+                      to: today.toISOString().slice(0, 10)
                     }
                   }))
                 }}

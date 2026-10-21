@@ -1,4 +1,4 @@
-export const UNKNOWN_NODE_CODES: Record<number, string> = {
+export const UNKNOWN_NODE_CODES: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: '-9',
   2: '-99',
   3: '-999',

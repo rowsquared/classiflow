@@ -369,9 +369,10 @@ export default function LabelingPage() {
     setCurrentTaxonomyLevel(1) // Reset to level 1 when switching taxonomies
 
     // Load selected labels for the new taxonomy
-    if (sentence && taxonomies[index]) {
+    const taxonomy = taxonomies[index]
+    if (sentence && taxonomy) {
       const labels: SelectedLabel[] = sentence.annotations
-        .filter(ann => ann.taxonomy.key === taxonomies[index].key)
+        .filter(ann => ann.taxonomy.key === taxonomy.key)
         .map(ann => ({
           level: ann.level,
           nodeCode: ann.nodeCode,
@@ -668,7 +669,7 @@ export default function LabelingPage() {
       { active: 'text-rose-600', checkmark: 'text-rose-600' }, // Index 3: Rose
       { active: 'text-orange-600', checkmark: 'text-orange-600' } // Index 4: Orange
     ]
-    return colors[index % colors.length] || colors[0]
+    return colors[index % colors.length] ?? colors[0]!
   }
 
   const handleBackToQueue = () => {

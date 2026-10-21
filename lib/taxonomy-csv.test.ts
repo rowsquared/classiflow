@@ -14,15 +14,15 @@ describe('parseTaxonomyCsv', () => {
       ['011', '01', 2, true, '01.011'],
       ['02', null, 1, true, '02']
     ])
-    expect(nodes[0].synonyms).toEqual(['a', 'b'])
-    expect(nodes[1].synonyms).toEqual(['c', 'd'])
+    expect(nodes[0]?.synonyms).toEqual(['a', 'b'])
+    expect(nodes[1]?.synonyms).toEqual(['c', 'd'])
   })
 
   it('reports header problems', () => {
-    expect(parseTaxonomyCsv('id,label,level\n1,a,1').errors[0].message).toMatch(/Missing required columns: parent_id/)
-    expect(parseTaxonomyCsv(`${HEAD},extra\n1,a,,1,x`).errors[0].message).toMatch(/Disallowed columns: extra/)
-    expect(parseTaxonomyCsv(`${HEAD},label\n1,a,,1,b`).errors[0].message).toMatch(/Duplicate columns: label/)
-    expect(parseTaxonomyCsv(HEAD).errors[0].message).toMatch(/no data rows/)
+    expect(parseTaxonomyCsv('id,label,level\n1,a,1').errors[0]?.message).toMatch(/Missing required columns: parent_id/)
+    expect(parseTaxonomyCsv(`${HEAD},extra\n1,a,,1,x`).errors[0]?.message).toMatch(/Disallowed columns: extra/)
+    expect(parseTaxonomyCsv(`${HEAD},label\n1,a,,1,b`).errors[0]?.message).toMatch(/Duplicate columns: label/)
+    expect(parseTaxonomyCsv(HEAD).errors[0]?.message).toMatch(/no data rows/)
   })
 
   it('reports row problems with row numbers', () => {
@@ -52,7 +52,7 @@ describe('parseTaxonomyCsv', () => {
   })
 
   it('respects the taxonomy depth', () => {
-    expect(parseTaxonomyCsv([HEAD, '1,A,,1', '11,B,1,2'].join('\n'), { maxDepth: 1 }).errors[0].message).toMatch(
+    expect(parseTaxonomyCsv([HEAD, '1,A,,1', '11,B,1,2'].join('\n'), { maxDepth: 1 }).errors[0]?.message).toMatch(
       /from 1 to 1/
     )
   })
@@ -61,8 +61,8 @@ describe('parseTaxonomyCsv', () => {
     const existingNodes = new Map([['01', 1]])
     const ok = parseTaxonomyCsv([HEAD, '012,New,01,2'].join('\n'), { existingNodes })
     expect(ok.errors).toEqual([])
-    expect(ok.nodes[0].isLeaf).toBe(true)
+    expect(ok.nodes[0]?.isLeaf).toBe(true)
     const clash = parseTaxonomyCsv([HEAD, '01,Again,,1'].join('\n'), { existingNodes })
-    expect(clash.errors[0].message).toMatch(/already exists/)
+    expect(clash.errors[0]?.message).toMatch(/already exists/)
   })
 })

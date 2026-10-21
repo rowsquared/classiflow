@@ -44,8 +44,9 @@ const literal = (value: string) => `'${value.replace(/'/g, "''")}'`
 export async function ensureRole({ ownerUrl, user, password }: Config) {
   const prisma = connect(ownerUrl)
   try {
-    const [{ db, schema }] = await prisma.$queryRaw<Array<{ db: string; schema: string }>>`
+    const [row] = await prisma.$queryRaw<[{ db: string; schema: string }]>`
       SELECT current_database() AS db, current_schema() AS schema`
+    const { db, schema } = row
     const role = `"${user}"`
     const exists = await prisma.$queryRaw<unknown[]>`SELECT 1 FROM pg_roles WHERE rolname = ${user}`
     const statements = [

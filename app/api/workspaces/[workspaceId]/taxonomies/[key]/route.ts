@@ -9,7 +9,7 @@ import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
 import { audit } from '@/lib/audit'
 
-export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const PUT = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { key } = routeParams
     const formData = await req.formData()
@@ -156,7 +156,7 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
   }
 })
 
-export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { key } = routeParams
 

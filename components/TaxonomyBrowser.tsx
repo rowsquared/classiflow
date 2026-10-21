@@ -102,7 +102,7 @@ export default function TaxonomyBrowser({
     const normA = normalizeLabels(a)
     const normB = normalizeLabels(b)
     if (normA.length !== normB.length) return false
-    return normA.every((entry, idx) => entry.level === normB[idx].level && entry.code === normB[idx].code)
+    return normA.every((entry, idx) => entry.level === normB[idx]?.level && entry.code === normB[idx]?.code)
   }
 
   const [showLevelNames, setShowLevelNames] = useState(() => {
@@ -186,7 +186,7 @@ export default function TaxonomyBrowser({
         indicatorSelected: 'text-orange-600'
       }
     ]
-    return colors[index % colors.length] || colors[0]
+    return colors[index % colors.length] ?? colors[0]!
   }
 
   const colors = getTaxonomyColors(taxonomyIndex)
@@ -561,6 +561,7 @@ export default function TaxonomyBrowser({
       onNavigate?.(1, null)
     } else {
       const targetNode = breadcrumb[index]
+      if (!targetNode) return
       setCurrentLevel(targetNode.level + 1)
       setCurrentParent(targetNode.code)
       setBreadcrumb(breadcrumb.slice(0, index + 1))

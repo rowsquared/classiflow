@@ -79,7 +79,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       { active: 'text-rose-600' },
       { active: 'text-orange-600' }
     ]
-    return colors[index % colors.length] || colors[0]
+    return colors[index % colors.length] ?? colors[0]!
   }
 
   // Handle Unknown

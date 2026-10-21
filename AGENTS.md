@@ -149,7 +149,8 @@ their own session and role checks: start every handler with `requireSession()`
 from `lib/api-auth.ts` (identity only), `requirePlatformAdmin()`, or — for
 everything under `/api/workspaces/[workspaceId]` — `workspaceRoute(roles, ...)`
 / `requireWorkspace(workspaceId, ...roles)` (404 for inaccessible workspaces,
-403 for a forbidden role). The session and its user are read from the database on every call,
+403 for a forbidden role); a route with further segments names them,
+`workspaceRoute<'sentenceId'>(...)`. The session and its user are read from the database on every call,
 so use the returned `user`. Server pages use `requirePageUser(workspaceId, ...roles)` from
 `lib/server/page-user.ts`. Do not infer protection from an `/admin` UI, the
 proxy, or a neighboring endpoint.
@@ -210,6 +211,7 @@ lockfile together. Do not introduce a different package manager.
 | --- | --- |
 | TypeScript | `npm run typecheck` (TypeScript 7 native compiler, `--noEmit`) |
 | Lint | `npm run lint` |
+| Format | `npm run format` (Prettier; CI runs `npm run format:check`) |
 | Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
 | Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright; see `tests/e2e/README.md`) |

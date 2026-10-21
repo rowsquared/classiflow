@@ -68,7 +68,7 @@ describe('audit trail', () => {
       entityId: created.id
     })
     const [update] = await entries('member.updated')
-    expect(update.payload).toMatchObject({ role: { from: 'labeller', to: 'supervisor' }, passwordReset: true })
+    expect(update?.payload).toMatchObject({ role: { from: 'labeller', to: 'supervisor' }, passwordReset: true })
     const all = JSON.stringify(await entries())
     expect(all).not.toContain('temporary-pass-1')
     expect(all).not.toContain('another-pass-123')
@@ -137,9 +137,9 @@ describe('audit trail', () => {
     await download.text() // recorded once the whole file was sent
 
     const [assigned] = await entries('assignments.added')
-    expect(assigned.payload).toEqual({ records: 2, userIds: [labeller.id] })
+    expect(assigned?.payload).toEqual({ records: 2, userIds: [labeller.id] })
     const [exported] = await entries('export.downloaded')
-    expect(exported.payload).toMatchObject({ records: 2, status: 'all' })
+    expect(exported?.payload).toMatchObject({ records: 2, status: 'all' })
     expect(JSON.stringify(await entries())).not.toContain('record 0')
   })
 

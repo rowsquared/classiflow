@@ -13,8 +13,9 @@ export default function TaxonomyBrowser({ params }: { params: Promise<{ key: str
   const [trail, setTrail] = useState<Node[]>([])
   const [items, setItems] = useState<Node[]>([])
   const [q, setQ] = useState('')
-  const level = trail.length === 0 ? 1 : trail[trail.length - 1].level + 1
-  const parentCode = trail.length === 0 ? '' : String(trail[trail.length - 1].code)
+  const parent = trail.at(-1)
+  const level = parent ? parent.level + 1 : 1
+  const parentCode = parent ? String(parent.code) : ''
 
   useEffect(() => {
     if (!key) return

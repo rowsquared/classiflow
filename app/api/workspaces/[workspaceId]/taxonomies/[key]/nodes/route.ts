@@ -3,7 +3,7 @@ import { db, scopeWorkspaceId } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import { Prisma } from '@/lib/generated/prisma/client'
 
-export const GET = workspaceRoute([], async (req, { params: routeParams }) => {
+export const GET = workspaceRoute<'key'>([], async (req, { params: routeParams }) => {
   const { key } = routeParams
   const { searchParams } = new URL(req.url)
   const parentCodeRaw = searchParams.get('parentCode')

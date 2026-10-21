@@ -5,7 +5,7 @@ import { cancelAIJob } from '@/lib/ai-labeling'
 import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
 
-export const POST = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const POST = workspaceRoute<'jobId'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { jobId } = routeParams
     const job = await db().aILabelingJob.findUnique({

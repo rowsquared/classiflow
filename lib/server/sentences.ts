@@ -396,10 +396,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 
     return aiSuggestions.reduce(
       (acc, suggestion) => {
-        if (!acc[suggestion.sentenceId]) {
-          acc[suggestion.sentenceId] = []
-        }
-        acc[suggestion.sentenceId].push({
+        ;(acc[suggestion.sentenceId] ??= []).push({
           id: suggestion.id,
           level: suggestion.level,
           nodeCode: suggestion.nodeCode,

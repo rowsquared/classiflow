@@ -66,8 +66,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
 
     // Create one job per batch and launch monitors
     const jobs = []
-    for (let i = 0; i < batches.length; i++) {
-      const batchIds = batches[i]
+    for (const batchIds of batches) {
       const job = await db().aILabelingJob.create({
         data: {
           workspaceId: user.workspaceId,

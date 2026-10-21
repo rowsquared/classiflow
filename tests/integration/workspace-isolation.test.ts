@@ -27,8 +27,8 @@ let adminA: User, adminB: User, shared: User, platform: User
 let recordA: Sentence, recordB: Sentence
 let taxA: Taxonomy, taxB: Taxonomy
 
-const ctx = (workspace: Workspace, extra: Record<string, string> = {}) => ({
-  params: Promise.resolve({ workspaceId: workspace.id, ...extra })
+const ctx = <T extends Record<string, string>>(workspace: Workspace, extra?: T) => ({
+  params: Promise.resolve({ workspaceId: workspace.id, ...extra } as { workspaceId: string } & T)
 })
 
 beforeAll(async () => {

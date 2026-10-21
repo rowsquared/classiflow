@@ -4,7 +4,7 @@ import { workspaceRoute } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
 
-export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
+export const DELETE = workspaceRoute<'id'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { id } = routeParams
 

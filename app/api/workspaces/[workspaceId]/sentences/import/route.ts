@@ -141,8 +141,7 @@ export const POST = workspaceRoute(
       const providedIds = new Set<string>()
       const rowErrors: { row: number; message: string }[] = []
 
-      for (let idx = 0; idx < records.length; idx++) {
-        const record = records[idx]
+      for (const [idx, record] of records.entries()) {
         const rowNum = idx + 2 // +2 for header and 0-index
 
         // Handle ID

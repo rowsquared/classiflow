@@ -31,15 +31,12 @@ export function checkLabelPath(labels: LabelInput[], nodes: Map<string, PathNode
 
   const depth = Math.min(maxDepth || MAX_LEVELS, MAX_LEVELS)
   const sorted = [...labels].sort((a, b) => a.level - b.level)
-  for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i].level !== i + 1) {
-      return 'Labels must cover levels 1..N exactly once each'
-    }
+  if (sorted.some((label, i) => label.level !== i + 1)) {
+    return 'Labels must cover levels 1..N exactly once each'
   }
   if (sorted.length > depth) return `This taxonomy has at most ${depth} levels`
 
-  for (let i = 0; i < sorted.length; i++) {
-    const { level, nodeCode } = sorted[i]
+  for (const [i, { level, nodeCode }] of sorted.entries()) {
     const isLast = i === sorted.length - 1
 
     if (isUnknownNodeCode(nodeCode)) {
@@ -54,7 +51,7 @@ export function checkLabelPath(labels: LabelInput[], nodes: Map<string, PathNode
     if (!node) return `Code ${nodeCode} does not exist in this taxonomy`
     if (node.level !== level) return `Code ${nodeCode} is at level ${node.level}, not ${level}`
 
-    const expectedParent = i === 0 ? null : sorted[i - 1].nodeCode
+    const expectedParent = sorted[i - 1]?.nodeCode ?? null
     if ((node.parentCode || null) !== expectedParent) {
       return i === 0
         ? `Code ${nodeCode} is not a top-level code`
