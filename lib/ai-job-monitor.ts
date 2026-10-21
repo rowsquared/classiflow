@@ -26,10 +26,10 @@ import { hostname } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { db, withWorkspace } from '@/lib/workspace/db'
-import { startAIJob, fetchAIJobStatus } from './ai-labeling'
+import { startLabelingJob, startLearningJob, fetchAIJobStatus } from './ai-labeling'
 import type { Prisma } from '@/lib/generated/prisma/client'
 import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS, aiSourceSlug, getUnknownCodeForLevel } from './constants'
-import { parseLabelingResults } from './ai-results'
+import { parseLabelingResults } from './contracts/taxomind'
 import { buildFieldMap } from './ai-utils'
 
 // ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ async function releaseLease(workspaceId: string, jobId: string, kind: JobKind) {
 
 type JobRecord = NonNullable<Awaited<ReturnType<typeof loadJobRecord>>>
 
-const API_PATH: Record<JobKind, string> = { labeling: '/label', learning: '/learn' }
+const API_RESOURCE = { labeling: 'label', learning: 'learn' } as const
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -218,7 +218,7 @@ async function startLabeling(job: JobRecord): Promise<string> {
 
   if (payloadSentences.length === 0) throw new Error('No valid sentences to process')
 
-  const externalJobId = await startAIJob('/label', {
+  const externalJobId = await startLabelingJob({
     taxonomyKey: job.taxonomy.key,
     sourceSlug: aiSourceSlug(job.workspaceId),
     batchId: job.id,
@@ -281,7 +281,7 @@ async function startLearning(job: JobRecord): Promise<string> {
   const sentencesPayload = Array.from(sentencesMap.values())
   if (sentencesPayload.length === 0) throw new Error('No valid annotations to send')
 
-  const externalJobId = await startAIJob('/learn', {
+  const externalJobId = await startLearningJob({
     taxonomyKey: job.taxonomy.key,
     sourceSlug: aiSourceSlug(job.workspaceId),
     sentences: sentencesPayload
@@ -359,16 +359,15 @@ async function pollUntilComplete(
     }
 
     try {
-      const status = await fetchAIJobStatus(`${API_PATH[kind]}/${externalJobId}/status`)
+      const status = await fetchAIJobStatus(API_RESOURCE[kind], externalJobId)
       consecutiveErrors = 0
-      const normalized = (status.status || '').toLowerCase()
 
-      const progress = typeof status.progress === 'number' ? status.progress : 0
+      const progress = status.progress ?? 0
       await updateJobRecord(workspaceId, jobId, kind, {
         processedSentences: Math.round(progress * totalSentences)
       })
 
-      if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
+      if (status.status === 'completed') {
         // Completion is a conditional transition: if the job was cancelled while
         // we waited for the service, nothing is written. Results and status
         // commit together, and only while the workspace is active (write: an
@@ -382,7 +381,7 @@ async function pollUntilComplete(
             : await tx.aILabelingJob.updateMany({ where, data })
           if (claimed.count === 0) return false
           if (kind === 'labeling') {
-            await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, sentenceIds, status.result || status)
+            await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, sentenceIds, status.result)
           }
           return true
         }, { write: true, timeoutMs: 120_000 })
@@ -396,8 +395,16 @@ async function pollUntilComplete(
         return
       }
 
-      if (normalized === 'failed' || normalized === 'error') {
+      if (status.status === 'failed') {
         await failIfActive(workspaceId, jobId, kind, status.error || 'External AI job failed')
+        return
+      }
+
+      // Cancelled on Taxomind's side. When the cancel came from classiflow, the
+      // job still ends up cancelled: the cancel routes write that status
+      // unconditionally, and failIfActive leaves a cancelled job alone.
+      if (status.status === 'canceled') {
+        await failIfActive(workspaceId, jobId, kind, status.error || 'External AI job was cancelled in the AI service')
         return
       }
     } catch (error) {
@@ -453,10 +460,10 @@ async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, m
 }
 
 /**
- * Validates the completed labeling job's result (lib/ai-results.ts) and stores
- * the suggestions, inside the completion transaction. Only the job's own
- * records are touched, and only codes that exist in the taxonomy (or are the
- * level's unknown code) are kept.
+ * Validates the completed labeling job's result (lib/contracts/taxomind.ts)
+ * and stores the suggestions, inside the completion transaction. Only the
+ * job's own records are touched, and only codes that exist in the taxonomy (or
+ * are the level's unknown code) are kept.
  */
 async function storeLabelingResults(
   tx: Prisma.TransactionClient,
