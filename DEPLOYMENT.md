@@ -69,7 +69,16 @@ Optional AI labeling (Taxomind service):
 - AI_JOB_POLL_TIMEOUT_MS
 - AI_SOURCE_SLUG — scopes taxonomy keys per deployment. Set to the subdomain-domain of your app host (strip `www` and the final TLD, join with `-`). Example: `https://classiflow.app.rowsquared.org` → `classiflow-app-rowsquared`. If empty, the AI API infers it from the request host.
 
+Optional:
+- INTERNAL_APP_URL: where server-rendered pages reach the app's own API. Defaults to `http://127.0.0.1:$PORT`; only set it if the server does not listen on loopback.
+
 See `ENV_SETUP.md` for details.
+
+## Reverse proxy
+
+- Terminate TLS at the proxy and forward `Host` (or `X-Forwarded-Host`) unchanged: state-changing API calls whose browser `Origin` does not match are refused (403).
+- Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files), and a rate limit on `POST /api/auth/callback/credentials`: the built-in login throttle is per process only.
+- Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`; a Content-Security-Policy is not set yet.
 
 ## Health Check
 

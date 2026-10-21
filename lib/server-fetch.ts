@@ -1,13 +1,11 @@
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 
-async function buildBaseUrl() {
-  if (process.env.NEXT_PUBLIC_BASE_URL) {
-    return process.env.NEXT_PUBLIC_BASE_URL
-  }
-  const headerStore = await headers()
-  const protocol = headerStore.get('x-forwarded-proto') ?? 'http'
-  const host = headerStore.get('host') ?? 'localhost:3000'
-  return `${protocol}://${host}`
+// Server components call this app's own API with the user's cookies. The target
+// is fixed to this server (loopback), never derived from the request's Host or
+// X-Forwarded-* headers: a spoofed Host must not redirect the session cookie to
+// another server. INTERNAL_APP_URL overrides it if the app listens elsewhere.
+function buildBaseUrl() {
+  return process.env.INTERNAL_APP_URL || `http://127.0.0.1:${process.env.PORT || 3000}`
 }
 
 async function buildCookieHeader() {
@@ -21,7 +19,7 @@ export async function serverFetchJSON<T>(
   init: RequestInit = {},
   { silent } = { silent: false }
 ): Promise<T | null> {
-  const baseUrl = await buildBaseUrl()
+  const baseUrl = buildBaseUrl()
   const cookieHeader = await buildCookieHeader()
   const headersInit: HeadersInit = {
     ...(init.headers || {}),

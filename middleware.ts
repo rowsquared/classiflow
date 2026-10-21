@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { auth } from './lib/auth'
+import { isCrossSiteMutation } from './lib/cross-site'
 
 export default async function middleware(request: NextRequest) {
   const session = await auth()
@@ -8,8 +9,14 @@ export default async function middleware(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname === '/login'
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   
-  // Allow API routes (they handle their own auth)
+  // API routes handle their own auth (lib/api-auth.ts). Here they only get a
+  // cross-site check: a browser request that changes data must come from this
+  // site. Requests without an Origin header (server-side fetches, scripts) pass;
+  // Auth.js checks its own routes.
   if (isApiRoute) {
+    if (isCrossSiteMutation(request)) {
+      return NextResponse.json({ error: 'Cross-site request refused' }, { status: 403 })
+    }
     return NextResponse.next()
   }
   

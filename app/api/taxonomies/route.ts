@@ -88,10 +88,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Taxonomies API error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: String(error) 
-    }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Failed to load taxonomies' }, { status: 500 })
   }
 }
 

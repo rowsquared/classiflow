@@ -112,11 +112,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Progress timeline error:', error)
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ 
-      error: errorMessage,
-      details: error instanceof Error ? error.stack : String(error)
-    }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to load timeline' }, { status: 500 })
   }
 }
 

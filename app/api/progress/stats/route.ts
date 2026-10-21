@@ -386,11 +386,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Progress stats error:', error)
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ 
-      error: errorMessage,
-      stack: error instanceof Error ? error.stack : undefined 
-    }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to load progress statistics' }, { status: 500 })
   }
 }
 

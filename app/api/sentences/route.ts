@@ -455,12 +455,6 @@ export async function GET(request: Request) {
       meta: error?.meta,
       stack: error?.stack
     })
-    return NextResponse.json({ 
-      error: error?.message || String(error),
-      details: process.env.NODE_ENV === 'development' ? {
-        code: error?.code,
-        meta: error?.meta
-      } : undefined
-    }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to load records' }, { status: 500 })
   }
 }

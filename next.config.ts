@@ -4,17 +4,13 @@ const nextConfig: NextConfig = {
 	reactStrictMode: true,
 	// Enable standalone output for Docker deployments
 	output: 'standalone',
-	// Disable ESLint during production builds (warnings are acceptable per PUBLISHING_CHECKLIST.md)
+	// Lint runs in CI (blocking), not in the image build
 	eslint: {
 		ignoreDuringBuilds: true,
 	},
 	// Disable TypeScript errors during builds (production deployment should succeed)
 	typescript: {
 		ignoreBuildErrors: true,
-	},
-	// Ensure proper handling of environment variables
-	env: {
-		CUSTOM_KEY: process.env.CUSTOM_KEY,
 	},
 	// Security headers
 	async headers() {
@@ -36,7 +32,11 @@ const nextConfig: NextConfig = {
 					},
 					{
 						key: 'Referrer-Policy',
-						value: 'origin-when-cross-origin'
+						value: 'strict-origin-when-cross-origin'
+					},
+					{
+						key: 'Permissions-Policy',
+						value: 'camera=(), microphone=(), geolocation=()'
 					},
 				],
 			},

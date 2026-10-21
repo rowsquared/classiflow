@@ -271,6 +271,30 @@ oversized/malformed inputs return controlled 4xx responses; secrets/internal
 errors are absent from responses; training data has tested access and deletion
 rules and remains out of source control/images.
 
+**Status (21 Oct 2026): mostly done.**
+
+- [x] `lib/server-fetch.ts` always targets this server on loopback
+      (`INTERNAL_APP_URL` override); request Host/X-Forwarded-* no longer
+      choose where the session cookie is sent. Verified in the browser.
+- [x] Cross-site mutations: middleware refuses non-GET `/api` requests whose
+      `Origin` differs from `Host`/`X-Forwarded-Host` (403; unit tests in
+      `lib/cross-site.test.ts`, verified live with curl). Auth.js routes keep
+      their own CSRF protection; origin-less requests rely on SameSite cookies.
+- [x] Bounds: 50 MB upload cap, queue page/limit clamped (1..10000) and sort
+      order validated, bulk/assign arrays ≤ 10000, comment/label/password
+      lengths, date params validated (progress, labelling start time).
+- [x] Responses to non-admin callers no longer carry exception messages or
+      stack traces (queue, stats, progress, taxonomies); details stay in logs.
+      Admin-only AI routes still return service messages on purpose.
+- [x] `CUSTOM_KEY` removed from the public Next `env`; `Referrer-Policy`
+      tightened and `Permissions-Policy` added; proxy duties documented in
+      DEPLOYMENT.md ("Reverse proxy").
+- [x] Training upload: removed with the external-training feature (no
+      `public/training-data` writes remain in the code).
+- [ ] CSP (start in report-only; the layout has an inline script).
+- [ ] Verify live proxy: Host forwarding, HSTS, body limit, login rate limit
+      (needs access to the Coolify host).
+
 ## W05 Labeling integrity and concurrency
 
 **Priority:** P1. **Dependencies:** W01 scope helpers; coordinate migrations with

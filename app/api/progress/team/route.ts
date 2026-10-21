@@ -212,8 +212,7 @@ export async function GET(req: NextRequest) {
 
   } catch (error) {
     console.error('Team stats error:', error)
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to load team statistics' }, { status: 500 })
   }
 }
 

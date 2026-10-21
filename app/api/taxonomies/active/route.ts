@@ -30,14 +30,7 @@ export async function GET() {
       meta: error?.meta,
       stack: error?.stack
     })
-    return NextResponse.json({ 
-      ok: false, 
-      error: error?.message || String(error),
-      details: process.env.NODE_ENV === 'development' ? {
-        code: error?.code,
-        meta: error?.meta
-      } : undefined
-    }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Failed to load taxonomies' }, { status: 500 })
   }
 }
 
