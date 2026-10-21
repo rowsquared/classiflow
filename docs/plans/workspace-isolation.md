@@ -7,9 +7,9 @@ implementation. This document does not change that workstream's files.
 
 ## Implementation status (handover, 21 October 2026)
 
-Work in progress on branch `feat/workspace-isolation` (not merged; `staging`
-is green without it). Built on the landed modernization (Next 16, Prisma 7,
-Better Auth, `lib/server/*`).
+Merged into `staging` as `c7b9c53` (P1–P3, P5 first cut), followed by
+`827b9a3` (accounts page, member status, runtime role required). Built on the
+landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
 
 **Done (server side, typechecks):**
 
@@ -86,18 +86,20 @@ Better Auth, `lib/server/*`).
 
 1. ~~e2e~~ done: the seed creates workspace `e2e-workspace`; all 10
    journeys pass against a production build.
-2. **Run the integration app client as the runtime role** (today only the
-   dedicated RLS test does), so every suite exercises row security.
-3. **UI polish:** Team page shows member status and suspended members
-   (API returns `status`), platform-only actions (adding existing accounts,
-   password reset for shared accounts) are not surfaced yet; a platform
-   accounts page (`/api/users`) has no UI yet.
-4. **Docs:** AGENTS.md, docs/security.md (access matrix by workspace role),
-   ENV_SETUP (AI_SOURCE_SLUG required with AI), DEPLOYMENT (runtime role
-   mandatory in production, RLS), user-management plan rework (see below).
-5. Later packages: P4 invitations (with user management U7), P6 per-workspace
-   AI connections and job input tables, P7 lifecycle polish. External AI
-   cancellation on archive is not sent yet.
+2. ~~Runtime role in tests~~ done (`827b9a3`): the integration suites run
+   the application as the least-privilege role.
+3. ~~UI polish~~ done (`827b9a3`, `5da2db7`): member status, suspend and
+   reactivate, platform admins add existing accounts, `/accounts` page.
+4. ~~Docs~~ done: AGENTS.md, docs/security.md, ENV_SETUP, DEPLOYMENT,
+   user-management revision.
+5. **Still open:** P4 invitations (with user management U7); P6
+   per-workspace AI connections (encrypted credentials, versions), typed job
+   input tables, persisted taxonomy-sync job, per-workspace job ceilings;
+   P7 external AI cancellation on archive, transactional audit for
+   membership changes, import/lint boundary check against the `prisma`
+   singleton, restore check; a searchable header switcher (today: "Switch
+   workspace" link to the chooser); Taxomind namespace isolation verified
+   live (release gate for AI).
 
 ## Recommendation and agreed requirements
 

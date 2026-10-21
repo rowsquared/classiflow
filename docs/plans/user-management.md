@@ -24,13 +24,70 @@ through this mapping:
 **Decisions taken (defaults proposed in "Decisions for the maintainer"; change
 them here if needed):** 1. removal does not unassign by default (checkbox);
 2. whole email lower-cased (done); 3. minimum 10 characters for new
-passwords; 4. import is create-only; 5. invitation links only, passwords are
-never mailed; 6. generated passwords: one-time copy and a browser-built CSV
-download; 7. last seen visible to workspace admins only; 8. n8n transport only
+passwords; 4. import is create-only; 5. invitation links and emailed generated
+temporary passwords are supported (see maintainer revision below);
+6. generated passwords: one-time copy and a browser-built CSV
+download; 7. last seen and invitation resending are workspace-admin-only
+(platform admins retain administrative access); 8. n8n transport only
 (no SMTP dependency); 9. invitations 72 h, password links 60 min;
 10. classiflow gets its own `N8N_EMAIL_WEBHOOK_SECRET` value.
 
 **Order now:** U1 → U5 → U3 password policy → U6 → U2 → U7 (a, c, b) → U4.
+
+### Maintainer revision: temporary-password email (21 October 2026)
+
+The maintainer explicitly approved generated temporary passwords by email,
+as in survey-hub, alongside invitation links. This revision takes precedence
+over the older links-only text and outbox assumptions below. This is planned
+U7/U4 behavior, not a statement that email is implemented.
+
+- **Permissions:** only workspace admins may resend invitations within their
+  workspace; supervisors may not. Platform admins retain administrative access.
+  Credential actions still obey the local-account rule above. Adding an
+  existing shared identity to a workspace must never generate, replace or
+  email a password for that identity.
+- **Create form:** when mail is configured, offer "Send invitation link" or
+  "Generate and email temporary password"; retain the no-mail handover option.
+  Generate the temporary password on the server using the shared policy and
+  cryptographic randomness. Mail the username, temporary password, trusted
+  sign-in URL, workspace and intended role to the stored email address.
+- **Forced change:** set `mustResetPassword = true`; the person must choose a
+  different password before accessing application data. The temporary password
+  stops working after that change. It is not a single-use token and can still
+  authenticate until the password is changed; do not describe it as one-use.
+- **Survey-hub reference checked:** `backend/apps/users/emails.py` composes
+  escaped HTML and plain text, excludes credentials from the preheader,
+  sends only after account commit, and reports delivery separately from
+  account creation. Its import design in
+  `docs/legacy/USER_IMPORT_PLAN_2026-09-18.md` persists a mail-attempt claim
+  before sending and never recovers a lost password by regenerating it.
+- **Credential delivery:** persist a metadata-only attempt claim before
+  calling the transport, and send the in-memory password after account commit.
+  Never persist plaintext or encrypted passwords, message bodies or passwords
+  in job arguments, logs, transport error details, audit payloads or status
+  responses. Only the account's password hash is stored. Credential mail cannot
+  use the generic recoverable outbox worker: it cannot rebuild the original
+  password at send time. Delivery failure must not undo account creation.
+- **Outcomes and recovery:** distinguish `sent`, definite `failed`, and
+  `unknown` (timeout/network/server error or an abandoned sending claim).
+  Never automatically retry credential mail, regenerate a password, or change
+  an account password on request replay. A crash before sending may leave
+  "created; email not attempted". Offer a password link or an explicit,
+  authorized temporary-password reset; warn about possible prior delivery
+  when the outcome is unknown. Invitation-link resending remains separate.
+- **CSV:** add `access = email_password` for a newly created account (mail
+  required); retain `invite`, `generate` and `password`. Generate only at
+  commit, hash before the account transaction, and deliver after commit with
+  a durable claim per created account. All-or-nothing account creation may
+  remain, but mail outcomes are per row. Persist an import execution identity
+  and row outcomes without secrets so duplicate/concurrent/replayed commits
+  cannot create accounts or send credentials twice. Dry runs never generate
+  passwords or send mail. Invitation mail may use the recoverable link outbox;
+  credential mail must use the in-memory, non-retrying delivery path above.
+- **Verification for U7/U4:** cover both create and CSV flows, forced change,
+  supervisor denial, shared-account protection, duplicate/concurrent requests,
+  crash before/after the send claim, lost responses, uncertain delivery, and
+  absence of passwords in persisted metadata, logs and status/replay responses.
 
 ### Implementation status
 
@@ -38,22 +95,25 @@ download; 7. last seen visible to workspace admins only; 8. n8n transport only
   written by workspace requests and the workspace layout, passive for the AI
   job badge poll; "Last seen" and "Last login" on the Team page;
   `tests/integration/last-seen.test.ts`.
-- **U3 partly done:** `lib/password-policy.ts` (10–256 characters, not common,
-  not built from username/email/name; the forced change must differ) applied
-  to every password-setting path including scripts and Better Auth's own
-  minimum; suspension = removal from a workspace; ban = everywhere. Open:
-  "also unassign open records" option on removal.
+- **U2 done** (`5da2db7`): search, filters, sorting (`lib/team-table.ts`,
+  unit tested), member drawer with role/supervisor/temporary password and
+  audit links, show-once password dialog, toasts; e2e journeys for Team and
+  Accounts. Mail-dependent parts (email indicator, invitation mode, resend)
+  wait for U7.
+- **U3 done** except changing a member's email: `lib/password-policy.ts`
+  (10–256 characters, not common, not built from username/email/name; the
+  forced change must differ) applied to every password-setting path
+  including scripts and Better Auth's own minimum; suspension = removal from
+  a workspace; ban = everywhere; removal can unassign open records (U2).
 - **U5 done:** "Sign out other devices" (user menu, Better Auth
   `revokeOtherSessions`), "Sign out everywhere" for platform admins on
   `/accounts` (`user.sessions_revoked`).
 - **U6 partly done:** `/w/[id]/admin/audit` reads `action`, `entityType`,
-  `entityId`, `actorId` from the URL. Open: per-member history in the drawer
-  (U2), mail events (U7).
-- **Next:** U2 Team page overhaul (search, filters, sorting via
-  `lib/team-table.ts` with unit tests, detail drawer with history links,
-  generated temporary passwords, Toast/Modal instead of alert/confirm), then
-  U7 mail (n8n transport + outbox, Better Auth reset flow for password links
-  and invitations), then U4 CSV member import.
+  `entityId`, `actorId` from the URL; the drawer links to it. Open: mail
+  events (U7), "created by" in the drawer.
+- **Next:** U7a mail transport and outbox, then U7c password links and U7b
+  invitations (Better Auth reset flow) with the temporary-password email
+  path from the maintainer revision, then U4 CSV member import.
 **Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
 and outgoing email for accounts (invitations, forgotten passwords, notices).
 **Reference:** [`rowsquared/survey-hub`](https://github.com/rowsquared/survey-hub/tree/dev)
@@ -623,15 +683,15 @@ section of [AGENTS.md](../../AGENTS.md) when the rules change.
    are not affected until they are next changed.
 4. **Import scope:** create-only (proposed), or also "update existing users"
    (role/supervisor) from the same file? Survey-hub deliberately never updates.
-5. **Invitation links vs mailed passwords:** this plan proposes links only and
-   never mails a password. Survey-hub mails the temporary password. Keep the
-   option to mail passwords as well (adds the at-most-once machinery back), or
-   links only?
+5. **Resolved: invitation links and mailed temporary passwords.** Support
+   generated temporary-password email for new accounts, with forced password
+   change, as well as invitation links. See the maintainer revision above for
+   workspace permissions and credential-delivery/recovery requirements.
 6. **Credentials CSV download:** acceptable to offer generated passwords as a
    one-time browser download, or copy-only?
-7. **Supervisors:** should supervisors see last-seen for their subtree (on
-   the progress team view), or is it admin-only? Should supervisors be able to
-   resend an invitation to someone in their team?
+7. **Resolved: workspace admins only.** Last-seen visibility and invitation
+   resending are restricted to workspace admins; supervisors cannot resend.
+   Platform admins retain administrative access.
 8. **SMTP fallback:** n8n only (no new dependency), or also SMTP via
    `nodemailer` for self-hosters?
 9. **Link lifetimes:** invitations 72 hours, password links 60 minutes?
