@@ -15,6 +15,7 @@ import {
   workspaceInvitationMail,
   type MailTemplate
 } from './templates'
+import { logger } from '@/lib/logger'
 
 /**
  * The outbox (OutgoingMail): one row per mail, metadata only. A mail is queued
@@ -108,9 +109,10 @@ export async function deliverMail(ids: string[]): Promise<void> {
       const built = await buildMessage(row)
       result = 'skip' in built ? { outcome: 'failed', detail: built.skip } : await sendMail(built)
     } catch (error) {
-      console.error(
-        `[mail] could not send ${row.purpose} mail ${row.id}:`,
-        error instanceof Error ? error.message : error
+      // The message only: the error must not carry the mail's content.
+      logger.error(
+        { purpose: row.purpose, mailId: row.id, error: error instanceof Error ? error.message : String(error) },
+        'Could not send mail'
       )
       result = { outcome: 'unknown', detail: 'Unexpected error while sending' }
     }
@@ -365,7 +367,7 @@ let timer: NodeJS.Timeout | null = null
 export function startOutboxRecovery() {
   if (timer) return
   timer = setInterval(() => {
-    recoverOutbox().catch(error => console.error('[mail] outbox recovery failed:', error))
+    recoverOutbox().catch(error => logger.error({ err: error }, 'Mail outbox recovery failed'))
   }, RECOVERY_INTERVAL_MS)
   timer.unref?.()
 }

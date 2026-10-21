@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { db } from '@/lib/workspace/db'
 import type { CaughtError } from '@/lib/utils'
+import { logError } from '@/lib/logger'
 
 export const GET = workspaceRoute<'jobId'>(['admin'], async (req, { params: routeParams }) => {
   try {
@@ -21,7 +22,7 @@ export const GET = workspaceRoute<'jobId'>(['admin'], async (req, { params: rout
     return NextResponse.json({ ok: true, job })
   } catch (caught) {
     const error = caught as CaughtError
-    console.error('Failed to fetch AI labeling job:', error)
+    await logError('Failed to fetch AI labeling job', error)
     return NextResponse.json({ error: error?.message || 'Failed to fetch job' }, { status: 500 })
   }
 })

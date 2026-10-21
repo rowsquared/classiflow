@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { readUpload } from '@/lib/upload'
+import { logError } from '@/lib/logger'
 
 // Dry run for taxonomy creation/replacement: the same parser the commit uses.
 export const POST = workspaceRoute(['admin'], async (req, { user }) => {
@@ -37,7 +38,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       recordCount: nodes.length
     })
   } catch (caught) {
-    console.error('Validation error:', caught)
+    await logError('Taxonomy validation failed', caught)
     return NextResponse.json(
       {
         ok: false,

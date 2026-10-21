@@ -6,6 +6,7 @@ import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connecti
 import { AI_LEARNING_BATCH_SIZE, AI_LEARNING_MIN_NEW_ANNOTATIONS } from '@/lib/constants'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
+import { logError, requestLogger } from '@/lib/logger'
 
 const learnSchema = z.object({
   taxonomyKey: z.string()
@@ -127,9 +128,15 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       }
     })
 
-    console.log(
-      `✅ Created ${jobs.length} AI learning job(s) for taxonomy ${taxonomy.key} ` +
-        `(${allSentenceIds.length} sentences with ${annotations.length} annotations, batches of ${AI_LEARNING_BATCH_SIZE})`
+    ;(await requestLogger()).info(
+      {
+        jobs: jobs.length,
+        taxonomy: taxonomy.key,
+        records: allSentenceIds.length,
+        annotations: annotations.length,
+        batchSize: AI_LEARNING_BATCH_SIZE
+      },
+      'Created AI learning jobs'
     )
 
     await audit({
@@ -148,7 +155,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to start AI learning job'
-    console.error('AI learning error:', error)
+    await logError('Failed to start AI learning', error)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 })

@@ -11,6 +11,7 @@ import {
   encryptCredential
 } from '@/lib/ai-credentials'
 import { taxomindClient, type TaxomindClient } from '@/lib/ai-labeling'
+import { logger } from '@/lib/logger'
 
 /**
  * Per-workspace AI connections (docs/plans/workspace-isolation.md, "Optional
@@ -126,7 +127,7 @@ export async function ensureEnvEndpoint(): Promise<void> {
   try {
     baseUrl = normalizeEndpointUrl(raw)
   } catch (error) {
-    console.error(`[ai] AI_LABELING_API_URL is not usable: ${error instanceof Error ? error.message : error}`)
+    logger.error({ err: error }, 'AI_LABELING_API_URL is not usable')
     return
   }
   await prisma.aIEndpoint.upsert({

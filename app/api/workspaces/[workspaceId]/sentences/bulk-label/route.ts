@@ -8,6 +8,7 @@ import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
 import { audit } from '@/lib/audit'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
+import { logError } from '@/lib/logger'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
@@ -200,7 +201,7 @@ export const POST = workspaceRoute([], async (req, { user }) => {
     if (error instanceof MissingRecordError) {
       return NextResponse.json({ ok: false, error: 'One or more records do not exist' }, { status: 404 })
     }
-    console.error('Bulk label error:', error)
+    await logError('Bulk label failed', error)
     return NextResponse.json(
       {
         ok: false,

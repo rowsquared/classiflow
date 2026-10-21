@@ -6,6 +6,7 @@ import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connecti
 import { AI_LABELING_BATCH_SIZE } from '@/lib/constants'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
+import { logError, requestLogger } from '@/lib/logger'
 
 const startSchema = z.object({
   taxonomyKey: z.string(),
@@ -112,9 +113,9 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     // Queued; admitted up to the job ceilings once committed (lib/ai-job-monitor.ts).
     afterCommit(scheduleAIJobs)
 
-    console.log(
-      `✅ Created ${jobs.length} AI labeling job(s) for taxonomy ${taxonomy.key} ` +
-        `(${allSentenceIds.length} sentences in batches of ${AI_LABELING_BATCH_SIZE})`
+    ;(await requestLogger()).info(
+      { jobs: jobs.length, taxonomy: taxonomy.key, records: allSentenceIds.length, batchSize: AI_LABELING_BATCH_SIZE },
+      'Created AI labeling jobs'
     )
 
     await audit({
@@ -127,7 +128,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     return NextResponse.json({ ok: true, jobs, totalJobs: jobs.length })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to start AI labeling job'
-    console.error('Failed to start AI labeling job:', error)
+    await logError('Failed to start AI labeling job', error)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 })
@@ -168,7 +169,7 @@ export const GET = workspaceRoute(['admin'], async (req, { user }) => {
     })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to fetch jobs'
-    console.error('Failed to fetch AI labeling jobs:', error)
+    await logError('Failed to fetch AI labeling jobs', error)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 })

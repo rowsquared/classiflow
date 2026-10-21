@@ -47,6 +47,7 @@ import type { TaxomindClient } from './ai-labeling'
 import { connectionClient, ensureEnvEndpoint } from './ai-connections'
 import { deploymentKeyring } from './ai-credentials'
 import { buildFieldMap } from './ai-utils'
+import { logger } from '@/lib/logger'
 
 // ---------------------------------------------------------------------------
 // Process state
@@ -186,7 +187,7 @@ async function releaseLease(workspaceId: string, jobId: string, kind: JobKind) {
  * monitoring them. Call after committing new jobs; safe to call often.
  */
 export function scheduleAIJobs(): void {
-  admitQueuedJobs().catch(error => console.error('[admission] failed:', error))
+  admitQueuedJobs().catch(error => logger.error({ err: error }, 'AI job admission failed'))
 }
 
 export async function admitQueuedJobs(): Promise<void> {
@@ -230,7 +231,7 @@ export async function ensureJobsMonitored() {
     SELECT kind, id, "workspaceId" FROM app_recoverable_ai_jobs(${utcWallTime(new Date())}::timestamp)`
   for (const job of jobs) {
     if (monitors.has(job.id)) continue
-    console.log(`[recovery] Taking over ${job.kind} job ${job.id}`)
+    logger.info({ kind: job.kind, jobId: job.id }, 'Taking over AI job')
     runMonitor(job.id, job.kind, job.workspaceId)
   }
   await admitQueuedJobs()
@@ -249,13 +250,13 @@ export function startJobRecovery() {
   try {
     keysConfigured = deploymentKeyring() !== null
   } catch (error) {
-    console.error(`[ai] ${error instanceof Error ? error.message : error}; AI jobs will not run`)
+    logger.error({ err: error }, 'AI credential keys are not usable; AI jobs will not run')
   }
   if (!keysConfigured) return
-  ensureEnvEndpoint().catch(error => console.error('[ai] could not register AI_LABELING_API_URL:', error))
+  ensureEnvEndpoint().catch(error => logger.error({ err: error }, 'Could not register AI_LABELING_API_URL'))
   installShutdownHandler()
   const tick = () => {
-    ensureJobsMonitored().catch(error => console.error('[recovery] failed:', error))
+    ensureJobsMonitored().catch(error => logger.error({ err: error }, 'AI job recovery failed'))
   }
   globalAny.__jobRecoveryTimer = setInterval(tick, RECOVERY_CHECK_INTERVAL_MS)
   globalAny.__jobRecoveryTimer.unref?.()
@@ -287,9 +288,9 @@ function installShutdownHandler() {
   const onSignal = (signal: NodeJS.Signals) => {
     releaseAllLeases()
       .then(released => {
-        if (released > 0) console.log(`[ai] ${signal}: released ${released} AI job lease(s)`)
+        if (released > 0) logger.info({ signal, released }, 'Released AI job leases')
       })
-      .catch(error => console.error('[ai] could not release AI job leases:', error))
+      .catch(error => logger.error({ err: error }, 'Could not release AI job leases'))
       .finally(() => {
         // Next.js exits on its own after closing the server, unless told to
         // leave signals to the application.
@@ -311,10 +312,7 @@ export async function cancelExternalJob(
     const { client } = await connectionClient(workspaceId, connectionVersionId)
     await client.cancelJob(API_RESOURCE[kind], externalJobId)
   } catch (error) {
-    console.warn(
-      `[ai] Could not cancel external ${kind} job ${externalJobId}:`,
-      error instanceof Error ? error.message : error
-    )
+    logger.warn({ kind, externalJobId, err: error }, 'Could not cancel external AI job')
   }
 }
 
@@ -480,7 +478,7 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       await pollUntilComplete(job, externalJobId, client, kind)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      console.error(`[monitor] ${kind} job ${jobId} failed: ${msg}`)
+      logger.error({ kind, jobId, err: error }, 'AI job failed')
       try {
         await failIfActive(workspaceId, jobId, kind, msg)
       } catch {
@@ -510,7 +508,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
   while (true) {
     if (!(await isStillProcessing(workspaceId, jobId, kind))) return // cancelled or finished elsewhere
     if (!(await claimLease(workspaceId, jobId, kind))) {
-      if (!shuttingDown()) console.warn(`[monitor] ${kind} job ${jobId}: lease lost to another instance; stopping here`)
+      if (!shuttingDown()) logger.warn({ kind, jobId }, 'AI job lease lost to another instance; stopping here')
       return
     }
 
@@ -578,9 +576,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
         throw error
       }
       consecutiveErrors++
-      console.warn(
-        `[monitor] ${kind} job ${jobId}: status request failed (${consecutiveErrors} in a row): ${error instanceof Error ? error.message : error}`
-      )
+      logger.warn({ kind, jobId, consecutiveErrors, err: error }, 'AI job status request failed')
     }
 
     if (Date.now() - startedAt >= AI_JOB_POLL_TIMEOUT_MS) {
@@ -680,8 +676,9 @@ async function storeLabelingResults(
   }
 
   if (rejected > 0 || unknownCodes > 0) {
-    console.warn(
-      `[monitor] labeling job ${jobId}: dropped ${rejected} malformed/foreign record result(s) and ${unknownCodes} suggestion(s) with codes not in the taxonomy`
+    logger.warn(
+      { jobId, rejected, unknownCodes },
+      'Dropped malformed or foreign labeling results and suggestions with codes not in the taxonomy'
     )
   }
   if (serviceErrors + rejected > 0) {

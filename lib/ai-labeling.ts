@@ -10,6 +10,7 @@ import {
   type TaxomindResource,
   type TaxonomyRequest
 } from '@/lib/contracts/taxomind'
+import { logger } from '@/lib/logger'
 
 // The HTTP boundary to Taxomind. Requests and responses follow its OpenAPI
 // contract (lib/contracts/taxomind.ts); every response is parsed there.
@@ -133,10 +134,7 @@ export function taxomindClient({ baseUrl, credential }: TaxomindConnection) {
           }
         })
       } catch (error) {
-        console.warn(
-          `[ai] Failed to cancel external job ${externalJobId}:`,
-          error instanceof Error ? error.message : error
-        )
+        logger.warn({ externalJobId, err: error }, 'Failed to cancel external AI job')
       }
     }
   }

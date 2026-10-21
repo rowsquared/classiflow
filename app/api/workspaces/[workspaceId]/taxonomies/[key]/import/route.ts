@@ -5,6 +5,7 @@ import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { MAX_UPLOAD_BYTES } from '@/lib/upload'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 /**
  * Incremental import: ADDS nodes to an existing taxonomy (body = text/csv).
@@ -63,7 +64,7 @@ export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, 
       }
     })
   } catch (caught) {
-    console.error('Taxonomy incremental import failed:', caught)
+    await logError('Taxonomy incremental import failed', caught)
     return NextResponse.json({ ok: false, error: 'Import failed; nothing was imported' }, { status: 500 })
   }
 

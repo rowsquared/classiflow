@@ -1,11 +1,12 @@
 import { after } from 'next/server'
 import { afterCommit, currentWorkspaceId } from '@/lib/workspace/db'
+import { logError } from '@/lib/logger'
 
 const running = new Set<Promise<unknown>>()
 
 function track(task: () => Promise<unknown>) {
   const promise = task()
-    .catch(error => console.error('[after-response] background task failed:', error))
+    .catch(error => logError('Background task after the response failed', error))
     .finally(() => running.delete(promise))
   running.add(promise)
   return promise

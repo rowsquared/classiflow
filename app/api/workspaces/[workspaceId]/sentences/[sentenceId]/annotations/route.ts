@@ -7,6 +7,7 @@ import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
+import { logError } from '@/lib/logger'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const annotationSchema = z.object({
@@ -185,7 +186,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
     if (error instanceof RequestError) {
       return NextResponse.json({ error: error.message }, { status: 404 })
     }
-    console.error('Annotation submission error:', error)
+    await logError('Annotation submission failed', error)
     return NextResponse.json({ error: 'Failed to save labels' }, { status: 500 })
   }
 })

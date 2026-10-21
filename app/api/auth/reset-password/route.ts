@@ -5,6 +5,7 @@ import { audit } from '@/lib/audit'
 import { checkPassword, revokeSessions, setPassword } from '@/lib/passwords'
 import { z } from 'zod'
 import { passwordProblem } from '@/lib/password-policy'
+import { logError } from '@/lib/logger'
 
 const resetPasswordSchema = z.object({
   currentPassword: z.string().max(256),
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('Password reset error:', error)
+    await logError('Password reset failed', error)
 
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })

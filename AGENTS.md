@@ -320,8 +320,12 @@ files for deployment details; these are separate from the local dev stack.
 - Use the `@/` root import alias and existing component/route conventions. Keep
   Prisma, auth internals, and AI credentials on the server; interactive React
   files use `'use client'`. App Router dynamic route `params` are promises.
-- Reuse the Prisma singleton from `lib/prisma.ts` for application data access.
-  Keep related label/comment/status writes transactional where they already are.
+- Workspace data goes through `withWorkspace()`/`db()`; the `prisma` singleton
+  from `lib/prisma.ts` is for control-plane data only (accounts, workspaces,
+  memberships, invitations, the mail outbox, approved AI services) and narrow
+  database functions. ESLint enforces this (`no-restricted-imports` in
+  `eslint.config.mjs`, with the allowed files listed there). Keep related
+  label/comment/status writes transactional where they already are.
 - Tailwind v4 configuration is CSS-based in `styles/globals.css`. Its `indigo`
   palette is deliberately remapped to teal; preserve the established theme.
 - UI and route response types are often defined locally, and response envelopes

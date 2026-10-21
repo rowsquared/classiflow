@@ -3,6 +3,7 @@ import { db, scopeWorkspaceId } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -69,7 +70,7 @@ export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, 
     })
   } catch (caught) {
     const error = caught as CaughtError
-    console.error('Restore taxonomy error:', error)
+    await logError('Restore taxonomy failed', error)
     return NextResponse.json(
       {
         ok: false,

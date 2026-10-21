@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { z } from 'zod'
 import type { AIConnectionVersion, Taxonomy, User } from '@/lib/generated/prisma/client'
 import openapi from '@/lib/contracts/taxomind.openapi.json'
+import { logger } from '@/lib/logger'
 import { db } from '@/lib/workspace/db'
 import {
   prisma,
@@ -423,7 +424,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = job =>
       malformed[job.polls - 1] ??
       completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn')
     const job = await labelingJob([a.id])
 
     await run()
@@ -431,7 +432,8 @@ describe('AI job monitor against a stub service', () => {
 
     expect(done.status).toBe('completed')
     expect(started[0]?.polls).toBe(5)
-    const messages = warn.mock.calls.map(call => String(call[0]))
+    // logger.warn({ err, ... }, message): the status error is in `err`.
+    const messages = warn.mock.calls.map(call => String((call[0] as { err?: Error }).err?.message))
     expect(messages.some(m => m.includes('not JSON'))).toBe(true)
     expect(
       messages.some(m => m.includes('Unexpected response from the AI service (GET /label/ext-1/status): status'))
@@ -483,7 +485,6 @@ describe('AI job monitor against a stub service', () => {
   it('fails the job when the start response has no job id', async () => {
     const [a] = await createSentences(1)
     createdReply = () => ({ body: { jobId: 'wrong-key', status: 'pending' } })
-    vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     const job = await labelingJob([a.id])
 
     await run()
@@ -499,7 +500,6 @@ describe('AI job monitor against a stub service', () => {
   it("fails the job with the service's answer when the start request is refused", async () => {
     const [a] = await createSentences(1)
     createdReply = () => ({ code: 401, body: { detail: 'Invalid token' } })
-    vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     const job = await labelingJob([a.id])
 
     await run()
@@ -715,9 +715,11 @@ describe('taxonomy sync against a stub service', () => {
 
   it('cancels jobs on Taxomind best-effort', async () => {
     const client = ai.taxomindClient({ baseUrl: stubUrl, credential: 'stub-key' })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn')
     await client.cancelJob('label', 'ext-404') // unknown job: 404, logged, not thrown
-    expect(String(warn.mock.calls[0]?.[1])).toContain('AI labeling API error (404)')
+    expect(String((warn.mock.calls[0]?.[0] as { err?: Error } | undefined)?.err?.message)).toContain(
+      'AI labeling API error (404)'
+    )
     warn.mockRestore()
     started.push({ resource: 'taxonomies', body: {}, polls: 0 })
     await client.cancelJob('taxonomies', 'ext-1')

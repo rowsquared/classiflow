@@ -8,6 +8,7 @@ import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
 import { audit } from '@/lib/audit'
+import { logError } from '@/lib/logger'
 
 export const PUT = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
@@ -145,7 +146,7 @@ export const PUT = workspaceRoute<'key'>(['admin'], async (req, { user: actor, p
     })
   } catch (caught) {
     const error = caught as CaughtError
-    console.error('Update taxonomy error:', error)
+    await logError('Update taxonomy failed', error)
     return NextResponse.json(
       {
         ok: false,
@@ -274,7 +275,7 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
     })
   } catch (caught) {
     const error = caught as CaughtError
-    console.error('Delete taxonomy error:', error)
+    await logError('Delete taxonomy failed', error)
     return NextResponse.json(
       {
         ok: false,

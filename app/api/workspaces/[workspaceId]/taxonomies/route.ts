@@ -7,6 +7,7 @@ import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
 import { audit } from '@/lib/audit'
 import { listTaxonomiesWithStats } from '@/lib/server/taxonomies'
+import { logError } from '@/lib/logger'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -14,7 +15,7 @@ export const GET = workspaceRoute([], async (_req, { user }) => {
   try {
     return NextResponse.json(await listTaxonomiesWithStats(user.workspaceId))
   } catch (error) {
-    console.error('Taxonomies API error:', error)
+    await logError('Failed to list taxonomies', error)
     return NextResponse.json({ ok: false, error: 'Failed to load taxonomies' }, { status: 500 })
   }
 })
@@ -149,7 +150,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
     })
   } catch (caught) {
     const error = caught as CaughtError
-    console.error('Create taxonomy error:', error)
+    await logError('Create taxonomy failed', error)
 
     // Extract clean error message
     let errorMessage = error?.message || String(error)

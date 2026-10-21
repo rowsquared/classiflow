@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { ensureJobsMonitored } from '@/lib/ai-job-monitor'
 import { listActiveAIJobs } from '@/lib/server/ai-jobs'
+import { logError } from '@/lib/logger'
 
 // How long recently finished jobs are included in the response
 const RECENT_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
@@ -14,12 +15,12 @@ export const GET = workspaceRoute(
       try {
         await ensureJobsMonitored()
       } catch (err) {
-        console.error('ensureJobsMonitored error:', err)
+        await logError('AI job recovery failed', err)
       }
 
       return NextResponse.json({ ok: true, jobs: await listActiveAIJobs(RECENT_WINDOW_MS) })
     } catch (error: unknown) {
-      console.error('Failed to fetch active jobs:', error)
+      await logError('Failed to fetch active AI jobs', error)
       return NextResponse.json({ error: 'Failed to fetch active jobs' }, { status: 500 })
     }
   },
