@@ -189,6 +189,11 @@ files for deployment details; these are separate from the local dev stack.
 
 - Inspect `git status` before editing. Multiple agents may share this checkout;
   preserve unrelated changes and keep edits scoped to the requested task.
+- Commit only the files you changed (`git add <paths>`, never `git add -A`).
+- Work lands on `staging`, which deploys to staging on push. Never push or merge
+  into `main`: production is released only with `node scripts/promote-main.mjs`
+  after CI is green on `staging` (a ruleset enforces this). See "Deploy
+  triggers" in `COOLIFY_DEPLOYMENT.md`.
 - Use the `@/` root import alias and existing component/route conventions. Keep
   Prisma, auth internals, and AI credentials on the server; interactive React
   files use `'use client'`. App Router dynamic route `params` are promises.
