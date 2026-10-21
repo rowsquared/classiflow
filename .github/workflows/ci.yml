@@ -1,0 +1,130 @@
+# CI and the production deploy gate. See "Deploy triggers" in DEPLOYMENT.md.
+#
+# staging: Coolify auto-deploys on push, so the run there is a report card. It
+#          also records the "smoke" result on the commit, which the main
+#          ruleset requires before scripts/promote-main.mjs may push it.
+# main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger and
+#          runs only after smoke passes, so a broken commit never reaches prod.
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    # Builds the image exactly as Coolify does (same Dockerfile, same compose
+    # file), boots the stack on an empty database and checks it came up:
+    # migrations applied, admin created, server answering with a live DB.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: classiflow-ci
+      NEXTAUTH_SECRET: ci-only-not-a-real-secret
+      DEFAULT_ADMIN_EMAIL: admin@classiflow.local
+      DEFAULT_ADMIN_PASSWORD: ci-password
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        # --wait blocks until every healthcheck passes, including the app's
+        # own /api/health probe, and fails if one goes unhealthy.
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Health endpoint reports a connected database
+        run: |
+          body=$(docker compose exec -T app wget -qO- http://localhost:3000/api/health)
+          echo "$body"
+          echo "$body" | grep -q '"database":"connected"'
+      - name: Default admin exists
+        run: |
+          count=$(docker compose exec -T postgres psql -U classiflow -d classiflow -tAc \
+            "SELECT count(*) FROM \"User\" WHERE email = '$DEFAULT_ADMIN_EMAIL'")
+          echo "admin rows: $count"
+          [ "$count" = "1" ]
+      - name: Login page renders
+        run: docker compose exec -T app wget -qO /dev/null http://localhost:3000/login
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  quality:
+    # Report only, for now: main currently has type and lint errors, and
+    # next.config.ts skips both during build. Once they are fixed, drop the
+    # continue-on-error lines, add this job to deploy-prod's needs and to the
+    # main ruleset's required checks.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # No lockfile in this repo (.npmrc: package-lock=false), mirrored from the Dockerfile.
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: npx tsc --noEmit
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        run: npm run lint
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Code quality (not blocking yet)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Typecheck: ${{ steps.typecheck.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Lint: ${{ steps.lint.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          for s in "${{ steps.typecheck.outcome }}" "${{ steps.lint.outcome }}"; do
+            [ "$s" = "success" ] || echo "::warning::Typecheck or lint failed. Not blocking deploys yet; see the step logs."
+          done
+
+  deploy-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [smoke]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - name: Trigger the Coolify production deployment
+        env:
+          # Repository secrets. The URL is Coolify's deploy API endpoint for the
+          # production application (not its git webhook):
+          #   https://<coolify-host>/api/v1/deploy?uuid=<app-uuid>&force=false
+          COOLIFY_PROD_WEBHOOK: ${{ secrets.COOLIFY_PROD_WEBHOOK }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          if [ -z "$COOLIFY_PROD_WEBHOOK" ] || [ -z "$COOLIFY_API_TOKEN" ]; then
+            echo "::error::COOLIFY_PROD_WEBHOOK and COOLIFY_API_TOKEN must both be set as repository secrets, otherwise nothing deploys production."
+            exit 1
+          fi
+          deploy() {
+            curl --silent --show-error --output response.json --write-out '%{http_code}' \
+              --request "$1" "$COOLIFY_PROD_WEBHOOK" \
+              --header "Authorization: Bearer $COOLIFY_API_TOKEN"
+          }
+          # Current Coolify wants POST; older builds only answer GET.
+          http_code=$(deploy POST)
+          if [ "$http_code" = "405" ]; then
+            echo "POST returned 405; retrying as GET for older Coolify builds."
+            http_code=$(deploy GET)
+          fi
+          echo "Coolify responded HTTP $http_code:"
+          cat response.json || true
+          echo
+          case "$http_code" in
+            2*) echo "Deployment queued. Watch it finish in the Coolify UI." ;;
+            405) echo "::error::Coolify rejected both POST and GET (HTTP 405). The stored URL is probably the git webhook, not /api/v1/deploy."; exit 1 ;;
+            401|403) echo "::error::Coolify rejected the token (HTTP $http_code). Check COOLIFY_API_TOKEN has deploy permission."; exit 1 ;;
+            404) echo "::error::Coolify does not recognise that uuid (HTTP 404). Check COOLIFY_PROD_WEBHOOK points at the production application."; exit 1 ;;
+            *) echo "::error::Coolify refused the deploy request (HTTP $http_code). Production was NOT updated."; exit 1 ;;
+          esac

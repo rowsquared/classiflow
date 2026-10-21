@@ -28,6 +28,8 @@ This method deploys both the application and PostgreSQL database together using 
    - **Build Pack**: Select `docker-compose`
    - **Docker Compose Location**: `./docker-compose.yml`
    - **Port**: `3000`
+   - **Branch**: `main` for production, `staging` for staging
+4. Set **Auto Deploy** per [Deploy triggers](#deploy-triggers): on for staging, **off** for production.
 
 ### 2. Configure Environment Variables
 
@@ -272,14 +274,17 @@ The docker-compose setup creates an internal network where:
 
 #### For Docker Compose Deployment:
 
-You can create manual backups by running:
+Container names are generated per deployment (the compose file sets none, so
+production and staging can share a host). Find the Postgres container first:
 
 ```bash
-# Backup
-docker exec classiflow-postgres pg_dump -U classiflow classiflow > backup.sql
+docker ps --filter "ancestor=postgres:16-alpine" --format '{{.Names}}'
+
+# Backup (--no-owner keeps the dump restorable under a different role)
+docker exec <postgres-container> pg_dump --no-owner -U classiflow classiflow > backup.sql
 
 # Restore
-cat backup.sql | docker exec -i classiflow-postgres psql -U classiflow classiflow
+cat backup.sql | docker exec -i <postgres-container> psql -U classiflow classiflow
 ```
 
 For automated backups, consider:
@@ -427,9 +432,59 @@ docker-compose up
 
 ## Updating the Application
 
-To update your deployment:
+Migrations run automatically on each deployment. How a deployment is triggered
+depends on the branch; see [Deploy triggers](#deploy-triggers).
 
-1. Push changes to your Git repository
-2. Coolify will automatically rebuild (if auto-deploy is enabled)
-3. Or manually trigger deployment in Coolify dashboard
-4. Migrations run automatically on each deployment
+## Deploy triggers
+
+The two environments are triggered differently, on purpose.
+
+| Branch | Coolify auto-deploy | What deploys it |
+| --- | --- | --- |
+| `staging` | on | Coolify deploys on every push. CI also runs, as a report card. |
+| `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API, and only after the `smoke` job passes. |
+
+Staging may be briefly broken; the fast feedback is worth more than a gate.
+Production may not: a red `smoke` run leaves the previous release serving.
+Turning Coolify auto-deploy back on for production removes the gate entirely,
+because Coolify does not wait for GitHub Actions.
+
+`smoke` builds the image from the same `Dockerfile` and `docker-compose.yml`
+Coolify uses, starts the stack on an empty database, and checks that migrations
+applied, the default admin was created, `/api/health` reports a connected
+database and `/login` renders. The `quality` job (typecheck, lint) only reports
+for now, because `main` still has type and lint errors; make it blocking once
+they are fixed.
+
+Two repository secrets drive the production deploy. Without them the job fails
+loudly rather than skipping, because a release that quietly deploys nothing is
+the worst outcome:
+
+| Secret | Value |
+| --- | --- |
+| `COOLIFY_PROD_WEBHOOK` | The production application's deploy endpoint, `https://<coolify-host>/api/v1/deploy?uuid=<app-uuid>&force=false`. Not the git webhook. |
+| `COOLIFY_API_TOKEN` | A Coolify API token with deploy permission. |
+
+### Releases
+
+Work lands on `staging` (directly or by pull request). Production only moves by
+fast-forwarding `main` to `staging`:
+
+```bash
+node scripts/promote-main.mjs --dry-run
+```
+
+```bash
+node scripts/promote-main.mjs
+```
+
+The script refuses anything that is not a fast-forward, so `main` never holds a
+commit that was not on `staging` first and the two branches stay in sync. Never
+push or merge into `main` by hand. The `main` ruleset requires the `smoke`
+check, so the push is rejected until CI has passed on `staging` for that commit.
+
+**Roll back by going forward**: revert the bad commit on `staging`, let CI pass,
+promote again. Resetting `main` backwards breaks every later promotion. If
+production cannot wait, redeploy the previous deployment from the Coolify UI,
+then follow up with the revert. Migrations do not roll back with the code;
+check what a release migrated before reverting across it.

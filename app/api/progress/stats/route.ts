@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { UNKNOWN_NODE_CODE_SET } from '@/lib/constants'
 
@@ -256,7 +257,7 @@ export async function GET(req: NextRequest) {
             AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
             AND "createdAt" >= ${start}
             AND "createdAt" <= ${end}
-            AND "createdById" IN (${prisma.Prisma.join(visibleUserIds)})
+            AND "createdById" IN (${Prisma.join(visibleUserIds)})
         `
       : await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
           SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
@@ -283,7 +284,7 @@ export async function GET(req: NextRequest) {
             AND "createdAt" - "labelingStartedAt" < INTERVAL '30 minutes'
             AND "createdAt" >= ${prevStart}
             AND "createdAt" <= ${prevEnd}
-            AND "createdById" IN (${prisma.Prisma.join(visibleUserIds)})
+            AND "createdById" IN (${Prisma.join(visibleUserIds)})
         `
       : await prisma.$queryRaw<Array<{ median_seconds: number | null }>>`
           SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 

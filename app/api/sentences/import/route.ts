@@ -218,13 +218,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Commit import
-    let importId: string
-    
     // Calculate timeout: 1 minute per 10k rows, minimum 30 seconds, maximum 30 minutes
     const estimatedSeconds = Math.max(30, Math.min(1800, Math.ceil(sentences.length / 10000) * 60))
     const timeoutMs = estimatedSeconds * 1000
     
-    await prisma.$transaction(async (tx) => {
+    const importId = await prisma.$transaction(async (tx) => {
       // Create import record
       const sentenceImport = await tx.sentenceImport.create({
         data: {
@@ -234,7 +232,7 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      importId = sentenceImport.id
+      const importId = sentenceImport.id
 
       // Insert sentences in batches using createMany for performance
       for (let i = 0; i < sentences.length; i += BATCH_SIZE) {
@@ -263,6 +261,8 @@ export async function POST(req: NextRequest) {
         // Log progress
         const progress = Math.round(((i + chunk.length) / sentences.length) * 100)
       }
+
+      return importId
     }, {
       maxWait: timeoutMs, // Maximum time to wait for a transaction slot
       timeout: timeoutMs  // Maximum time the transaction can run

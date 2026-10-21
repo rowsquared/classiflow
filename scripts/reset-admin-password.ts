@@ -21,6 +21,7 @@ async function resetAdminPassword() {
       
       await prisma.user.create({
         data: {
+          username: process.env.DEFAULT_ADMIN_USERNAME || 'admin',
           email: adminEmail,
           name: process.env.DEFAULT_ADMIN_NAME || 'System Administrator',
           password: hashedPassword,

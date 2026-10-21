@@ -1,13 +1,6 @@
-version: '3.8'
-
-networks:
-  default:
-    name: classiflow-network
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: classiflow-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-classiflow}

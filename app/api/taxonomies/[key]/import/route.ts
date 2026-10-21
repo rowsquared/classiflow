@@ -185,7 +185,7 @@ export async function POST(
   try {
     // Pre-check conflicts
     const existingCodes = await prisma.taxonomyNode.findMany({
-      where: { taxonomyId: taxonomy.id, code: { in: Array.from(idSet) } },
+      where: { taxonomyId: taxonomy.id, code: { in: Array.from(allIds) } },
       select: { code: true },
     })
     if (existingCodes.length > 0) {
@@ -266,7 +266,7 @@ export async function POST(
 
     // Insert synonyms (best-effort)
     const nodesByCode = await prisma.taxonomyNode.findMany({
-      where: { taxonomyId: taxonomy.id, code: { in: Array.from(idSet) } },
+      where: { taxonomyId: taxonomy.id, code: { in: Array.from(allIds) } },
       select: { id: true, code: true },
     })
     const idByCode = new Map(nodesByCode.map(n => [n.code, n.id]))

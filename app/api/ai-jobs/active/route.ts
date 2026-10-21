@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { AILabelingJobStatus } from '@prisma/client'
 import { ensureJobsMonitored } from '@/lib/ai-job-monitor'
 
 // How long recently finished jobs are included in the response
@@ -22,10 +23,13 @@ export async function GET(req: NextRequest) {
 
     const recentCutoff = new Date(Date.now() - RECENT_WINDOW_MS)
 
-    const activeOrRecent = {
+    // Same shape for all three job models (they share the AILabelingJobStatus enum)
+    const activeOrRecent: {
+      OR: Array<{ status: { in: AILabelingJobStatus[] }; completedAt?: { gte: Date } }>
+    } = {
       OR: [
-        { status: { in: ['pending', 'processing'] as const } },
-        { status: { in: ['completed', 'failed'] as const }, completedAt: { gte: recentCutoff } }
+        { status: { in: ['pending', 'processing'] } },
+        { status: { in: ['completed', 'failed'] }, completedAt: { gte: recentCutoff } }
       ]
     }
 

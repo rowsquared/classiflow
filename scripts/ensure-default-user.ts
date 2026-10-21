@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
@@ -11,9 +12,12 @@ async function main() {
     
     const user = await prisma.user.create({
       data: {
+        username: 'admin',
         email: 'admin@classiflow.local',
         name: 'Default Admin',
-        role: 'admin'
+        password: await bcrypt.hash(process.env.DEFAULT_ADMIN_PASSWORD || 'change-me-immediately', 10),
+        role: 'admin',
+        mustResetPassword: true
       }
     })
     

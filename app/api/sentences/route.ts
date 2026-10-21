@@ -43,13 +43,11 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '20', 10)
 
     // Build where clause
-    const where: Prisma.SentenceWhereInput = {
-      AND: []
-    }
+    const and: Prisma.SentenceWhereInput[] = []
     
     // Search across all field columns
     if (q) {
-      where.AND!.push({
+      and.push({
         OR: [
           { field1: { contains: q, mode: 'insensitive' } },
           { field2: { contains: q, mode: 'insensitive' } },
@@ -64,9 +62,9 @@ export async function GET(request: Request) {
     if (statusParam) {
       const statuses = statusParam.split(',').map(s => s.trim())
       if (statuses.length === 1) {
-        where.AND!.push({ status: statuses[0] as any })
+        and.push({ status: statuses[0] as any })
       } else {
-        where.AND!.push({
+        and.push({
           OR: statuses.map(s => ({ status: s as any }))
         })
       }
@@ -75,7 +73,7 @@ export async function GET(request: Request) {
     // Visibility filtering based on role and assignments
     if (session.user.role === 'labeller') {
       // Labellers can only see sentences assigned to them
-      where.AND!.push({
+      and.push({
         assignments: {
           some: {
             userId: session.user.id
@@ -110,7 +108,7 @@ export async function GET(request: Request) {
         })
 
         // Filter to sentences assigned to visible users
-        where.AND!.push({
+        and.push({
           assignments: {
             some: {
               userId: { in: Array.from(visibleUserIds) }
@@ -123,21 +121,21 @@ export async function GET(request: Request) {
 
     // Additional user filter (for admins/supervisors to filter by specific user)
     if (userId) {
-      where.AND!.push({ lastEditorId: userId })
+      and.push({ lastEditorId: userId })
     }
     
     // Assigned to user filter
     if (assignedToUserId) {
       if (assignedToUserId === 'unassigned') {
         // Filter for sentences with no assignments
-        where.AND!.push({
+        and.push({
           assignments: {
             none: {}
           }
         })
       } else {
         // Filter for sentences assigned to specific user
-        where.AND!.push({
+        and.push({
           assignments: {
             some: {
               userId: assignedToUserId
@@ -148,7 +146,7 @@ export async function GET(request: Request) {
     }
 
     if (lastEditorId) {
-      where.AND!.push({ lastEditorId })
+      and.push({ lastEditorId })
     }
     
     // Date range filter
@@ -166,7 +164,7 @@ export async function GET(request: Request) {
         toDate.setHours(23, 59, 59, 999)
         dateFilter.lte = toDate
       }
-      where.AND!.push({ lastEditedAt: dateFilter })
+      and.push({ lastEditedAt: dateFilter })
     }
     
     // Taxonomy/annotation filters
@@ -188,7 +186,7 @@ export async function GET(request: Request) {
         annotationFilter.some.source = source as any
       }
       
-      where.AND!.push({ annotations: annotationFilter })
+      and.push({ annotations: annotationFilter })
     }
     
     // AI suggestion filters
@@ -219,7 +217,7 @@ export async function GET(request: Request) {
       if (Object.keys(confidenceFilter).length > 0) {
         aiFilter.confidenceScore = confidenceFilter
       }
-      where.AND!.push({
+      and.push({
         aiSuggestions: {
           some: aiFilter
         }
@@ -227,13 +225,13 @@ export async function GET(request: Request) {
     }
 
     if (hasSubmittedLabels === 'true') {
-      where.AND!.push({
+      and.push({
         annotations: {
           some: {}
         }
       })
     } else if (hasSubmittedLabels === 'false') {
-      where.AND!.push({
+      and.push({
         annotations: {
           none: {}
         }
@@ -241,13 +239,13 @@ export async function GET(request: Request) {
     }
 
     if (hasAISuggestions === 'true') {
-      where.AND!.push({
+      and.push({
         aiSuggestions: {
           some: {}
         }
       })
     } else if (hasAISuggestions === 'false') {
-      where.AND!.push({
+      and.push({
         aiSuggestions: {
           none: {}
         }
@@ -256,20 +254,20 @@ export async function GET(request: Request) {
     
     // Flagged filter
     if (flagged === 'true') {
-      where.AND!.push({ flagged: true })
+      and.push({ flagged: true })
     } else if (flagged === 'false') {
-      where.AND!.push({ flagged: false })
+      and.push({ flagged: false })
     }
     
     // Has comments filter
     if (hasComments === 'true') {
-      where.AND!.push({ 
+      and.push({ 
         comments: { 
           some: {} 
         } 
       })
     } else if (hasComments === 'false') {
-      where.AND!.push({ 
+      and.push({ 
         comments: { 
           none: {} 
         } 
@@ -278,23 +276,20 @@ export async function GET(request: Request) {
     
     // Import file filter
     if (importId) {
-      where.AND!.push({ importId })
+      and.push({ importId })
     }
     
     // Support column filters (dynamic)
     for (let i = 1; i <= 5; i++) {
       const supportValue = searchParams.get(`support${i}`)
       if (supportValue) {
-        where.AND!.push({
+        and.push({
           [`support${i}`]: { contains: supportValue, mode: 'insensitive' }
         } as any)
       }
     }
     
-    // Clean up empty AND array
-    if (where.AND!.length === 0) {
-      delete where.AND
-    }
+    const where: Prisma.SentenceWhereInput = and.length > 0 ? { AND: and } : {}
 
     // Build orderBy clause with secondary sort by importOrder for stable ordering
     let orderBy: Prisma.SentenceOrderByWithRelationInput[]

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { SentenceStatus, type Prisma } from '@prisma/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -80,7 +80,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Status filter (from filter panel, not tab)
+    const validStatuses = Object.values(SentenceStatus) as string[]
     const statuses = searchParams.getAll('status')
+      .filter((s): s is SentenceStatus => validStatuses.includes(s))
     if (statuses.length > 0) {
       AND.push({ status: { in: statuses } })
     }

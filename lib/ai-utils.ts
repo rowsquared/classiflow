@@ -6,11 +6,17 @@ export type FieldSource = {
   field3?: string | null
   field4?: string | null
   field5?: string | null
-  fieldMapping?: FieldMapping | null
+  // Prisma Json column: may hold any JSON value, only a plain object is a valid mapping
+  fieldMapping?: unknown
+}
+
+function toFieldMapping(value: unknown): FieldMapping {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as FieldMapping
 }
 
 export function buildFieldMap(source: FieldSource) {
-  const mapping = (source.fieldMapping || {}) as FieldMapping
+  const mapping = toFieldMapping(source.fieldMapping)
   const result: Record<string, string> = {}
 
   for (let i = 1; i <= 5; i++) {

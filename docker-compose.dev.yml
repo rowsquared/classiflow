@@ -1,0 +1,27 @@
+# Local development: database only. Run the app on the host with `npm run dev`.
+#   docker compose -f docker-compose.dev.yml up -d
+# Exposed on 5434 to avoid clashing with a native PostgreSQL on 5432/5433.
+
+name: classiflow-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: classiflow-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: classiflow
+      POSTGRES_PASSWORD: classiflow_password
+      POSTGRES_DB: classiflow
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U classiflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_dev_data:

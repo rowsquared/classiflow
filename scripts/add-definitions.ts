@@ -72,7 +72,7 @@ async function main() {
     const updated = await prisma.taxonomyNode.updateMany({
       where: {
         taxonomyId: iscoTaxonomy.id,
-        code: code
+        code: String(code)
       },
       data: {
         definition: definition

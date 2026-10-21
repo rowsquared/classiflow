@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     if (!validation.success) {
       return NextResponse.json({ 
         error: 'Invalid request data',
-        details: validation.error.errors 
+        details: validation.error.issues 
       }, { status: 400 })
     }
 

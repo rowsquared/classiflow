@@ -85,10 +85,10 @@ On first start, the default admin user is created from the environment variables
 
 ## Backups
 
-Back up your PostgreSQL database regularly. Example with Docker:
+Back up your PostgreSQL database regularly. Example with Docker Compose, run from the project directory:
 
 ```bash
-docker exec classiflow-postgres pg_dump -U classiflow classiflow > backup.sql
+docker compose exec -T postgres pg_dump --no-owner -U classiflow classiflow > backup.sql
 ```
 
 ## Troubleshooting

@@ -19,9 +19,9 @@ export async function GET(req: NextRequest) {
 
     // Build where clauses for each job type
     // Always ensure statusFilter has valid values
-    let statusFilter: { in: string[] } | {} = {}
+    let statusFilter: { in: z.infer<typeof statusSchema>[] }
     if (statusParams.length > 0) {
-      const validStatuses = statusParams.filter(s => statusSchema.safeParse(s).success)
+      const validStatuses = statusParams.filter((s): s is z.infer<typeof statusSchema> => statusSchema.safeParse(s).success)
       if (validStatuses.length > 0) {
         statusFilter = { in: validStatuses }
       } else {

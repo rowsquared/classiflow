@@ -57,7 +57,7 @@ export async function POST(
     if (type === 'external_training') {
       const job = await prisma.aIExternalTrainingJob.findUnique({
         where: { id: jobId },
-        select: { status: true, externalJobId: true }
+        select: { status: true }
       })
 
       if (!job) {
@@ -68,10 +68,7 @@ export async function POST(
         return NextResponse.json({ ok: true, status: job.status })
       }
 
-      if (job.externalJobId) {
-        cancelAIJob('/learn', job.externalJobId)
-      }
-
+      // External training jobs don't store a remote job id, so only the local record can be cancelled
       await prisma.aIExternalTrainingJob.update({
         where: { id: jobId },
         data: {
