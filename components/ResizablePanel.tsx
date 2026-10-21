@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { useState, useRef, useEffect, ReactNode } from 'react'
 
 interface ResizablePanelProps {
@@ -91,11 +91,7 @@ export default function ResizablePanel({
   }, [width, storageKey])
 
   return (
-    <div
-      ref={panelRef}
-      className={`relative ${className}`}
-      style={{ width: `${width}%`, flexShrink: 0, ...style }}
-    >
+    <div ref={panelRef} className={`relative ${className}`} style={{ width: `${width}%`, flexShrink: 0, ...style }}>
       {/* Resize Handle */}
       <div
         onMouseDown={() => setIsResizing(true)}
@@ -106,9 +102,8 @@ export default function ResizablePanel({
           [side === 'right' ? 'left' : 'right']: 0
         }}
       />
-      
+
       {children}
     </div>
   )
 }
-

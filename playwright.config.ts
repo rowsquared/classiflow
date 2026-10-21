@@ -15,7 +15,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,
-    trace: 'retain-on-failure',
+    trace: 'retain-on-failure'
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
@@ -28,7 +28,7 @@ export default defineConfig({
       BETTER_AUTH_SECRET: 'e2e-only-not-a-real-secret-0123456789',
       BETTER_AUTH_URL: baseURL,
       // The journeys sign in more often than a person would.
-      SIGN_IN_RATE_LIMIT: '1000',
-    },
-  },
+      SIGN_IN_RATE_LIMIT: '1000'
+    }
+  }
 })

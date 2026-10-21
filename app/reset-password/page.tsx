@@ -58,28 +58,16 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <Image
-            src="/logo.svg"
-            alt="classiflow Logo"
-            width={120}
-            height={32}
-            className="h-8 w-auto"
-          />
+          <Image src="/logo.svg" alt="classiflow Logo" width={120} height={32} className="h-8 w-auto" />
         </div>
 
         {/* Heading */}
-        <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-          Password Reset Required
-        </h2>
-        <p className="text-sm text-gray-600 mb-6 text-center">
-          Please set a new password to continue
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">Password Reset Required</h2>
+        <p className="text-sm text-gray-600 mb-6 text-center">Please set a new password to continue</p>
 
         {/* Error message */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-            {error}
-          </div>
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{error}</div>
         )}
 
         {/* Reset form */}
@@ -92,7 +80,7 @@ export default function ResetPasswordPage() {
               id="currentPassword"
               type="password"
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
+              onChange={e => setCurrentPassword(e.target.value)}
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
             />
@@ -106,7 +94,7 @@ export default function ResetPasswordPage() {
               id="newPassword"
               type="password"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={e => setNewPassword(e.target.value)}
               required
               minLength={10}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
@@ -122,7 +110,7 @@ export default function ResetPasswordPage() {
               id="confirmPassword"
               type="password"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={e => setConfirmPassword(e.target.value)}
               required
               minLength={10}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
@@ -141,4 +129,3 @@ export default function ResetPasswordPage() {
     </div>
   )
 }
-

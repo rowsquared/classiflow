@@ -30,9 +30,7 @@ function git(...args) {
 }
 
 console.log(`Fetching ${SOURCE} and ${TARGET} ...`)
-git('fetch', 'origin', '--force',
-  `${SOURCE}:refs/remotes/origin/${SOURCE}`,
-  `${TARGET}:refs/remotes/origin/${TARGET}`)
+git('fetch', 'origin', '--force', `${SOURCE}:refs/remotes/origin/${SOURCE}`, `${TARGET}:refs/remotes/origin/${TARGET}`)
 
 const source = git('rev-parse', `refs/remotes/origin/${SOURCE}`)
 const target = git('rev-parse', `refs/remotes/origin/${TARGET}`)
@@ -48,14 +46,17 @@ const isAncestor = spawnSync('git', ['merge-base', '--is-ancestor', target, sour
 if (!isAncestor) {
   console.error(
     `Refusing to promote: ${TARGET} (${target.slice(0, 8)}) is not an ancestor of ` +
-    `${SOURCE} (${source.slice(0, 8)}), so this would not be a fast-forward.\n` +
-    `${TARGET} carries commits that are not on ${SOURCE}. Merge ${TARGET} into ${SOURCE} ` +
-    `(through CI), then promote again.`)
+      `${SOURCE} (${source.slice(0, 8)}), so this would not be a fast-forward.\n` +
+      `${TARGET} carries commits that are not on ${SOURCE}. Merge ${TARGET} into ${SOURCE} ` +
+      `(through CI), then promote again.`
+  )
   process.exit(1)
 }
 
 const log = git('log', '--oneline', '--no-decorate', `${target}..${source}`)
-console.log(`\n${log.split('\n').length} commit(s) would move ${TARGET} ${target.slice(0, 8)} -> ${source.slice(0, 8)}:\n`)
+console.log(
+  `\n${log.split('\n').length} commit(s) would move ${TARGET} ${target.slice(0, 8)} -> ${source.slice(0, 8)}:\n`
+)
 console.log(log)
 
 if (dryRun) {
@@ -69,10 +70,12 @@ try {
 } catch {
   console.error(
     `\nPush rejected. The main ruleset requires the smoke and checks jobs; CI on ${SOURCE} has not ` +
-    `passed for ${source.slice(0, 8)} yet: wait for it (or fix it) and run this again.`)
+      `passed for ${source.slice(0, 8)} yet: wait for it (or fix it) and run this again.`
+  )
   process.exit(1)
 }
 git('update-ref', `refs/remotes/origin/${TARGET}`, source)
 console.log(
   `\nPromoted. CI is now running on ${TARGET}; production deploys only if it passes. ` +
-  'Watch the run in the Actions tab, then the Coolify UI.')
+    'Watch the run in the Actions tab, then the Coolify UI.'
+)

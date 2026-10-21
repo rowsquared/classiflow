@@ -28,4 +28,3 @@ export function buildFieldMap(source: FieldSource) {
 
   return result
 }
-

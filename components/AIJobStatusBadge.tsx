@@ -52,15 +52,17 @@ export default function AIJobStatusBadge() {
               const changed = prev.some((pJob, i) => {
                 const nJob = next[i]
                 if (!nJob) return true
-                return pJob.id !== nJob.id ||
+                return (
+                  pJob.id !== nJob.id ||
                   pJob.status !== nJob.status ||
                   (pJob.processedSentences ?? 0) !== (nJob.processedSentences ?? 0) ||
                   (pJob.failedSentences ?? 0) !== (nJob.failedSentences ?? 0)
+                )
               })
               return changed ? next : prev
             })
           } else {
-            setJobs(prev => prev.length > 0 ? [] : prev)
+            setJobs(prev => (prev.length > 0 ? [] : prev))
           }
         } else if (res.status === 401) {
           setJobs([])
@@ -128,10 +130,14 @@ export default function AIJobStatusBadge() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle2 className="w-4 h-4 text-green-500" />
-      case 'failed': return <XCircle className="w-4 h-4 text-red-500" />
-      case 'processing': return <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-      default: return <Clock className="w-4 h-4 text-gray-500" />
+      case 'completed':
+        return <CheckCircle2 className="w-4 h-4 text-green-500" />
+      case 'failed':
+        return <XCircle className="w-4 h-4 text-red-500" />
+      case 'processing':
+        return <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+      default:
+        return <Clock className="w-4 h-4 text-gray-500" />
     }
   }
 
@@ -141,15 +147,19 @@ export default function AIJobStatusBadge() {
       return job.status === 'processing' ? 50 : 0
     }
     if (!job.totalSentences || job.totalSentences === 0) return 0
-    return Math.round((job.processedSentences || 0) / job.totalSentences * 100)
+    return Math.round(((job.processedSentences || 0) / job.totalSentences) * 100)
   }
 
   const getJobTypeLabel = (job: AIJob) => {
     switch (job.type) {
-      case 'labeling': return 'Labeling'
-      case 'learning': return 'Learning'
-      case 'taxonomy_sync': return 'Taxonomy Sync'
-      default: return 'AI Job'
+      case 'labeling':
+        return 'Labeling'
+      case 'learning':
+        return 'Learning'
+      case 'taxonomy_sync':
+        return 'Taxonomy Sync'
+      default:
+        return 'AI Job'
     }
   }
 
@@ -195,9 +205,7 @@ export default function AIJobStatusBadge() {
         <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">
-                {activeCount > 0 ? 'Active AI Jobs' : 'Recent AI Jobs'}
-              </h3>
+              <h3 className="font-semibold text-gray-900">{activeCount > 0 ? 'Active AI Jobs' : 'Recent AI Jobs'}</h3>
               <Link
                 href={href('/admin/ai-jobs')}
                 className="text-sm text-indigo-600 hover:text-indigo-700"
@@ -212,7 +220,7 @@ export default function AIJobStatusBadge() {
               <div className="p-4 text-center text-gray-500 text-sm">No active jobs</div>
             ) : (
               <div className="space-y-2">
-                {sortedJobs.map((job) => {
+                {sortedJobs.map(job => {
                   const progress = getProgress(job)
                   const isFinished = job.status === 'completed' || job.status === 'failed'
                   const isActive = job.status === 'pending' || job.status === 'processing'
@@ -221,9 +229,7 @@ export default function AIJobStatusBadge() {
                     <div
                       key={job.id}
                       className={`p-3 rounded-lg border transition-colors ${
-                        isFinished
-                          ? 'border-gray-200 opacity-75'
-                          : 'border-gray-200 hover:bg-gray-50'
+                        isFinished ? 'border-gray-200 opacity-75' : 'border-gray-200 hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -235,15 +241,17 @@ export default function AIJobStatusBadge() {
                             </span>
                           </div>
                           <div className={`text-xs ${isFinished ? 'text-gray-500' : 'text-gray-600'}`}>
-                            {(job.type === 'learning' || job.type === 'taxonomy_sync') ? (
-                              job.status === 'failed' ? (job.errorMessage || 'Failed') : 'Processing...'
+                            {job.type === 'learning' || job.type === 'taxonomy_sync' ? (
+                              job.status === 'failed' ? (
+                                job.errorMessage || 'Failed'
+                              ) : (
+                                'Processing...'
+                              )
                             ) : (
                               <>
                                 {job.processedSentences || 0} / {job.totalSentences || 0} sentences
                                 {(job.failedSentences || 0) > 0 && (
-                                  <span className="text-red-600 ml-1">
-                                    ({job.failedSentences} failed)
-                                  </span>
+                                  <span className="text-red-600 ml-1">({job.failedSentences} failed)</span>
                                 )}
                               </>
                             )}
@@ -251,14 +259,14 @@ export default function AIJobStatusBadge() {
                         </div>
                         <div className="flex items-center gap-2">
                           {isActive && (
-                            <span className="text-xs text-gray-600 whitespace-nowrap font-medium">
-                              {progress}%
-                            </span>
+                            <span className="text-xs text-gray-600 whitespace-nowrap font-medium">{progress}%</span>
                           )}
                           {isFinished && (
-                            <span className={`text-xs whitespace-nowrap ${
-                              job.status === 'completed' ? 'text-green-600' : 'text-red-600'
-                            }`}>
+                            <span
+                              className={`text-xs whitespace-nowrap ${
+                                job.status === 'completed' ? 'text-green-600' : 'text-red-600'
+                              }`}
+                            >
                               {job.status === 'completed' ? 'Done' : 'Failed'}
                             </span>
                           )}
@@ -277,9 +285,7 @@ export default function AIJobStatusBadge() {
                       <div className="w-full bg-gray-200 rounded-full h-1.5">
                         <div
                           className={`h-1.5 rounded-full transition-all duration-300 ${
-                            isFinished
-                              ? job.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
-                              : 'bg-indigo-500'
+                            isFinished ? (job.status === 'completed' ? 'bg-green-500' : 'bg-red-500') : 'bg-indigo-500'
                           }`}
                           style={{ width: `${progress}%` }}
                         />

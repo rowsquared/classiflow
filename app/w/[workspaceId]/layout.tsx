@@ -11,7 +11,7 @@ import { touchLastSeen } from '@/lib/last-seen'
 // workspace, so switching workspaces remounts all workspace state.
 export default async function WorkspaceLayout({
   children,
-  params,
+  params
 }: {
   children: ReactNode
   params: Promise<{ workspaceId: string }>
@@ -24,7 +24,13 @@ export default async function WorkspaceLayout({
   return (
     <WorkspaceProvider
       key={workspaceId}
-      value={{ id: workspaceId, name: workspace.name, role: user.role, authority: user.authority, archived: user.archived }}
+      value={{
+        id: workspaceId,
+        name: workspace.name,
+        role: user.role,
+        authority: user.authority,
+        archived: user.archived
+      }}
     >
       <div className="flex h-screen">
         <Sidebar />

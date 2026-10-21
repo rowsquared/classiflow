@@ -12,10 +12,15 @@ import { audit } from '@/lib/audit'
 const bulkLabelSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(10000),
   taxonomyKey: z.string().min(1),
-  annotations: z.array(z.object({
-    level: z.number().int().min(1).max(5),
-    nodeCode: z.string().min(1).max(100)
-  })).max(5).optional(),
+  annotations: z
+    .array(
+      z.object({
+        level: z.number().int().min(1).max(5),
+        nodeCode: z.string().min(1).max(100)
+      })
+    )
+    .max(5)
+    .optional(),
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional() // ISO timestamp when bulk panel opened
@@ -34,10 +39,13 @@ export const POST = workspaceRoute([], async (req, { user }) => {
   try {
     const validation = bulkLabelSchema.safeParse(await req.json())
     if (!validation.success) {
-      return NextResponse.json({
-        ok: false,
-        error: 'Invalid request data'
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Invalid request data'
+        },
+        { status: 400 }
+      )
     }
 
     const { taxonomyKey, annotations = [], flagged, comment, labelingStartedAt } = validation.data
@@ -52,10 +60,13 @@ export const POST = workspaceRoute([], async (req, { user }) => {
       select: { id: true, maxDepth: true }
     })
     if (!taxonomy) {
-      return NextResponse.json({
-        ok: false,
-        error: `Taxonomy '${taxonomyKey}' not found`
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Taxonomy '${taxonomyKey}' not found`
+        },
+        { status: 404 }
+      )
     }
 
     if (annotations.length > 0) {
@@ -70,10 +81,12 @@ export const POST = workspaceRoute([], async (req, { user }) => {
       return NextResponse.json({ ok: false, error: 'labelingStartedAt is not a valid date' }, { status: 400 })
     }
 
-    const activeIds = (await db().taxonomy.findMany({
-      where: { isActive: true },
-      select: { id: true }
-    })).map(t => t.id)
+    const activeIds = (
+      await db().taxonomy.findMany({
+        where: { isActive: true },
+        select: { id: true }
+      })
+    ).map(t => t.id)
 
     const wroteLabels = annotations.length > 0
     const trimmedComment = comment?.trim()
@@ -106,16 +119,18 @@ export const POST = workspaceRoute([], async (req, { user }) => {
           where: { sentenceId: { in: sentenceIds }, taxonomyId: taxonomy.id }
         })
         await tx.sentenceAnnotation.createMany({
-          data: sentenceIds.flatMap(sentenceId => annotations.map(ann => ({
-            workspaceId: scopeWorkspaceId(),
-            sentenceId,
-            taxonomyId: taxonomy.id,
-            level: ann.level,
-            nodeCode: ann.nodeCode, // level-specific unknown code for unknown
-            source: 'user' as const,
-            createdById: user.id,
-            labelingStartedAt: startTime
-          })))
+          data: sentenceIds.flatMap(sentenceId =>
+            annotations.map(ann => ({
+              workspaceId: scopeWorkspaceId(),
+              sentenceId,
+              taxonomyId: taxonomy.id,
+              level: ann.level,
+              nodeCode: ann.nodeCode, // level-specific unknown code for unknown
+              source: 'user' as const,
+              createdById: user.id,
+              labelingStartedAt: startTime
+            }))
+          )
         })
 
         // Learning counter unit: label rows of changed paths (see single endpoint).
@@ -129,7 +144,12 @@ export const POST = workspaceRoute([], async (req, { user }) => {
 
       if (trimmedComment) {
         await tx.comment.createMany({
-          data: sentenceIds.map(sentenceId => ({ workspaceId: user.workspaceId, body: trimmedComment, sentenceId, authorId: user.id }))
+          data: sentenceIds.map(sentenceId => ({
+            workspaceId: user.workspaceId,
+            body: trimmedComment,
+            sentenceId,
+            authorId: user.id
+          }))
         })
       }
 
@@ -150,12 +170,16 @@ export const POST = workspaceRoute([], async (req, { user }) => {
     })
 
     await audit({
-      actorId: user.id, action: 'labels.bulk_applied', entityType: 'taxonomy', entityId: taxonomy.id,
+      actorId: user.id,
+      action: 'labels.bulk_applied',
+      entityType: 'taxonomy',
+      entityId: taxonomy.id,
       payload: {
-        taxonomyKey, records: labeled,
+        taxonomyKey,
+        records: labeled,
         codes: annotations.map(a => `${a.level}:${a.nodeCode}`),
-        ...(flagged !== undefined ? { flagged } : {}),
-      },
+        ...(flagged !== undefined ? { flagged } : {})
+      }
     })
     return NextResponse.json({
       ok: true,
@@ -167,9 +191,12 @@ export const POST = workspaceRoute([], async (req, { user }) => {
       return NextResponse.json({ ok: false, error: 'One or more records do not exist' }, { status: 404 })
     }
     console.error('Bulk label error:', error)
-    return NextResponse.json({
-      ok: false,
-      error: 'Bulk labelling failed'
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Bulk labelling failed'
+      },
+      { status: 500 }
+    )
   }
 })

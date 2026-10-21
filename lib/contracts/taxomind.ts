@@ -33,7 +33,8 @@ export class TaxomindContractError extends Error {
 export function parseResponse<S extends z.ZodType>(schema: S, body: unknown, endpoint: string): z.output<S> {
   const result = schema.safeParse(body)
   if (result.success) return result.data
-  const issues = result.error.issues.slice(0, 3)
+  const issues = result.error.issues
+    .slice(0, 3)
     .map(issue => `${issue.path.join('.') || '(body)'}: ${issue.message}`)
     .join('; ')
   throw new TaxomindContractError(`Unexpected response from the AI service (${endpoint}): ${issues}`)
@@ -48,7 +49,7 @@ const id = z.string().trim().min(1)
 export const jobCreated = {
   label: z.object({ job_id: id }) satisfies z.ZodType<Pick<Schemas['LabelingJobResponse'], 'job_id'>>,
   learn: z.object({ jobId: id }) satisfies z.ZodType<Pick<Schemas['LearningJobResponse'], 'jobId'>>,
-  taxonomies: z.object({ job_id: id }) satisfies z.ZodType<Pick<Schemas['TaxonomyJobResponse'], 'job_id'>>,
+  taxonomies: z.object({ job_id: id }) satisfies z.ZodType<Pick<Schemas['TaxonomyJobResponse'], 'job_id'>>
 }
 
 export function createdJobId(resource: TaxomindResource, body: unknown): string {
@@ -60,7 +61,9 @@ export function createdJobId(resource: TaxomindResource, body: unknown): string 
 // Job status — same shape for all three resources as far as classiflow reads it
 // ---------------------------------------------------------------------------
 
-export const jobStatus = z.enum(['pending', 'running', 'completed', 'failed', 'canceled']) satisfies z.ZodType<Schemas['JobStatus']>
+export const jobStatus = z.enum(['pending', 'running', 'completed', 'failed', 'canceled']) satisfies z.ZodType<
+  Schemas['JobStatus']
+>
 
 export type JobStatus = z.output<typeof jobStatus>
 
@@ -74,11 +77,17 @@ export const jobStatusResponse = z.object({
   status: jobStatus,
   progress: z.number().min(0).max(1).nullish().catch(null),
   error: z.string().nullish().catch(null),
-  result: z.unknown().optional(),
-}) satisfies z.ZodType<StatusFields<'LabelingStatusResponse'> & StatusFields<'LearningStatusResponse'> & StatusFields<'TaxonomyStatusResponse'>>
+  result: z.unknown().optional()
+}) satisfies z.ZodType<
+  StatusFields<'LabelingStatusResponse'> &
+    StatusFields<'LearningStatusResponse'> &
+    StatusFields<'TaxonomyStatusResponse'>
+>
 
-type StatusFields<S extends 'LabelingStatusResponse' | 'LearningStatusResponse' | 'TaxonomyStatusResponse'> =
-  Pick<Schemas[S], 'status' | 'progress' | 'error'>
+type StatusFields<S extends 'LabelingStatusResponse' | 'LearningStatusResponse' | 'TaxonomyStatusResponse'> = Pick<
+  Schemas[S],
+  'status' | 'progress' | 'error'
+>
 
 export type JobStatusResponse = z.output<typeof jobStatusResponse>
 
@@ -96,13 +105,17 @@ const MAX_CODE_LENGTH = 100
 const annotation = z.object({
   level: z.int().min(1).max(5),
   nodeCode: z.string().trim().min(1).max(MAX_CODE_LENGTH),
-  confidence: z.number().catch(0).transform(c => Math.min(Math.max(c, 0), 1)),
+  confidence: z
+    .number()
+    .catch(0)
+    .transform(c => Math.min(Math.max(c, 0), 1))
 })
 
 const suggestion = z.object({
   sentenceId: z.string(),
-  annotations: z.array(annotation)
-    .refine(list => new Set(list.map(a => a.level)).size === list.length, 'levels must be unique'),
+  annotations: z
+    .array(annotation)
+    .refine(list => new Set(list.map(a => a.level)).size === list.length, 'levels must be unique')
 }) satisfies z.ZodType<Schemas['SentenceSuggestion']>
 
 /**

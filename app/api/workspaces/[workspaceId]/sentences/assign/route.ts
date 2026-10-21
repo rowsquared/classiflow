@@ -108,8 +108,11 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
     await db().sentenceAssignment.createMany({ data: assignments, skipDuplicates: true })
 
     await audit({
-      actorId: user.id, action: 'assignments.added', entityType: 'assignment', entityId: sentenceIds[0],
-      payload: { records: sentenceIds.length, userIds },
+      actorId: user.id,
+      action: 'assignments.added',
+      entityType: 'assignment',
+      entityId: sentenceIds[0],
+      payload: { records: sentenceIds.length, userIds }
     })
     return NextResponse.json({
       ok: true,
@@ -156,8 +159,11 @@ export const DELETE = workspaceRoute(['admin', 'supervisor'], async (req, { user
 
     const deleted = await db().sentenceAssignment.deleteMany({ where })
     await audit({
-      actorId: user.id, action: 'assignments.removed', entityType: 'assignment', entityId: sentenceIds[0],
-      payload: { records: sentenceIds.length, userIds: userIds ?? 'all visible', removed: deleted.count },
+      actorId: user.id,
+      action: 'assignments.removed',
+      entityType: 'assignment',
+      entityId: sentenceIds[0],
+      payload: { records: sentenceIds.length, userIds: userIds ?? 'all visible', removed: deleted.count }
     })
 
     return NextResponse.json({

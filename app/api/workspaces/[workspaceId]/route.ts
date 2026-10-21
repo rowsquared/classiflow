@@ -10,7 +10,7 @@ type Params = { params: Promise<{ workspaceId: string }> }
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  status: z.enum(['active', 'archived']).optional(),
+  status: z.enum(['active', 'archived']).optional()
 })
 
 // GET: the workspace and the caller's effective role in it.
@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (error) return error
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { id: true, name: true, description: true, status: true, archivedAt: true, createdAt: true },
+    select: { id: true, name: true, description: true, status: true, archivedAt: true, createdAt: true }
   })
   if (!workspace) return notFound('Workspace not found')
   return NextResponse.json({ workspace, role: user.role, authority: user.authority })
@@ -43,17 +43,25 @@ export async function PUT(req: Request, { params }: Params) {
     }
     await updateWorkspace(workspaceId, { name, description })
     await audit({
-      workspaceId, actorId: actor.id, action: 'workspace.updated', entityType: 'workspace', entityId: workspaceId,
-      payload: { fields: Object.keys({ ...(name !== undefined && { name }), ...(description !== undefined && { description }) }) },
+      workspaceId,
+      actorId: actor.id,
+      action: 'workspace.updated',
+      entityType: 'workspace',
+      entityId: workspaceId,
+      payload: {
+        fields: Object.keys({ ...(name !== undefined && { name }), ...(description !== undefined && { description }) })
+      }
     })
   }
   if (status !== undefined && (status === 'archived') !== actor.archived) {
     const cancelledJobs = await setWorkspaceStatus(workspaceId, status)
     await audit({
-      workspaceId, actorId: actor.id,
+      workspaceId,
+      actorId: actor.id,
       action: status === 'archived' ? 'workspace.archived' : 'workspace.reopened',
-      entityType: 'workspace', entityId: workspaceId,
-      payload: { authority: actor.authority, ...(status === 'archived' ? { cancelledJobs } : {}) },
+      entityType: 'workspace',
+      entityId: workspaceId,
+      payload: { authority: actor.authority, ...(status === 'archived' ? { cancelledJobs } : {}) }
     })
   }
   return NextResponse.json({ ok: true })

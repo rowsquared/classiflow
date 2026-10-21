@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import { Filter as FilterIcon } from 'lucide-react'
 
@@ -51,7 +51,7 @@ export default function QueueToolbar({
               placeholder="Search sentences..."
               aria-label="Search records"
               value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={e => onSearchChange(e.target.value)}
               className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             {searchQuery && (
@@ -73,11 +73,12 @@ export default function QueueToolbar({
           <span className="font-medium text-gray-900">{stats.total.toLocaleString()}</span> labeled
           <span className="text-gray-500 ml-2">({stats.progress}%)</span>
           {statsStale && (
-            <span className="ml-2 text-amber-700" role="status">· could not refresh, may be out of date</span>
+            <span className="ml-2 text-amber-700" role="status">
+              · could not refresh, may be out of date
+            </span>
           )}
         </div>
       </div>
     </div>
   )
 }
-

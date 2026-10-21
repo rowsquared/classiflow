@@ -37,5 +37,3 @@ export function aiSourceSlug(workspaceId: string): string {
   if (!AI_SOURCE_SLUG) throw new Error('AI_SOURCE_SLUG must be set when the AI service is configured')
   return `${AI_SOURCE_SLUG}--${workspaceId}`
 }
-
-

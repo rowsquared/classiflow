@@ -17,10 +17,13 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
     })
 
     if (!importRecord) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Import not found' 
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Import not found'
+        },
+        { status: 404 }
+      )
     }
 
     // Delete in transaction: annotations, comments, assignments first, then sentences, then import
@@ -62,22 +65,25 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
     })
 
     await audit({
-      actorId: actor.id, action: 'import.deleted', entityType: 'import', entityId: id,
-      payload: { fileName: importRecord.fileName, records: importRecord._count.sentences },
+      actorId: actor.id,
+      action: 'import.deleted',
+      entityType: 'import',
+      entityId: id,
+      payload: { fileName: importRecord.fileName, records: importRecord._count.sentences }
     })
-    return NextResponse.json({ 
-      ok: true, 
-      deletedSentences: importRecord._count.sentences 
+    return NextResponse.json({
+      ok: true,
+      deletedSentences: importRecord._count.sentences
     })
-
   } catch (caught) {
-
     const e = caught as CaughtError
     console.error('Failed to delete import:', e)
-    return NextResponse.json({ 
-      ok: false, 
-      error: e?.message || String(e) 
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e?.message || String(e)
+      },
+      { status: 500 }
+    )
   }
 })
-

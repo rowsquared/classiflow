@@ -1,7 +1,19 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import { db } from '@/lib/workspace/db'
-import { prisma, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import {
+  prisma,
+  wsId,
+  inWorkspace,
+  createWorkspace,
+  createSentences,
+  createTaxonomy,
+  createUser,
+  params,
+  request,
+  resetDatabase,
+  signInAs
+} from './helpers'
 
 import * as annotationsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route'
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
@@ -22,26 +34,40 @@ beforeEach(async () => {
 })
 
 type Label = { level: number; nodeCode: string | number }
-const save = (sentenceId: string, body: { annotations: Array<Label & { taxonomyKey: string }>; status: string; flagged?: boolean }) =>
+const save = (
+  sentenceId: string,
+  body: { annotations: Array<Label & { taxonomyKey: string }>; status: string; flagged?: boolean }
+) =>
   annotationsRoute.POST(
     request(`/api/sentences/${sentenceId}/annotations`, { method: 'POST', body }),
     params({ sentenceId })
   )
 const pathA = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode, taxonomyKey: 'A' }))
 const pathB = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode, taxonomyKey: 'B' }))
-const bulk = (body: Record<string, unknown>) => bulkRoute.POST(request('/api/sentences/bulk-label', { method: 'POST', body }), params())
+const bulk = (body: Record<string, unknown>) =>
+  bulkRoute.POST(request('/api/sentences/bulk-label', { method: 'POST', body }), params())
 const statusOf = async (id: string) => (await prisma.sentence.findUniqueOrThrow({ where: { id } })).status
 const labelsOf = async (id: string, taxonomyId: string) =>
-  (await prisma.sentenceAnnotation.findMany({ where: { sentenceId: id, taxonomyId }, orderBy: { level: 'asc' } }))
-    .map(a => a.nodeCode)
+  (await prisma.sentenceAnnotation.findMany({ where: { sentenceId: id, taxonomyId }, orderBy: { level: 'asc' } })).map(
+    a => a.nodeCode
+  )
 
 describe('single-record saves', () => {
   it('rejects incomplete, broken, numeric and mixed-taxonomy paths without writing', async () => {
     const [r] = await createSentences(1, [labeller.id])
     expect((await save(r.id, { annotations: pathA('01'), status: 'submitted' })).status).toBe(400) // not a leaf
     expect((await save(r.id, { annotations: pathA('02', '011'), status: 'submitted' })).status).toBe(400) // wrong parent
-    expect((await save(r.id, { annotations: [{ level: 1, nodeCode: 2, taxonomyKey: 'A' }], status: 'submitted' })).status).toBe(400)
-    expect((await save(r.id, { annotations: [...pathA('02'), { level: 1, nodeCode: '02', taxonomyKey: 'B' }], status: 'submitted' })).status).toBe(400)
+    expect(
+      (await save(r.id, { annotations: [{ level: 1, nodeCode: 2, taxonomyKey: 'A' }], status: 'submitted' })).status
+    ).toBe(400)
+    expect(
+      (
+        await save(r.id, {
+          annotations: [...pathA('02'), { level: 1, nodeCode: '02', taxonomyKey: 'B' }],
+          status: 'submitted'
+        })
+      ).status
+    ).toBe(400)
     expect(await prisma.sentenceAnnotation.count()).toBe(0)
     expect(await statusOf(r.id)).toBe('pending')
   })
@@ -66,9 +92,18 @@ describe('single-record saves', () => {
 
   it('AI suggestions do not count towards completion', async () => {
     const [r] = await createSentences(1, [labeller.id])
-    await inWorkspace(() => db().sentenceAISuggestion.create({
-      data: { workspaceId: wsId(), sentenceId: r.id, taxonomyId: taxB.id, level: 1, nodeCode: '02', confidenceScore: 0.9 },
-    }))
+    await inWorkspace(() =>
+      db().sentenceAISuggestion.create({
+        data: {
+          workspaceId: wsId(),
+          sentenceId: r.id,
+          taxonomyId: taxB.id,
+          level: 1,
+          nodeCode: '02',
+          confidenceScore: 0.9
+        }
+      })
+    )
     await save(r.id, { annotations: pathA('02'), status: 'submitted' })
     expect(await statusOf(r.id)).toBe('pending')
   })
@@ -94,9 +129,13 @@ describe('single-record saves', () => {
     const [r] = await createSentences(1, [labeller.id])
     await save(r.id, { annotations: pathA('01', '011'), status: 'submitted' })
     await save(r.id, { annotations: pathA('01', '011'), status: 'submitted' })
-    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxA.id } })).newAnnotationsSinceLastLearning).toBe(2)
+    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxA.id } })).newAnnotationsSinceLastLearning).toBe(
+      2
+    )
     await save(r.id, { annotations: pathA('02'), status: 'submitted' })
-    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxA.id } })).newAnnotationsSinceLastLearning).toBe(3)
+    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxA.id } })).newAnnotationsSinceLastLearning).toBe(
+      3
+    )
   })
 
   it('concurrent saves serialise: the result is exactly one of the submitted paths', async () => {
@@ -104,7 +143,7 @@ describe('single-record saves', () => {
     const results = await Promise.all([
       save(r.id, { annotations: pathA('01', '011'), status: 'submitted' }),
       save(r.id, { annotations: pathA('02'), status: 'submitted' }),
-      save(r.id, { annotations: pathA('01', '012'), status: 'submitted' }),
+      save(r.id, { annotations: pathA('01', '012'), status: 'submitted' })
     ])
     expect(results.map(res => res.status)).toEqual([200, 200, 200])
     const final = (await labelsOf(r.id, taxA.id)).join('/')
@@ -117,7 +156,11 @@ describe('bulk saves', () => {
     const [done, fresh] = await createSentences(2, [labeller.id])
     await save(done.id, { annotations: pathB('02'), status: 'submitted' })
 
-    const res = await bulk({ sentenceIds: [done.id, fresh.id], taxonomyKey: 'A', annotations: pathA('01', '-99').map(({ level, nodeCode }) => ({ level, nodeCode })) })
+    const res = await bulk({
+      sentenceIds: [done.id, fresh.id],
+      taxonomyKey: 'A',
+      annotations: pathA('01', '-99').map(({ level, nodeCode }) => ({ level, nodeCode }))
+    })
     expect(res.status).toBe(200)
     expect(await statusOf(done.id)).toBe('submitted') // A + B
     expect(await statusOf(fresh.id)).toBe('pending') // A only

@@ -9,10 +9,12 @@ export const GET = workspaceRoute([], async (_req, { user }) => {
   } catch (caught) {
     const e = caught as CaughtError
     console.error('Failed to fetch imports:', e)
-    return NextResponse.json({ 
-      ok: false, 
-      error: e?.message || String(e) 
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e?.message || String(e)
+      },
+      { status: 500 }
+    )
   }
 })
-

@@ -44,9 +44,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       if (assignRes.ok) {
         const assignData = await assignRes.json()
         // userAssignments is { userId: [sentenceId, ...] }
-        const currentlyAssigned = new Set<string>(
-          Object.keys(assignData.userAssignments || {})
-        )
+        const currentlyAssigned = new Set<string>(Object.keys(assignData.userAssignments || {}))
         setSelectedUserIds(currentlyAssigned)
         setInitialUserIds(currentlyAssigned)
       }
@@ -145,10 +143,14 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-indigo-100 text-indigo-700'
-      case 'supervisor': return 'bg-indigo-100 text-indigo-700'
-      case 'labeller': return 'bg-green-100 text-green-700'
-      default: return 'bg-gray-100 text-gray-700'
+      case 'admin':
+        return 'bg-indigo-100 text-indigo-700'
+      case 'supervisor':
+        return 'bg-indigo-100 text-indigo-700'
+      case 'labeller':
+        return 'bg-green-100 text-green-700'
+      default:
+        return 'bg-gray-100 text-gray-700'
     }
   }
 
@@ -172,7 +174,11 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   }
 
   return (
-    <Modal label="Manage assignments" onClose={onClose} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <Modal
+      label="Manage assignments"
+      onClose={onClose}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
       <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -181,11 +187,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
               {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'} selected
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Close">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -193,9 +195,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-            {error}
-          </div>
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{error}</div>
         )}
 
         {loading ? (
@@ -213,14 +213,10 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                   onChange={() => handleSelectAll(assignableUsers)}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Select All ({assignableUsers.length} users)
-                </span>
+                <span className="text-sm font-medium text-gray-700">Select All ({assignableUsers.length} users)</span>
               </label>
               <div className="flex items-center gap-3 text-sm text-gray-600">
-                {selectedUserIds.size > 0 && (
-                  <span>{selectedUserIds.size} selected</span>
-                )}
+                {selectedUserIds.size > 0 && <span>{selectedUserIds.size} selected</span>}
                 {initialUserIds.size > 0 && (
                   <span className="text-gray-400">({initialUserIds.size} currently assigned)</span>
                 )}
@@ -230,9 +226,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
             {/* User List */}
             <div className="flex-1 overflow-y-auto space-y-2">
               {assignableUsers.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No users available for assignment
-                </div>
+                <div className="text-center py-8 text-gray-500">No users available for assignment</div>
               ) : (
                 assignableUsers.map(user => {
                   const isSelected = selectedUserIds.has(user.id)
@@ -258,10 +252,10 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">
-                            {user.name || 'Unnamed User'}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getRoleBadgeColor(user.role)}`}>
+                          <span className="font-medium text-gray-900">{user.name || 'Unnamed User'}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getRoleBadgeColor(user.role)}`}
+                          >
                             {user.role}
                           </span>
                           {isSelected && !wasInitial && (

@@ -9,10 +9,29 @@ export const PASSWORD_MAX_LENGTH = 256
 
 // The most common passwords that pass the length rule; a short list on purpose.
 const COMMON = new Set([
-  '1234567890', '12345678910', 'qwertyuiop', 'password12', 'password123', 'password1234',
-  'iloveyou12', 'abcdefghij', '0123456789', '1q2w3e4r5t', 'qwerty1234', 'asdfghjkl1',
-  'changeme123', 'changeme1234', 'welcome123', 'letmein123', 'administrator', 'classiflow',
-  'classiflow1', 'classiflow123', 'passwordpassword', 'aaaaaaaaaa', '1111111111',
+  '1234567890',
+  '12345678910',
+  'qwertyuiop',
+  'password12',
+  'password123',
+  'password1234',
+  'iloveyou12',
+  'abcdefghij',
+  '0123456789',
+  '1q2w3e4r5t',
+  'qwerty1234',
+  'asdfghjkl1',
+  'changeme123',
+  'changeme1234',
+  'welcome123',
+  'letmein123',
+  'administrator',
+  'classiflow',
+  'classiflow1',
+  'classiflow123',
+  'passwordpassword',
+  'aaaaaaaaaa',
+  '1111111111'
 ])
 
 export type PasswordContext = { username?: string | null; email?: string | null; name?: string | null }

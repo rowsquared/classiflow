@@ -25,4 +25,3 @@ export const GET = workspaceRoute(['admin'], async (req, { params: routeParams }
     return NextResponse.json({ error: error?.message || 'Failed to fetch job' }, { status: 500 })
   }
 })
-

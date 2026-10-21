@@ -76,10 +76,13 @@ export async function validateLabelPath(
   labels: LabelInput[]
 ): Promise<string | null> {
   const codes = Array.from(new Set(labels.map(l => l.nodeCode).filter(c => !isUnknownNodeCode(c))))
-  const rows = codes.length === 0 ? [] : await db.taxonomyNode.findMany({
-    where: { taxonomyId: taxonomy.id, code: { in: codes } },
-    select: { code: true, level: true, parentCode: true, isLeaf: true },
-  })
+  const rows =
+    codes.length === 0
+      ? []
+      : await db.taxonomyNode.findMany({
+          where: { taxonomyId: taxonomy.id, code: { in: codes } },
+          select: { code: true, level: true, parentCode: true, isLeaf: true }
+        })
 
   const nodes = new Map<string, PathNode>(rows.map(r => [r.code, r]))
   return checkLabelPath(labels, nodes, taxonomy.maxDepth)

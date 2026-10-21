@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft } from 'lucide-react'
@@ -93,14 +93,14 @@ export default function FilterPanel({
   })
   const [imports, setImports] = useState<ImportFile[]>([])
   const [loadingImports, setLoadingImports] = useState(false)
-  
+
   useEffect(() => {
     setLocalFilters({
       ...filters,
       lastEditorId: filters.lastEditorId || null
     })
   }, [filters])
-  
+
   // Fetch imports on mount
   useEffect(() => {
     const fetchImports = async () => {
@@ -150,9 +150,7 @@ export default function FilterPanel({
       if (!query) return unknownOptions
       const normalized = query.toLowerCase()
       return unknownOptions.filter(
-        option =>
-          option.label.toLowerCase().includes(normalized) ||
-          option.code.toLowerCase().includes(normalized)
+        option => option.label.toLowerCase().includes(normalized) || option.code.toLowerCase().includes(normalized)
       )
     },
     [unknownOptions]
@@ -182,11 +180,13 @@ export default function FilterPanel({
         })
         if (!res.ok) throw new Error('Failed to search submitted labels')
         const data = await res.json()
-        const fetched: NodeOption[] = (data.items || []).map((item: { code: string; label: string; level: number }) => ({
-          code: item.code,
-          label: item.label,
-          level: item.level
-        }))
+        const fetched: NodeOption[] = (data.items || []).map(
+          (item: { code: string; label: string; level: number }) => ({
+            code: item.code,
+            label: item.label,
+            level: item.level
+          })
+        )
         if (!controller.signal.aborted) {
           const unknownMatches = getUnknownMatches(query)
           setSubmittedLabelResults([...fetched, ...unknownMatches])
@@ -232,11 +232,13 @@ export default function FilterPanel({
         })
         if (!res.ok) throw new Error('Failed to search AI labels')
         const data = await res.json()
-        const fetched: NodeOption[] = (data.items || []).map((item: { code: string; label: string; level: number }) => ({
-          code: item.code,
-          label: item.label,
-          level: item.level
-        }))
+        const fetched: NodeOption[] = (data.items || []).map(
+          (item: { code: string; label: string; level: number }) => ({
+            code: item.code,
+            label: item.label,
+            level: item.level
+          })
+        )
         if (!controller.signal.aborted) {
           const unknownMatches = getUnknownMatches(query)
           setAiLabelResults([...fetched, ...unknownMatches])
@@ -369,11 +371,7 @@ export default function FilterPanel({
             </span>
           )}
         </div>
-        <button
-          onClick={onToggle}
-          className="p-1 hover:bg-gray-200 rounded transition-colors"
-          title="Hide filters"
-        >
+        <button onClick={onToggle} className="p-1 hover:bg-gray-200 rounded transition-colors" title="Hide filters">
           <ChevronLeft className="w-5 h-5 text-gray-600" />
         </button>
       </div>
@@ -388,20 +386,17 @@ export default function FilterPanel({
               <input
                 type="checkbox"
                 checked={localFilters.flagged === true}
-                onChange={(e) => setLocalFilters(prev => ({
-                  ...prev,
-                  flagged: e.target.checked ? true : null
-                }))}
+                onChange={e =>
+                  setLocalFilters(prev => ({
+                    ...prev,
+                    flagged: e.target.checked ? true : null
+                  }))
+                }
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
                 <svg className="w-4 h-4 text-[#F56476]" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M4 2.2 L5.4 13.8"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
+                  <path d="M4 2.2 L5.4 13.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   <path
                     d="M5 3
                        C 8 1.5 10.5 3.5 13 2.5
@@ -418,14 +413,21 @@ export default function FilterPanel({
               <input
                 type="checkbox"
                 checked={localFilters.hasComments === true}
-                onChange={(e) => setLocalFilters(prev => ({
-                  ...prev,
-                  hasComments: e.target.checked ? true : null
-                }))}
+                onChange={e =>
+                  setLocalFilters(prev => ({
+                    ...prev,
+                    hasComments: e.target.checked ? true : null
+                  }))
+                }
                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
-                <svg className="w-4 h-4 text-[#A7ACD9]" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <svg
+                  className="w-4 h-4 text-[#A7ACD9]"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
                   <path d="M3 3h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 3v-9a1 1 0 0 1 1-1z" />
                 </svg>
                 Has comments
@@ -440,19 +442,22 @@ export default function FilterPanel({
             <h3 className="text-sm font-medium text-gray-700 mb-2">Assigned To</h3>
             <select
               value={localFilters.assignedToUserId || ''}
-              onChange={(e) => setLocalFilters(prev => ({
-                ...prev,
-                assignedToUserId: e.target.value || null
-              }))}
+              onChange={e =>
+                setLocalFilters(prev => ({
+                  ...prev,
+                  assignedToUserId: e.target.value || null
+                }))
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">All users</option>
               <option value="unassigned">Unassigned</option>
-              {users.length > 0 && users.map(user => (
-                <option key={user.id} value={user.id}>
-                  {user.username}
-                </option>
-              ))}
+              {users.length > 0 &&
+                users.map(user => (
+                  <option key={user.id} value={user.id}>
+                    {user.username}
+                  </option>
+                ))}
             </select>
           </div>
         )}
@@ -463,7 +468,7 @@ export default function FilterPanel({
             <h3 className="text-sm font-medium text-gray-700 mb-2">Last Editor</h3>
             <select
               value={localFilters.lastEditorId || ''}
-              onChange={(e) =>
+              onChange={e =>
                 setLocalFilters(prev => ({
                   ...prev,
                   lastEditorId: e.target.value || null
@@ -486,10 +491,12 @@ export default function FilterPanel({
           <h3 className="text-sm font-medium text-gray-700 mb-2">Import File</h3>
           <select
             value={localFilters.importId || ''}
-            onChange={(e) => setLocalFilters(prev => ({
-              ...prev,
-              importId: e.target.value || null
-            }))}
+            onChange={e =>
+              setLocalFilters(prev => ({
+                ...prev,
+                importId: e.target.value || null
+              }))
+            }
             className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${getFieldClasses(Boolean(localFilters.importId))}`}
             disabled={loadingImports}
           >
@@ -576,10 +583,12 @@ export default function FilterPanel({
                   <input
                     type="date"
                     value={localFilters.dateRange.from || ''}
-                    onChange={(e) => setLocalFilters(prev => ({
-                      ...prev,
-                      dateRange: { ...prev.dateRange, from: e.target.value || null }
-                    }))}
+                    onChange={e =>
+                      setLocalFilters(prev => ({
+                        ...prev,
+                        dateRange: { ...prev.dateRange, from: e.target.value || null }
+                      }))
+                    }
                     className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(localFilters.dateRange.from))}`}
                   />
                 </div>
@@ -588,10 +597,12 @@ export default function FilterPanel({
                   <input
                     type="date"
                     value={localFilters.dateRange.to || ''}
-                    onChange={(e) => setLocalFilters(prev => ({
-                      ...prev,
-                      dateRange: { ...prev.dateRange, to: e.target.value || null }
-                    }))}
+                    onChange={e =>
+                      setLocalFilters(prev => ({
+                        ...prev,
+                        dateRange: { ...prev.dateRange, to: e.target.value || null }
+                      }))
+                    }
                     className={`${fieldBaseClasses} py-1.5 ${getFieldClasses(Boolean(localFilters.dateRange.to))}`}
                   />
                 </div>
@@ -608,7 +619,7 @@ export default function FilterPanel({
               <label className="text-xs text-gray-600">Taxonomy</label>
               <select
                 value={localFilters.taxonomyKey || ''}
-                onChange={(e) => {
+                onChange={e => {
                   const value = e.target.value || null
                   setLocalFilters(prev => ({
                     ...prev,
@@ -625,7 +636,9 @@ export default function FilterPanel({
               >
                 <option value="">Select</option>
                 {taxonomies.map(t => (
-                  <option key={t.key} value={t.key}>{t.key}</option>
+                  <option key={t.key} value={t.key}>
+                    {t.key}
+                  </option>
                 ))}
               </select>
             </div>
@@ -635,7 +648,7 @@ export default function FilterPanel({
                 <input
                   type="text"
                   value={submittedLabelQuery}
-                  onChange={(e) => setSubmittedLabelQuery(e.target.value)}
+                  onChange={e => setSubmittedLabelQuery(e.target.value)}
                   onFocus={() => {
                     if (localFilters.taxonomyKey && !isSubmittedDropdownOpen) {
                       setIsSubmittedDropdownOpen(true)
@@ -649,9 +662,7 @@ export default function FilterPanel({
                   className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.code))}`}
                 />
                 {submittedLabelLoading && isSubmittedDropdownOpen && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-                    Loading...
-                  </span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">Loading...</span>
                 )}
                 {isSubmittedDropdownOpen && submittedLabelResults.length > 0 && (
                   <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
@@ -690,11 +701,7 @@ export default function FilterPanel({
                 <label className="text-xs text-gray-600">Submitted label status</label>
                 <select
                   value={
-                    localFilters.hasSubmittedLabels === null
-                      ? ''
-                      : localFilters.hasSubmittedLabels
-                        ? 'true'
-                        : 'false'
+                    localFilters.hasSubmittedLabels === null ? '' : localFilters.hasSubmittedLabels ? 'true' : 'false'
                   }
                   onChange={e => {
                     const value = e.target.value
@@ -722,7 +729,7 @@ export default function FilterPanel({
               <label className="text-xs text-gray-600">Taxonomy</label>
               <select
                 value={localFilters.aiTaxonomyKey || ''}
-                onChange={(e) => {
+                onChange={e => {
                   const value = e.target.value || null
                   setLocalFilters(prev => ({
                     ...prev,
@@ -739,7 +746,9 @@ export default function FilterPanel({
               >
                 <option value="">Select</option>
                 {taxonomies.map(t => (
-                  <option key={`ai-${t.key}`} value={t.key}>{t.key}</option>
+                  <option key={`ai-${t.key}`} value={t.key}>
+                    {t.key}
+                  </option>
                 ))}
               </select>
             </div>
@@ -749,7 +758,7 @@ export default function FilterPanel({
                 <input
                   type="text"
                   value={aiLabelQuery}
-                  onChange={(e) => setAiLabelQuery(e.target.value)}
+                  onChange={e => setAiLabelQuery(e.target.value)}
                   onFocus={() => {
                     if (localFilters.aiTaxonomyKey && !isAiDropdownOpen) {
                       setIsAiDropdownOpen(true)
@@ -763,9 +772,7 @@ export default function FilterPanel({
                   className={`${fieldBaseClasses} ${getFieldClasses(Boolean(localFilters.aiCode))}`}
                 />
                 {aiLabelLoading && isAiDropdownOpen && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-                    Loading...
-                  </span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">Loading...</span>
                 )}
                 {isAiDropdownOpen && aiLabelResults.length > 0 && (
                   <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
@@ -803,13 +810,7 @@ export default function FilterPanel({
               <div className="mt-3">
                 <label className="text-xs text-gray-600">AI suggestion status</label>
                 <select
-                  value={
-                    localFilters.hasAISuggestions === null
-                      ? ''
-                      : localFilters.hasAISuggestions
-                        ? 'true'
-                        : 'false'
-                  }
+                  value={localFilters.hasAISuggestions === null ? '' : localFilters.hasAISuggestions ? 'true' : 'false'}
                   onChange={e => {
                     const value = e.target.value
                     setLocalFilters(prev => ({
@@ -835,7 +836,7 @@ export default function FilterPanel({
                       max="1"
                       step="0.01"
                       value={localFilters.aiConfidenceMin ?? ''}
-                      onChange={(e) => handleConfidenceChange('aiConfidenceMin', e.target.value)}
+                      onChange={e => handleConfidenceChange('aiConfidenceMin', e.target.value)}
                       placeholder="0.70"
                       className={`${fieldBaseClasses} ${getFieldClasses(localFilters.aiConfidenceMin !== null)}`}
                     />
@@ -848,7 +849,7 @@ export default function FilterPanel({
                       max="1"
                       step="0.01"
                       value={localFilters.aiConfidenceMax ?? ''}
-                      onChange={(e) => handleConfidenceChange('aiConfidenceMax', e.target.value)}
+                      onChange={e => handleConfidenceChange('aiConfidenceMax', e.target.value)}
                       placeholder="0.95"
                       className={`${fieldBaseClasses} ${getFieldClasses(localFilters.aiConfidenceMax !== null)}`}
                     />
@@ -878,4 +879,3 @@ export default function FilterPanel({
     </div>
   )
 }
-

@@ -15,14 +15,14 @@ export async function setPassword(db: Db, userId: string, password: string) {
   await db.account.upsert({
     where: { providerId_accountId: { providerId: CREDENTIAL_PROVIDER, accountId: userId } },
     create: { providerId: CREDENTIAL_PROVIDER, accountId: userId, userId, password: hash },
-    update: { password: hash },
+    update: { password: hash }
   })
 }
 
 export async function checkPassword(db: Db, userId: string, password: string): Promise<boolean> {
   const account = await db.account.findUnique({
     where: { providerId_accountId: { providerId: CREDENTIAL_PROVIDER, accountId: userId } },
-    select: { password: true },
+    select: { password: true }
   })
   if (!account?.password) return false
   return verifyPassword({ hash: account.password, password })
@@ -31,6 +31,6 @@ export async function checkPassword(db: Db, userId: string, password: string): P
 /** Signs the user out everywhere, or everywhere except `keepSessionId`. */
 export async function revokeSessions(db: Db, userId: string, keepSessionId?: string) {
   await db.session.deleteMany({
-    where: { userId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) },
+    where: { userId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) }
   })
 }

@@ -13,7 +13,7 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
   try {
     const { key } = routeParams
     const formData = await req.formData()
-    
+
     const description = formData.get('description') as string | null
     const levelNamesStr = formData.get('levelNames') as string | null
     const file = formData.get('file')
@@ -24,10 +24,13 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
     })
 
     if (!existingTaxonomy) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Taxonomy not found' 
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Taxonomy not found'
+        },
+        { status: 404 }
+      )
     }
 
     // Parse level names if provided
@@ -36,10 +39,13 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
       try {
         levelNames = JSON.parse(levelNamesStr)
       } catch {
-        return NextResponse.json({ 
-          ok: false, 
-          error: 'Invalid levelNames JSON' 
-        }, { status: 400 })
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Invalid levelNames JSON'
+          },
+          { status: 400 }
+        )
       }
     }
 
@@ -59,11 +65,14 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
       }
       const { nodes: parsedNodes, errors: validationErrors } = parseTaxonomyCsv(upload.text)
       if (validationErrors.length > 0) {
-        return NextResponse.json({
-          ok: false,
-          error: formatCsvErrors(validationErrors),
-          errors: validationErrors
-        }, { status: 400 })
+        return NextResponse.json(
+          {
+            ok: false,
+            error: formatCsvErrors(validationErrors),
+            errors: validationErrors
+          },
+          { status: 400 }
+        )
       }
 
       // Human labels and AI suggestions whose code is not in the new file would
@@ -84,20 +93,24 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
           distinct: ['nodeCode'],
           take: 20
         })
-        return NextResponse.json({
-          ok: false,
-          code: 'ORPHANED_LABELS',
-          orphanedLabels,
-          orphanedSuggestions,
-          error: `The new file drops codes that ${orphanedLabels} human label(s) and ${orphanedSuggestions} AI suggestion(s) still use` +
-            (missingCodes.length ? ` (e.g. ${missingCodes.map(c => c.nodeCode).join(', ')})` : '') +
-            '. Those labels would point at codes that no longer exist.'
-        }, { status: 409 })
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'ORPHANED_LABELS',
+            orphanedLabels,
+            orphanedSuggestions,
+            error:
+              `The new file drops codes that ${orphanedLabels} human label(s) and ${orphanedSuggestions} AI suggestion(s) still use` +
+              (missingCodes.length ? ` (e.g. ${missingCodes.map(c => c.nodeCode).join(', ')})` : '') +
+              '. Those labels would point at codes that no longer exist.'
+          },
+          { status: 409 }
+        )
       }
 
       const fileDepth = Math.max(...parsedNodes.map(n => n.level))
       await inCurrentWorkspace(async () => {
-      const tx = db()
+        const tx = db()
         await tx.taxonomySynonym.deleteMany({
           where: { taxonomyId: existingTaxonomy.id }
         })
@@ -119,23 +132,27 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor, params: 
     })
 
     await audit({
-      actorId: actor.id, action: 'taxonomy.updated', entityType: 'taxonomy', entityId: updatedTaxonomy.id,
-      payload: { key: updatedTaxonomy.key, fields: Object.keys(updateData), nodesReplaced: nodesImported },
+      actorId: actor.id,
+      action: 'taxonomy.updated',
+      entityType: 'taxonomy',
+      entityId: updatedTaxonomy.id,
+      payload: { key: updatedTaxonomy.key, fields: Object.keys(updateData), nodesReplaced: nodesImported }
     })
-    return NextResponse.json({ 
-      ok: true, 
+    return NextResponse.json({
+      ok: true,
       taxonomy: updatedTaxonomy,
       nodesReplaced: nodesImported
     })
-
   } catch (caught) {
-
     const error = caught as CaughtError
     console.error('Update taxonomy error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: error?.message || String(error) 
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error?.message || String(error)
+      },
+      { status: 500 }
+    )
   }
 })
 
@@ -160,10 +177,13 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
     })
 
     if (!existingTaxonomy) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Taxonomy not found' 
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Taxonomy not found'
+        },
+        { status: 404 }
+      )
     }
 
     const taxonomyId = existingTaxonomy.id
@@ -173,13 +193,16 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
     // taxonomy that no longer exists. Cancel or wait for those jobs first.
     const activeJobs = await Promise.all([
       db().aILabelingJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
-      db().aILearningJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } }),
+      db().aILearningJob.count({ where: { taxonomyId, status: { in: ['pending', 'processing'] } } })
     ])
     if (activeJobs[0] + activeJobs[1] > 0) {
-      return NextResponse.json({
-        ok: false,
-        error: 'This taxonomy has running AI jobs. Cancel them or wait until they finish, then delete it.'
-      }, { status: 409 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'This taxonomy has running AI jobs. Cancel them or wait until they finish, then delete it.'
+        },
+        { status: 409 }
+      )
     }
 
     // Hard delete: local data first, in one transaction. The AI service is only
@@ -244,16 +267,19 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
     }
 
     await audit({
-      actorId: actor.id, action: 'taxonomy.deleted', entityType: 'taxonomy', entityId: taxonomyId,
+      actorId: actor.id,
+      action: 'taxonomy.deleted',
+      entityType: 'taxonomy',
+      entityId: taxonomyId,
       payload: {
         key: taxonomyKey,
         nodes: deletionResult.deletedNodes,
         annotations: deletionResult.deletedAnnotations,
-        aiSuggestions: deletionResult.deletedAISuggestions,
-      },
+        aiSuggestions: deletionResult.deletedAISuggestions
+      }
     })
-    return NextResponse.json({ 
-      ok: true, 
+    return NextResponse.json({
+      ok: true,
       message: 'Taxonomy and all associated data deleted successfully',
       aiNotified,
       deleted: {
@@ -263,16 +289,15 @@ export const DELETE = workspaceRoute(['admin'], async (req, { user: actor, param
         synonyms: deletionResult.deletedSynonyms
       }
     })
-
   } catch (caught) {
-
     const error = caught as CaughtError
     console.error('Delete taxonomy error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: error?.message || String(error) 
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error?.message || String(error)
+      },
+      { status: 500 }
+    )
   }
 })
-
-

@@ -12,7 +12,9 @@ export const GET = workspaceRoute([], async (req, { params: routeParams }) => {
   const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10) || 100, 500)
   const offset = parseInt(searchParams.get('offset') || '0', 10) || 0
 
-  const taxonomy = await db().taxonomy.findUnique({ where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } } })
+  const taxonomy = await db().taxonomy.findUnique({
+    where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } }
+  })
   if (!taxonomy) return NextResponse.json({ error: 'taxonomy not found' }, { status: 404 })
 
   const where: Prisma.TaxonomyNodeWhereInput = { taxonomyId: taxonomy.id }
@@ -23,10 +25,7 @@ export const GET = workspaceRoute([], async (req, { params: routeParams }) => {
     where.level = Number(levelRaw)
   }
   if (q) {
-    where.OR = [
-      { code: { startsWith: q, mode: 'insensitive' } },
-      { label: { contains: q, mode: 'insensitive' } },
-    ]
+    where.OR = [{ code: { startsWith: q, mode: 'insensitive' } }, { label: { contains: q, mode: 'insensitive' } }]
   }
 
   const [items, total] = await Promise.all([
@@ -35,12 +34,10 @@ export const GET = workspaceRoute([], async (req, { params: routeParams }) => {
       orderBy: [{ level: 'asc' }, { code: 'asc' }],
       skip: offset,
       take: limit,
-      select: { code: true, label: true, level: true, parentCode: true, isLeaf: true, definition: true, examples: true },
+      select: { code: true, label: true, level: true, parentCode: true, isLeaf: true, definition: true, examples: true }
     }),
-    db().taxonomyNode.count({ where }),
+    db().taxonomyNode.count({ where })
   ])
 
   return NextResponse.json({ items, total, limit, offset })
 })
-
-

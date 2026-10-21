@@ -26,7 +26,10 @@ export async function listAccessibleWorkspaces(user: SessionUser): Promise<Works
   if (user.platformRole === 'admin') {
     const [workspaces, memberships] = await Promise.all([
       prisma.workspace.findMany({ select, orderBy: { name: 'asc' } }),
-      prisma.workspaceMembership.findMany({ where: { userId: user.id, status: 'active' }, select: { workspaceId: true } }),
+      prisma.workspaceMembership.findMany({
+        where: { userId: user.id, status: 'active' },
+        select: { workspaceId: true }
+      })
     ])
     const member = new Set(memberships.map(m => m.workspaceId))
     return workspaces.map(w => ({ ...w, role: 'admin', authority: member.has(w.id) ? 'membership' : 'platform' }))
@@ -34,7 +37,7 @@ export async function listAccessibleWorkspaces(user: SessionUser): Promise<Works
   const memberships = await prisma.workspaceMembership.findMany({
     where: { userId: user.id, status: 'active' },
     select: { role: true, workspace: { select } },
-    orderBy: { workspace: { name: 'asc' } },
+    orderBy: { workspace: { name: 'asc' } }
   })
   return memberships.map(m => ({ ...m.workspace, role: m.role, authority: 'membership' }))
 }
@@ -51,10 +54,10 @@ export async function createWorkspace(input: {
     if (!admin) return null
     const workspace = await tx.workspace.create({
       data: { name: input.name, description: input.description, createdById: input.createdById },
-      select: { id: true, name: true, description: true, status: true },
+      select: { id: true, name: true, description: true, status: true }
     })
     await tx.workspaceMembership.create({
-      data: { workspaceId: workspace.id, userId: admin.id, role: 'admin' },
+      data: { workspaceId: workspace.id, userId: admin.id, role: 'admin' }
     })
     return workspace
   })
@@ -76,14 +79,14 @@ export async function setWorkspaceStatus(workspaceId: string, status: 'active' |
     await db().$queryRaw`SELECT 1 FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`
     await db().workspace.update({
       where: { id: workspaceId },
-      data: { status, archivedAt: status === 'archived' ? new Date() : null },
+      data: { status, archivedAt: status === 'archived' ? new Date() : null }
     })
     if (status !== 'archived') return 0
     const active = { status: { in: ['pending' as const, 'processing' as const] } }
     const cancelled = { status: 'cancelled' as const, completedAt: new Date(), errorMessage: 'Workspace archived' }
     const [labeling, learning] = await Promise.all([
       db().aILabelingJob.updateMany({ where: active, data: cancelled }),
-      db().aILearningJob.updateMany({ where: active, data: cancelled }),
+      db().aILearningJob.updateMany({ where: active, data: cancelled })
     ])
     return labeling.count + learning.count
   })

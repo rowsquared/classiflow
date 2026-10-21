@@ -39,13 +39,17 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
         data: {
           status: isStuck ? 'failed' : 'cancelled',
           completedAt: new Date(),
-          errorMessage: isStuck
-            ? 'Job was stuck in processing state and has been cancelled'
-            : 'Cancelled by user'
+          errorMessage: isStuck ? 'Job was stuck in processing state and has been cancelled' : 'Cancelled by user'
         }
       })
 
-      await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: `ai_job.${type}`, entityId: jobId, payload: { status: isStuck ? 'failed' : 'cancelled' } })
+      await audit({
+        actorId: actor.id,
+        action: 'ai.job_cancelled',
+        entityType: `ai_job.${type}`,
+        entityId: jobId,
+        payload: { status: isStuck ? 'failed' : 'cancelled' }
+      })
       return NextResponse.json({ ok: true, status: isStuck ? 'failed' : 'cancelled' })
     }
 
@@ -75,13 +79,17 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
         data: {
           status: isStuck ? 'failed' : 'cancelled',
           completedAt: new Date(),
-          errorMessage: isStuck
-            ? 'Job was stuck in processing state and has been cancelled'
-            : 'Cancelled by user'
+          errorMessage: isStuck ? 'Job was stuck in processing state and has been cancelled' : 'Cancelled by user'
         }
       })
 
-      await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: `ai_job.${type}`, entityId: jobId, payload: { status: isStuck ? 'failed' : 'cancelled' } })
+      await audit({
+        actorId: actor.id,
+        action: 'ai.job_cancelled',
+        entityType: `ai_job.${type}`,
+        entityId: jobId,
+        payload: { status: isStuck ? 'failed' : 'cancelled' }
+      })
       return NextResponse.json({ ok: true, status: isStuck ? 'failed' : 'cancelled' })
     }
 
@@ -110,7 +118,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
         }
       })
 
-      await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: `ai_job.${type}`, entityId: jobId, payload: { status: 'cancelled' } })
+      await audit({
+        actorId: actor.id,
+        action: 'ai.job_cancelled',
+        entityType: `ai_job.${type}`,
+        entityId: jobId,
+        payload: { status: 'cancelled' }
+      })
       return NextResponse.json({ ok: true, status: 'cancelled' })
     }
 
@@ -121,4 +135,3 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
     return NextResponse.json({ error: error?.message || 'Failed to cancel job' }, { status: 500 })
   }
 })
-

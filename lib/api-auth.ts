@@ -72,8 +72,11 @@ export async function requirePlatformAdmin(): Promise<SessionResult> {
   if (result.error) return result
   if (result.user.platformRole !== 'admin') {
     await audit({
-      actorId: result.user.id, action: 'access.denied', entityType: 'platform', entityId: 'admin',
-      payload: { reason: 'platform role' },
+      actorId: result.user.id,
+      action: 'access.denied',
+      entityType: 'platform',
+      entityId: 'admin',
+      payload: { reason: 'platform role' }
     })
     return { error: forbidden() }
   }
@@ -87,10 +90,7 @@ async function checkSession(allowPasswordReset: boolean): Promise<SessionResult>
   }
   if (session.user.mustResetPassword && !allowPasswordReset) {
     return {
-      error: NextResponse.json(
-        { error: 'Password reset required', code: 'PASSWORD_RESET_REQUIRED' },
-        { status: 403 }
-      ),
+      error: NextResponse.json({ error: 'Password reset required', code: 'PASSWORD_RESET_REQUIRED' }, { status: 403 })
     }
   }
   const platformRole: PlatformRole = session.user.role === 'admin' ? 'admin' : 'user'
@@ -103,30 +103,34 @@ async function checkSession(allowPasswordReset: boolean): Promise<SessionResult>
  * inaccessible workspace is a 404, so its existence is not revealed; a role
  * that may not do this is a 403.
  */
-export async function resolveWorkspaceUser(
-  sessionUser: SessionUser,
-  workspaceId: string
-): Promise<CurrentUser | null> {
+export async function resolveWorkspaceUser(sessionUser: SessionUser, workspaceId: string): Promise<CurrentUser | null> {
   const [workspace, membership] = await Promise.all([
     prisma.workspace.findUnique({ where: { id: workspaceId }, select: { status: true } }),
     prisma.workspaceMembership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: sessionUser.id } },
-      select: { id: true, role: true, status: true },
-    }),
+      select: { id: true, role: true, status: true }
+    })
   ])
   if (!workspace) return null
   const archived = workspace.status === 'archived'
   if (sessionUser.platformRole === 'admin') {
     return {
-      id: sessionUser.id, role: 'admin', workspaceId,
+      id: sessionUser.id,
+      role: 'admin',
+      workspaceId,
       membershipId: membership?.status === 'active' ? membership.id : null,
-      authority: 'platform', archived,
+      authority: 'platform',
+      archived
     }
   }
   if (!membership || membership.status !== 'active') return null
   return {
-    id: sessionUser.id, role: membership.role, workspaceId,
-    membershipId: membership.id, authority: 'membership', archived,
+    id: sessionUser.id,
+    role: membership.role,
+    workspaceId,
+    membershipId: membership.id,
+    authority: 'membership',
+    archived
   }
 }
 
@@ -156,8 +160,12 @@ async function checkWorkspace(workspaceId: string, roles: Role[], passive: boole
   if (!user) return { error: notFound('Workspace not found') }
   if (roles.length > 0 && !roles.includes(user.role)) {
     await audit({
-      workspaceId, actorId: user.id, action: 'access.denied', entityType: 'role', entityId: roles.join('|'),
-      payload: { reason: 'role', role: user.role },
+      workspaceId,
+      actorId: user.id,
+      action: 'access.denied',
+      entityType: 'role',
+      entityId: roles.join('|'),
+      payload: { reason: 'role', role: user.role }
     })
     return { error: forbidden() }
   }
@@ -187,7 +195,11 @@ type WorkspaceHandler<P> = (
 export function workspaceRoute<P extends WorkspaceParams = WorkspaceParams>(
   roles: Role[],
   handler: WorkspaceHandler<P>,
-  { transaction = true, timeoutMs, passive = false }: { transaction?: boolean; timeoutMs?: number; passive?: boolean } = {}
+  {
+    transaction = true,
+    timeoutMs,
+    passive = false
+  }: { transaction?: boolean; timeoutMs?: number; passive?: boolean } = {}
 ) {
   return async (req: NextRequest, { params }: RouteContext<P>): Promise<Response> => {
     const resolved = await params
@@ -197,7 +209,10 @@ export function workspaceRoute<P extends WorkspaceParams = WorkspaceParams>(
     if (write && user.archived) return workspaceArchived()
     if (!transaction) return handler(req, { user, session, params: resolved })
     try {
-      return await withWorkspace(user.workspaceId, () => handler(req, { user, session, params: resolved }), { write, timeoutMs })
+      return await withWorkspace(user.workspaceId, () => handler(req, { user, session, params: resolved }), {
+        write,
+        timeoutMs
+      })
     } catch (caught) {
       if (caught instanceof WorkspaceArchivedError) return workspaceArchived()
       throw caught

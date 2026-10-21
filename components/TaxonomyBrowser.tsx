@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Info } from 'lucide-react'
@@ -8,12 +8,7 @@ import { isUnknownNodeCode } from '@/lib/constants'
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 12 12"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg className={className} viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M11.787 6.654l-2.895-1.03-1.081-3.403A.324.324 0 007.5 2c-.143 0-.27.09-.311.221l-1.08 3.404-2.897 1.03A.313.313 0 003 6.946c0 .13.085.248.212.293l2.894 1.03 1.082 3.507A.324.324 0 007.5 12c.144 0 .271-.09.312-.224L8.893 8.27l2.895-1.029A.313.313 0 0012 6.947a.314.314 0 00-.213-.293zM4.448 1.77l-1.05-.39-.39-1.05a.444.444 0 00-.833 0l-.39 1.05-1.05.39a.445.445 0 000 .833l1.05.389.39 1.051a.445.445 0 00.833 0l.39-1.051 1.05-.389a.445.445 0 000-.834z"
         fill="currentColor"
@@ -217,7 +212,7 @@ export default function TaxonomyBrowser({
 
     // Find AI suggestions in the current selectedLabels
     const aiLabels = selectedLabels.filter(label => label.source === 'ai')
-    
+
     if (aiLabels.length > 0) {
       const sortedAIPath = [...aiLabels].sort((a, b) => a.level - b.level)
       const signature = JSON.stringify(normalizeLabels(sortedAIPath))
@@ -297,17 +292,15 @@ export default function TaxonomyBrowser({
   // Build breadcrumb asynchronously after level is set
   useEffect(() => {
     if (selectedLabels.length === 0 || !hasInitializedRef.current) return
-    
-    const sortedLabels = [...selectedLabels]
-      .filter(l => l.level > 0)
-      .sort((a, b) => a.level - b.level)
-    
+
+    const sortedLabels = [...selectedLabels].filter(l => l.level > 0).sort((a, b) => a.level - b.level)
+
     const buildBreadcrumb = async () => {
       try {
         const breadcrumbNodes: TaxonomyNode[] = []
         const targetLevel = Math.max(...selectedLabels.map(l => l.level))
         const labelsToShow = sortedLabels.filter(l => l.level < targetLevel)
-        
+
         for (const label of labelsToShow) {
           try {
             const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${label.level}`))
@@ -327,7 +320,7 @@ export default function TaxonomyBrowser({
         console.error('Failed to build breadcrumb:', error)
       }
     }
-    
+
     buildBreadcrumb()
   }, [selectedLabels, taxonomy.key])
 
@@ -423,33 +416,43 @@ export default function TaxonomyBrowser({
   // Build full path by recursively fetching parents
   const buildFullPath = async (node: TaxonomyNode): Promise<TaxonomyNode[]> => {
     const path: TaxonomyNode[] = [node]
-    
+
     let currentNode = node
     while (currentNode.parentCode !== null && currentNode.parentCode !== undefined) {
       try {
         // Fetch all nodes at the parent's level with a higher limit to ensure we get the parent
         // The default limit is 100, but some taxonomies might have more nodes at a level
-        const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`))
+        const res = await fetch(
+          workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`)
+        )
         if (!res.ok) {
           console.warn(`Failed to fetch nodes at level ${currentNode.level - 1}`)
           break
         }
-        
+
         const data = await res.json()
         // Find the specific parent by code - ensure string comparison to handle leading zeros
         const parent = data.items?.find((n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode))
-        
+
         if (!parent) {
           // If parent not found in first page, check if there are more results
           if (data.total > data.items.length) {
-            console.warn(`Parent node with code ${currentNode.parentCode} not found in first ${data.items.length} nodes at level ${currentNode.level - 1} (total: ${data.total})`)
+            console.warn(
+              `Parent node with code ${currentNode.parentCode} not found in first ${data.items.length} nodes at level ${currentNode.level - 1} (total: ${data.total})`
+            )
             // Try fetching with offset to get more results
             let found = false
             for (let offset = data.items.length; offset < data.total && offset < 2000; offset += 500) {
-              const moreRes = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`))
+              const moreRes = await fetch(
+                workspaceApi(
+                  `/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`
+                )
+              )
               if (!moreRes.ok) break
               const moreData = await moreRes.json()
-              const foundParent = moreData.items?.find((n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode))
+              const foundParent = moreData.items?.find(
+                (n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode)
+              )
               if (foundParent) {
                 path.unshift(foundParent)
                 currentNode = foundParent
@@ -471,20 +474,20 @@ export default function TaxonomyBrowser({
         break
       }
     }
-    
+
     return path
   }
   const storedAISuggestions = initialAISuggestionRef.current
   const hasAISuggestions = Boolean(storedAISuggestions && storedAISuggestions.length > 0)
-  
+
   // Check if we've diverged from AI suggestions:
   // 1. User selected different labels (paths don't match)
   // 2. User deleted some AI suggestions (current labels are subset or different)
-  const hasDivergedFromAISuggestions = hasAISuggestions && (
-    !arePathsEqual(selectedLabels, storedAISuggestions) ||
-    // Also show if user deleted AI suggestions (current labels don't include all cached AI labels)
-    selectedLabels.filter(l => l.source === 'ai').length < (storedAISuggestions?.length ?? 0)
-  )
+  const hasDivergedFromAISuggestions =
+    hasAISuggestions &&
+    (!arePathsEqual(selectedLabels, storedAISuggestions) ||
+      // Also show if user deleted AI suggestions (current labels don't include all cached AI labels)
+      selectedLabels.filter(l => l.source === 'ai').length < (storedAISuggestions?.length ?? 0))
 
   const handleRestoreAISuggestions = () => {
     if (!storedAISuggestions) return
@@ -503,7 +506,7 @@ export default function TaxonomyBrowser({
     if (searchQuery) {
       // Build the full path from root to this node
       const fullPath = await buildFullPath(node)
-      
+
       // Convert path to selected labels
       const newLabels: SelectedLabel[] = fullPath.map(pathNode => ({
         level: pathNode.level,
@@ -514,9 +517,9 @@ export default function TaxonomyBrowser({
         examples: pathNode.examples,
         isLeaf: pathNode.isLeaf || pathNode.level >= taxonomy.maxDepth
       }))
-      
+
       onLabelsChange(newLabels)
-      
+
       // Clear search (navigation will be handled by effect)
       setSearchQuery('')
     } else {
@@ -530,12 +533,12 @@ export default function TaxonomyBrowser({
         examples: node.examples,
         isLeaf
       }
-      
+
       // Remove any selections at this level or higher, then add this one
       const newLabels = selectedLabels.filter(l => l.level < node.level)
       newLabels.push(newLabel)
       onLabelsChange(newLabels)
-      
+
       // Update breadcrumb
       const newBreadcrumb = [...breadcrumb]
       if (node.level > currentLevel) {
@@ -545,7 +548,6 @@ export default function TaxonomyBrowser({
         newBreadcrumb.push(node)
       }
       setBreadcrumb(newBreadcrumb)
-      
     }
   }
 
@@ -569,7 +571,7 @@ export default function TaxonomyBrowser({
   // Handle chip click (navigate to that level)
   const handleChipClick = (label: SelectedLabel) => {
     if (label.level === -1) return // Don't navigate for Unknown
-    
+
     // Rebuild breadcrumb up to this level
     const newBreadcrumb = selectedLabels
       .filter(l => l.level < label.level && l.level > 0)
@@ -581,7 +583,7 @@ export default function TaxonomyBrowser({
         parentCode: null,
         isLeaf: false
       }))
-    
+
     setBreadcrumb(newBreadcrumb)
     setCurrentLevel(label.level)
     setCurrentParent(label.level === 1 ? null : selectedLabels.find(l => l.level === label.level - 1)?.nodeCode || null)
@@ -593,7 +595,7 @@ export default function TaxonomyBrowser({
     // Remove this label and any labels at higher levels
     const remainingLabels = selectedLabels.filter(l => l.level < label.level)
     onLabelsChange(remainingLabels)
-    
+
     // Navigate back to this level to select a different path
     const newBreadcrumb = remainingLabels
       .sort((a, b) => a.level - b.level)
@@ -604,14 +606,12 @@ export default function TaxonomyBrowser({
         parentCode: null,
         isLeaf: false
       }))
-    
+
     setBreadcrumb(newBreadcrumb)
-    
+
     // Navigate to show children at the level we just deleted
-    const lastRemainingLabel = remainingLabels.length > 0 
-      ? remainingLabels[remainingLabels.length - 1] 
-      : null
-    
+    const lastRemainingLabel = remainingLabels.length > 0 ? remainingLabels[remainingLabels.length - 1] : null
+
     if (lastRemainingLabel) {
       setCurrentLevel(lastRemainingLabel.level + 1)
       setCurrentParent(lastRemainingLabel.nodeCode)
@@ -621,7 +621,7 @@ export default function TaxonomyBrowser({
       setCurrentParent(null)
       onNavigate?.(1, null)
     }
-    
+
     setSearchQuery('')
   }
 
@@ -630,11 +630,7 @@ export default function TaxonomyBrowser({
       <div className="space-y-4 flex-shrink-0">
         {/* Selected Labels as Chips */}
         <div>
-          {!showTabs && (
-            <h3 className="text-sm font-medium text-gray-700 mb-2">
-              {taxonomy.key}
-            </h3>
-          )}
+          {!showTabs && <h3 className="text-sm font-medium text-gray-700 mb-2">{taxonomy.key}</h3>}
           <div className="flex flex-wrap gap-2">
             {selectedLabels.length === 0 ? (
               <span className="text-gray-500 text-sm">No labels selected</span>
@@ -648,11 +644,11 @@ export default function TaxonomyBrowser({
                       className={`inline-flex items-center px-2 py-1 rounded text-sm border cursor-pointer transition-colors ${colors.chip}`}
                       onClick={() => handleChipClick(label)}
                     >
-                      <span className={`text-xs px-2 py-0.5 rounded ${colors.chipLevel}`}>
-                        L{label.level}
-                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${colors.chipLevel}`}>L{label.level}</span>
                       <span className="ml-2 font-medium">
-                        {isUnknownNodeCode(label.nodeCode) ? 'Unknown' : `${label.nodeCode} - ${label.label || 'Loading...'}`}
+                        {isUnknownNodeCode(label.nodeCode)
+                          ? 'Unknown'
+                          : `${label.nodeCode} - ${label.label || 'Loading...'}`}
                       </span>
                       {(label.definition || label.examples) && (
                         <Info className="ml-1 w-3.5 h-3.5 text-gray-400 flex-shrink-0" strokeWidth={2.5} />
@@ -661,14 +657,12 @@ export default function TaxonomyBrowser({
                         <>
                           <SolidSparkle className="ml-2 w-3 h-3 flex-shrink-0" />
                           {label.confidenceScore !== undefined && (
-                            <span className="ml-1 text-xs font-medium">
-                              {label.confidenceScore.toFixed(2)}
-                            </span>
+                            <span className="ml-1 text-xs font-medium">{label.confidenceScore.toFixed(2)}</span>
                           )}
                         </>
                       )}
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation()
                           handleChipDelete(label)
                         }}
@@ -700,7 +694,7 @@ export default function TaxonomyBrowser({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             placeholder={`Search ${taxonomy?.key || 'taxonomy'}`}
             aria-label={`Search ${taxonomy?.key || 'taxonomy'}`}
             className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
@@ -721,9 +715,7 @@ export default function TaxonomyBrowser({
         {!searchQuery && (
           <div className="flex items-center justify-between min-h-[32px]">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-gray-700">
-                {getLevelLabel(currentLevel)}
-              </h4>
+              <h4 className="text-sm font-medium text-gray-700">{getLevelLabel(currentLevel)}</h4>
               {taxonomy.levelNames && Object.keys(taxonomy.levelNames).length > 0 && (
                 <button
                   onClick={toggleLevelNames}
@@ -757,7 +749,11 @@ export default function TaxonomyBrowser({
                         handleChipClick(parentLabel)
                       } else {
                         setCurrentLevel(currentLevel - 1)
-                        setCurrentParent(currentLevel > 2 ? selectedLabels.find(l => l.level === currentLevel - 2)?.nodeCode || null : null)
+                        setCurrentParent(
+                          currentLevel > 2
+                            ? selectedLabels.find(l => l.level === currentLevel - 2)?.nodeCode || null
+                            : null
+                        )
                       }
                     }
                   }}
@@ -785,12 +781,15 @@ export default function TaxonomyBrowser({
                 </div>
               ) : (
                 <div className="text-gray-500">
-                  No labels available. <a href={href('/admin/taxonomy')} className="text-indigo-600 hover:text-indigo-700 underline">Import taxonomy</a>
+                  No labels available.{' '}
+                  <a href={href('/admin/taxonomy')} className="text-indigo-600 hover:text-indigo-700 underline">
+                    Import taxonomy
+                  </a>
                 </div>
               )}
             </div>
           ) : (
-            taxonomyNodes.map((node) => {
+            taxonomyNodes.map(node => {
               const isSelected = selectedLabels.some(l => l.level === node.level && l.nodeCode === node.code)
               const nodeContent = (
                 <div
@@ -799,7 +798,7 @@ export default function TaxonomyBrowser({
                   tabIndex={0}
                   aria-pressed={isSelected}
                   onClick={() => handleNodeClick(node)}
-                  onKeyDown={(e) => {
+                  onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       e.stopPropagation()
@@ -807,26 +806,24 @@ export default function TaxonomyBrowser({
                     }
                   }}
                   className={`px-4 py-3 cursor-pointer transition-colors border-b border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
-                    isSelected 
-                      ? colors.selectedBg
-                      : colors.hoverBg
+                    isSelected ? colors.selectedBg : colors.hoverBg
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2 flex-1 min-w-0">
                       {/* Code - fixed width for alignment */}
-                      <div className={`text-[15px] font-semibold flex-shrink-0 w-12 ${
-                        isSelected ? colors.codeSelected : colors.code
-                      }`}>
+                      <div
+                        className={`text-[15px] font-semibold flex-shrink-0 w-12 ${
+                          isSelected ? colors.codeSelected : colors.code
+                        }`}
+                      >
                         {node.code}
                       </div>
-                      
+
                       {/* Label and definition */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap text-gray-900">
-                          <div className="text-[15px] leading-snug">
-                            {node.label}
-                          </div>
+                          <div className="text-[15px] leading-snug">{node.label}</div>
                           {searchQuery && (
                             <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                               L{node.level}
@@ -838,12 +835,10 @@ export default function TaxonomyBrowser({
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Arrow/Indicator */}
-                    <div className={`flex-shrink-0 text-sm ${
-                      isSelected ? colors.indicatorSelected : 'text-gray-400'
-                    }`}>
-                      {isSelected ? '✓' : (node.isLeaf ? '•' : '→')}
+                    <div className={`flex-shrink-0 text-sm ${isSelected ? colors.indicatorSelected : 'text-gray-400'}`}>
+                      {isSelected ? '✓' : node.isLeaf ? '•' : '→'}
                     </div>
                   </div>
                 </div>
@@ -867,4 +862,3 @@ export default function TaxonomyBrowser({
     </div>
   )
 }
-

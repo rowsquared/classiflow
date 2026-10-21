@@ -9,7 +9,7 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, actions }: PageHeaderProps) {
   return (
-    <div 
+    <div
       className="bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-10"
       style={{ height: `${HEADER_HEIGHT}px` }}
     >
@@ -21,4 +21,3 @@ export default function PageHeader({ title, actions }: PageHeaderProps) {
     </div>
   )
 }
-

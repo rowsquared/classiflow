@@ -19,7 +19,7 @@ export async function validateSupervisor(
 
   const supervisor = await db().workspaceMembership.findUnique({
     where: { workspaceId_id: { workspaceId, id: supervisorMembershipId } },
-    select: { role: true, status: true },
+    select: { role: true, status: true }
   })
   if (!supervisor || supervisor.status !== 'active') return 'Supervisor not found'
   if (supervisor.role === 'labeller') return 'Supervisor must have the admin or supervisor role'
@@ -41,7 +41,8 @@ export async function validateSupervisor(
 export async function lockWorkspaceAdmins(workspaceId: string): Promise<void> {
   // An advisory lock, not a row lock: every write already holds a share lock on
   // the workspace row (lib/workspace/db.ts), and upgrading it could deadlock.
-  await db().$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('classiflow.workspace_admins.' || ${workspaceId}))`
+  await db()
+    .$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('classiflow.workspace_admins.' || ${workspaceId}))`
 }
 
 /** True when `membershipId` is the workspace's only active admin membership. */
@@ -49,7 +50,7 @@ export async function isLastWorkspaceAdmin(workspaceId: string, membershipId: st
   const admins = await db().workspaceMembership.findMany({
     where: { workspaceId, role: 'admin', status: 'active' },
     select: { id: true },
-    take: 2,
+    take: 2
   })
   return admins.length === 1 && admins[0]?.id === membershipId
 }

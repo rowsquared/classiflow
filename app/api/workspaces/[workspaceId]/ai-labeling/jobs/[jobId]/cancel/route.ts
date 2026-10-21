@@ -33,7 +33,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
       }
     })
 
-    await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: 'ai_job.labeling', entityId: jobId, payload: { status: 'cancelled' } })
+    await audit({
+      actorId: actor.id,
+      action: 'ai.job_cancelled',
+      entityType: 'ai_job.labeling',
+      entityId: jobId,
+      payload: { status: 'cancelled' }
+    })
     return NextResponse.json({ ok: true, status: 'cancelled' })
   } catch (caught) {
     const error = caught as CaughtError
@@ -41,4 +47,3 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
     return NextResponse.json({ error: error?.message || 'Failed to cancel job' }, { status: 500 })
   }
 })
-

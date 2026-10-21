@@ -20,7 +20,7 @@ function contentSecurityPolicy(nonce: string) {
     "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
-    "object-src 'none'",
+    "object-src 'none'"
   ].join('; ')
 }
 
@@ -74,6 +74,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files
      */
-    '/((?!_next/static|_next/image|favicon.ico|favicon-16x16.png|favicon-32x32.png|favicon.svg|logo.svg|r2-footer.svg).*)',
-  ],
+    '/((?!_next/static|_next/image|favicon.ico|favicon-16x16.png|favicon-32x32.png|favicon.svg|logo.svg|r2-footer.svg).*)'
+  ]
 }

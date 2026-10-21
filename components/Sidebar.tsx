@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -56,11 +56,11 @@ export default function Sidebar() {
 
     // Update state to match CSS (which was set by blocking script)
     setCollapsed(shouldBeCollapsed)
-    
+
     // Remove CSS !important override by adding hydration class
     // This allows React's inline styles to take over
     document.documentElement.classList.add('sidebar-hydrated')
-    
+
     // Enable transitions after CSS override is removed
     requestAnimationFrame(() => {
       setIsHydrated(true)
@@ -82,7 +82,7 @@ export default function Sidebar() {
     setTimeout(() => {
       document.addEventListener('click', handleClickOutside)
     }, 0)
-    
+
     return () => document.removeEventListener('click', handleClickOutside)
   }, [showLogoutMenu])
 
@@ -111,7 +111,7 @@ export default function Sidebar() {
   }
 
   const navItems = [
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="5" cy="6" r="1.5" fill="currentColor" />
@@ -120,59 +120,77 @@ export default function Sidebar() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 6h11M9 12h11M9 18h11" />
         </svg>
       ),
-      label: 'Queue', 
+      label: 'Queue',
       href: '/queue',
       roles: ['admin', 'supervisor', 'labeller']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+          />
         </svg>
       ),
-      label: 'Progress', 
+      label: 'Progress',
       href: '/progress',
       roles: ['admin', 'supervisor', 'labeller']
     },
-    { 
-      icon: (
-        <Tags className="w-full h-full" strokeWidth={1.5} />
-      ),
-      label: 'Taxonomy', 
+    {
+      icon: <Tags className="w-full h-full" strokeWidth={1.5} />,
+      label: 'Taxonomy',
       href: '/admin/taxonomy',
       roles: ['admin']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+          />
         </svg>
       ),
-      label: 'Sentences', 
+      label: 'Sentences',
       href: '/admin/sentences',
       roles: ['admin']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
         </svg>
       ),
-      label: 'Export', 
+      label: 'Export',
       href: '/admin/export',
       roles: ['admin']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+          />
         </svg>
       ),
-      label: 'Team', 
+      label: 'Team',
       href: '/admin/team',
       roles: ['admin']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 -0.5 12 13" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
@@ -183,30 +201,42 @@ export default function Sidebar() {
           />
         </svg>
       ),
-      label: 'AI Jobs', 
+      label: 'AI Jobs',
       href: '/admin/ai-jobs',
       roles: ['admin']
     },
-    { 
+    {
       icon: (
         <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+          />
         </svg>
       ),
-      label: 'Audit Log', 
+      label: 'Audit Log',
       href: '/admin/audit',
       roles: ['admin']
-    },
+    }
   ]
 
   // Get user from session
-  const user = session?.user ? {
-    name: session.user.name || 'User',
-    email: session.user.email || '',
-    // The role in the current workspace decides which pages are offered.
-    role: workspace?.role ?? 'labeller',
-    initials: (session.user.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
-  } : null
+  const user = session?.user
+    ? {
+        name: session.user.name || 'User',
+        email: session.user.email || '',
+        // The role in the current workspace decides which pages are offered.
+        role: workspace?.role ?? 'labeller',
+        initials: (session.user.name || 'U')
+          .split(' ')
+          .map(n => n[0])
+          .join('')
+          .substring(0, 2)
+          .toUpperCase()
+      }
+    : null
 
   // TODO: Make this configurable from admin page
   const surveyTitle = 'classiflow' // Can be set to e.g., 'HIES 2015'
@@ -226,19 +256,19 @@ export default function Sidebar() {
   }
 
   return (
-    <aside 
+    <aside
       className="bg-gray-50 border-r border-gray-200 flex flex-col sidebar-container"
       suppressHydrationWarning
-      style={{ 
+      style={{
         width: collapsed ? `${SIDEBAR_COLLAPSED_WIDTH}px` : '256px',
         transition: isHydrated ? 'width 300ms ease-in-out' : 'none'
       }}
     >
       {/* Logo Section - Height: 3w (90px) */}
-      <div 
+      <div
         className="flex items-center border-b border-gray-200 relative"
         suppressHydrationWarning
-        style={{ 
+        style={{
           height: `${HEADER_HEIGHT}px`,
           paddingLeft: `${SPACING}px`,
           paddingRight: collapsed ? `${SPACING}px` : '12px'
@@ -263,18 +293,12 @@ export default function Sidebar() {
               </div>
             ) : (
               // Show logo
-              <Image
-                src="/logo.svg"
-                alt="Logo"
-                width={LOGO_SIZE}
-                height={LOGO_SIZE}
-                className="w-full h-full"
-              />
+              <Image src="/logo.svg" alt="Logo" width={LOGO_SIZE} height={LOGO_SIZE} className="w-full h-full" />
             )}
           </div>
-          
+
           {/* Survey Title - Fades in/out when expanded/collapsed */}
-          <h1 
+          <h1
             className="text-sm font-semibold text-gray-900 truncate overflow-hidden"
             suppressHydrationWarning
             style={{
@@ -286,7 +310,7 @@ export default function Sidebar() {
             {surveyTitle}
           </h1>
         </div>
-        
+
         {/* Collapse Button - Only visible when expanded */}
         {!collapsed && (
           <button
@@ -319,16 +343,13 @@ export default function Sidebar() {
               }}
               title={collapsed ? item.label : undefined}
             >
-              <div 
-                className="flex-shrink-0"
-                style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}
-              >
+              <div className="flex-shrink-0" style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}>
                 {item.icon}
               </div>
-              <span 
+              <span
                 className="text-sm font-medium whitespace-nowrap overflow-hidden"
                 suppressHydrationWarning
-                style={{ 
+                style={{
                   opacity: collapsed ? 0 : 1,
                   width: collapsed ? 0 : 'auto',
                   transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
@@ -346,7 +367,7 @@ export default function Sidebar() {
         {/* User Profile - Fixed position from bottom */}
         {user && (
           <div className="relative user-profile-section">
-            <button 
+            <button
               onClick={() => setShowLogoutMenu(!showLogoutMenu)}
               className="flex items-center gap-3 w-full hover:bg-gray-100 transition-colors"
               style={{
@@ -356,16 +377,16 @@ export default function Sidebar() {
                 paddingRight: `${SPACING}px`
               }}
             >
-              <div 
+              <div
                 className="bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
                 style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}
               >
                 {user.initials}
               </div>
-              <div 
+              <div
                 className="flex-1 min-w-0 overflow-hidden text-left"
                 suppressHydrationWarning
-                style={{ 
+                style={{
                   opacity: collapsed ? 0 : 1,
                   width: collapsed ? 0 : 'auto',
                   transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
@@ -382,7 +403,7 @@ export default function Sidebar() {
 
             {/* Logout Menu */}
             {showLogoutMenu && (
-              <div 
+              <div
                 className="absolute bottom-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50"
                 style={{
                   left: collapsed ? `${SPACING}px` : `${SPACING}px`,
@@ -409,7 +430,12 @@ export default function Sidebar() {
                   className="w-full px-4 py-2 text-sm text-left hover:bg-gray-100 flex items-center gap-2 text-gray-700 whitespace-nowrap"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
                   </svg>
                   Logout
                 </button>
@@ -419,31 +445,25 @@ export default function Sidebar() {
         )}
 
         {/* R2 Footer Logo - Always takes same space to prevent jump */}
-        <div 
+        <div
           className="flex items-center justify-center"
-          style={{ 
+          style={{
             height: `${FOOTER_LOGO_HEIGHT}px`
           }}
         >
-          <a 
-            href="https://rowsquared.com" 
-            target="_blank" 
+          <a
+            href="https://rowsquared.com"
+            target="_blank"
             rel="noopener noreferrer"
             className="block hover:opacity-100"
-            style={{ 
+            style={{
               width: '66%',
               opacity: collapsed ? 0 : 0.6,
               pointerEvents: collapsed ? 'none' : 'auto',
               transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
             }}
           >
-            <Image
-              src="/r2-footer.svg"
-              alt="Made with ❤️ by R2"
-              width={120}
-              height={20}
-              className="w-full h-auto"
-            />
+            <Image src="/r2-footer.svg" alt="Made with ❤️ by R2" width={120} height={20} className="w-full h-auto" />
           </a>
         </div>
       </div>

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -6,12 +6,7 @@ import { useRouter } from 'next/navigation'
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 12 12"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg className={className} viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M11.787 6.654l-2.895-1.03-1.081-3.403A.324.324 0 007.5 2c-.143 0-.27.09-.311.221l-1.08 3.404-2.897 1.03A.313.313 0 003 6.946c0 .13.085.248.212.293l2.894 1.03 1.082 3.507A.324.324 0 007.5 12c.144 0 .271-.09.312-.224L8.893 8.27l2.895-1.029A.313.313 0 0012 6.947a.314.314 0 00-.213-.293zM4.448 1.77l-1.05-.39-.39-1.05a.444.444 0 00-.833 0l-.39 1.05-1.05.39a.445.445 0 000 .833l1.05.389.39 1.051a.445.445 0 00.833 0l.39-1.051 1.05-.389a.445.445 0 000-.834z"
         fill="currentColor"
@@ -103,16 +98,19 @@ export default function SentenceRow({
     if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
       return
     }
-    
+
     // Store list and index in sessionStorage for navigation context
     // This avoids URL length limits (431 errors) and keeps URLs clean
     if (sentenceIds.length > 0) {
       const storageKey = `sentence-list-${sentence.id}`
-      sessionStorage.setItem(storageKey, JSON.stringify({
-        sentenceIds,
-        currentIndex,
-        timestamp: Date.now()
-      }))
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          sentenceIds,
+          currentIndex,
+          timestamp: Date.now()
+        })
+      )
       const params = new URLSearchParams()
       params.set('list', storageKey)
       router.push(workspaceHref(`/queue/${sentence.id}?${params.toString()}`))
@@ -148,23 +146,23 @@ export default function SentenceRow({
       'bg-teal-100 text-teal-700',
       'bg-cyan-100 text-cyan-700',
       'bg-sky-100 text-sky-700',
-      'bg-blue-100 text-blue-700',
+      'bg-blue-100 text-blue-700'
     ]
-    
+
     // Simple hash function to get consistent color for each username
     let hash = 0
     for (let i = 0; i < username.length; i++) {
-      hash = ((hash << 5) - hash) + username.charCodeAt(i)
+      hash = (hash << 5) - hash + username.charCodeAt(i)
       hash = hash & hash // Convert to 32bit integer
     }
-    
+
     return colors[Math.abs(hash) % colors.length]
   }
 
   // Build content string with "Field Name: Value" format
   const buildContentString = () => {
     const parts: { name: string; value: string }[] = []
-    
+
     // Iterate through field mapping in order
     Object.entries(sentence.fieldMapping || {}).forEach(([num, name]) => {
       const value = sentence[`field${num}` as keyof Sentence] as string | null
@@ -172,37 +170,39 @@ export default function SentenceRow({
         parts.push({ name: formatFieldName(name), value })
       }
     })
-    
+
     return parts
   }
 
   const contentParts = buildContentString()
 
   // Group annotations by taxonomy
-  const annotationsByTaxonomy = sentence.annotations.reduce((acc, ann) => {
-    const key = ann.taxonomy.key
-    if (!acc[key]) {
-      acc[key] = []
-    }
-    acc[key].push(ann)
-    return acc
-  }, {} as Record<string, Annotation[]>)
+  const annotationsByTaxonomy = sentence.annotations.reduce(
+    (acc, ann) => {
+      const key = ann.taxonomy.key
+      if (!acc[key]) {
+        acc[key] = []
+      }
+      acc[key].push(ann)
+      return acc
+    },
+    {} as Record<string, Annotation[]>
+  )
 
   // Color scheme for different taxonomies (matches TaxonomyBrowser)
   const taxonomyColors = [
-    'bg-[#D3F2EE] text-[#005c5c]',   // Index 0: Primary/Teal
-    'bg-[#E3EBFB] text-[#28498c]',   // Index 1: Blue
-    'bg-[#F6E4EC] text-[#6d2c4a]',   // Index 2: Plum
-    'bg-rose-100 text-rose-700',     // Index 3: Rose fallback
-    'bg-orange-100 text-orange-700', // Index 4: Orange fallback
+    'bg-[#D3F2EE] text-[#005c5c]', // Index 0: Primary/Teal
+    'bg-[#E3EBFB] text-[#28498c]', // Index 1: Blue
+    'bg-[#F6E4EC] text-[#6d2c4a]', // Index 2: Plum
+    'bg-rose-100 text-rose-700', // Index 3: Rose fallback
+    'bg-orange-100 text-orange-700' // Index 4: Orange fallback
   ]
 
   const getTaxonomyColor = (taxonomyKey: string) => {
     // Use the ordered taxonomies list if provided, otherwise fall back to alphabetical sort
-    const orderedTaxonomies = taxonomies.length > 0 
-      ? taxonomies.map(t => t.key)
-      : Object.keys(annotationsByTaxonomy).sort()
-    
+    const orderedTaxonomies =
+      taxonomies.length > 0 ? taxonomies.map(t => t.key) : Object.keys(annotationsByTaxonomy).sort()
+
     const index = orderedTaxonomies.indexOf(taxonomyKey)
     return taxonomyColors[index % taxonomyColors.length] || 'bg-gray-100 text-gray-700'
   }
@@ -215,11 +215,11 @@ export default function SentenceRow({
       className="hover:bg-[#e6fbf8] cursor-pointer transition-colors border-b border-gray-100"
     >
       {/* Checkbox */}
-      <td className="pl-4 pr-2 py-3 w-12" onClick={(e) => e.stopPropagation()}>
+      <td className="pl-4 pr-2 py-3 w-12" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
           checked={selected}
-          onChange={(e) => onSelect(e.target.checked)}
+          onChange={e => onSelect(e.target.checked)}
           aria-label={`Select record: ${sentence.field1}`}
           className="w-4 h-4 rounded border-gray-300 text-[#008080] focus:ring-2 focus:ring-[#008080] focus:ring-offset-0 cursor-pointer"
         />
@@ -231,17 +231,9 @@ export default function SentenceRow({
           {/* Icons at the beginning */}
           <div className="flex flex-col gap-1 self-stretch justify-center items-center flex-shrink-0 min-w-[20px]">
             {sentence.flagged && (
-              <span
-                className="text-[#F56476] cursor-help"
-                title="Flagged"
-              >
+              <span className="text-[#F56476] cursor-help" title="Flagged">
                 <svg className="w-4 h-4" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M4 2.2 L5.4 13.8"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
+                  <path d="M4 2.2 L5.4 13.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   <path
                     d="M5 3
                        C 8 1.5 10.5 3.5 13 2.5
@@ -268,15 +260,14 @@ export default function SentenceRow({
               </span>
             )}
           </div>
-          
+
           {/* Field values with "Name Value" format */}
           <div className="flex-1 min-w-0">
             <div className="text-sm text-gray-900 line-clamp-2">
               {contentParts.map((part, i) => (
                 <span key={i}>
                   {i > 0 && ' '}
-                  <span className="text-[11px] font-medium text-gray-500">{part.name}</span>{' '}
-                  {part.value}
+                  <span className="text-[11px] font-medium text-gray-500">{part.name}</span> {part.value}
                 </span>
               ))}
             </div>
@@ -298,9 +289,7 @@ export default function SentenceRow({
                       ann.nodeLabel ? ` - ${ann.nodeLabel}` : ''
                     }${ann.source === 'ai' && ann.confidenceScore !== undefined ? ` (AI confidence ${ann.confidenceScore.toFixed(2)})` : ''}`}
                   >
-                    {ann.source === 'ai' && (
-                      <SolidSparkle className="w-3 h-3" />
-                    )}
+                    {ann.source === 'ai' && <SolidSparkle className="w-3 h-3" />}
                     {ann.nodeCode}
                   </span>
                 ))}
@@ -314,15 +303,13 @@ export default function SentenceRow({
 
       {/* Last Edited */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-        <span title={formatDateTime(sentence.lastEditedAt)}>
-          {formatRelativeTime(sentence.lastEditedAt)}
-        </span>
+        <span title={formatDateTime(sentence.lastEditedAt)}>{formatRelativeTime(sentence.lastEditedAt)}</span>
       </td>
 
       {/* Last Editor */}
       <td className="px-4 py-3 whitespace-nowrap">
         {sentence.lastEditor?.username ? (
-          <span 
+          <span
             className={`text-xs px-2 py-0.5 rounded ${getUserColor(sentence.lastEditor.username)}`}
             title={sentence.lastEditor.username}
           >
@@ -339,7 +326,7 @@ export default function SentenceRow({
           {sentence.assignments && sentence.assignments.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {sentence.assignments.map((assignment, idx) => (
-                <span 
+                <span
                   key={idx}
                   className={`text-xs px-2 py-0.5 rounded ${getUserColor(assignment.user.username)}`}
                   title={assignment.user.name || assignment.user.username}
@@ -357,9 +344,7 @@ export default function SentenceRow({
       {/* Status */}
       {showStatus && (
         <td className="px-4 py-3 whitespace-nowrap">
-          <span className={`text-xs px-2 py-0.5 rounded ${getStatusColor(sentence.status)}`}>
-            {sentence.status}
-          </span>
+          <span className={`text-xs px-2 py-0.5 rounded ${getStatusColor(sentence.status)}`}>{sentence.status}</span>
         </td>
       )}
     </tr>

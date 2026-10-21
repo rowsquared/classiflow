@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { useState } from 'react'
 
 interface PaginationControlsProps {
@@ -58,8 +58,8 @@ export default function PaginationControls({
               min="1"
               max="10000"
               value={customSize}
-              onChange={(e) => setCustomSize(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCustomSubmit()}
+              onChange={e => setCustomSize(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCustomSubmit()}
               placeholder="Enter size"
               className="w-24 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               autoFocus
@@ -83,7 +83,7 @@ export default function PaginationControls({
         ) : (
           <select
             value={pageSize}
-            onChange={(e) => handleSelectChange(e.target.value)}
+            onChange={e => handleSelectChange(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           >
             <option value={20}>20</option>
@@ -92,9 +92,7 @@ export default function PaginationControls({
             <option value={250}>250</option>
             <option value={500}>500</option>
             <option value={9999}>All</option>
-            {isCustomSize && (
-              <option value={pageSize}>{pageSize} (custom)</option>
-            )}
+            {isCustomSize && <option value={pageSize}>{pageSize} (custom)</option>}
             <option value="custom">Custom...</option>
           </select>
         )}
@@ -103,7 +101,9 @@ export default function PaginationControls({
       {/* Center: Range display */}
       <div className="text-sm text-gray-600">
         {total > 0 ? (
-          <>Showing {startItem.toLocaleString()} to {endItem.toLocaleString()} of {total.toLocaleString()}</>
+          <>
+            Showing {startItem.toLocaleString()} to {endItem.toLocaleString()} of {total.toLocaleString()}
+          </>
         ) : (
           <>No sentences</>
         )}
@@ -146,4 +146,3 @@ export default function PaginationControls({
     </div>
   )
 }
-

@@ -9,20 +9,26 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     const formData = await req.formData()
     const upload = await readUpload(formData.get('file'))
     if (!upload.ok) {
-      return NextResponse.json({
-        ok: false,
-        error: upload.error,
-        errors: [{ row: 0, message: upload.error }]
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: upload.error,
+          errors: [{ row: 0, message: upload.error }]
+        },
+        { status: 400 }
+      )
     }
 
     const { nodes, errors } = parseTaxonomyCsv(upload.text)
     if (errors.length > 0) {
-      return NextResponse.json({
-        ok: false,
-        error: formatCsvErrors(errors),
-        errors
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: formatCsvErrors(errors),
+          errors
+        },
+        { status: 400 }
+      )
     }
 
     return NextResponse.json({
@@ -32,10 +38,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     })
   } catch (caught) {
     console.error('Validation error:', caught)
-    return NextResponse.json({
-      ok: false,
-      error: 'An unexpected error occurred during validation',
-      errors: [{ row: 0, message: 'An unexpected error occurred during validation' }]
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'An unexpected error occurred during validation',
+        errors: [{ row: 0, message: 'An unexpected error occurred during validation' }]
+      },
+      { status: 500 }
+    )
   }
 })

@@ -1,8 +1,5 @@
 import createClient from 'openapi-fetch'
-import {
-  AI_JOB_POLL_INTERVAL_MS,
-  AI_JOB_POLL_TIMEOUT_MS
-} from '@/lib/constants'
+import { AI_JOB_POLL_INTERVAL_MS, AI_JOB_POLL_TIMEOUT_MS } from '@/lib/constants'
 import type { paths } from '@/lib/contracts/taxomind.openapi'
 import {
   createdJobId,
@@ -12,7 +9,7 @@ import {
   type LabelingRequest,
   type LearningRequest,
   type TaxomindResource,
-  type TaxonomyRequest,
+  type TaxonomyRequest
 } from '@/lib/contracts/taxomind'
 
 // The HTTP boundary to Taxomind. Requests and responses follow its OpenAPI
@@ -26,7 +23,7 @@ const API_KEY = process.env.AI_LABELING_API_KEY
 // may take time to accept a large payload. GET requests (status polling)
 // should respond quickly.
 const AI_REQUEST_TIMEOUT_POST_MS = 3 * 60 * 1000 // 3 minutes
-const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000       // 30 seconds
+const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
 
 export function ensureAIConfig() {
   if (!API_URL || !API_KEY) {
@@ -40,7 +37,7 @@ function taxomind() {
   ensureAIConfig()
   taxomindClient ??= createClient<paths>({
     baseUrl: API_URL,
-    headers: { Authorization: `Bearer ${API_KEY}` },
+    headers: { Authorization: `Bearer ${API_KEY}` }
   })
   return taxomindClient
 }
@@ -52,7 +49,11 @@ type Sent = { data?: unknown; error?: unknown; response: Response }
  * response. Non-2xx, timeouts and bodies that are not JSON become errors that
  * name the request.
  */
-async function send(method: 'GET' | 'POST', path: string, request: (signal: AbortSignal) => Promise<Sent>): Promise<unknown> {
+async function send(
+  method: 'GET' | 'POST',
+  path: string,
+  request: (signal: AbortSignal) => Promise<Sent>
+): Promise<unknown> {
   const timeoutMs = method === 'POST' ? AI_REQUEST_TIMEOUT_POST_MS : AI_REQUEST_TIMEOUT_GET_MS
   let sent: Sent
   try {
@@ -102,9 +103,12 @@ export async function fetchAIJobStatus(resource: TaxomindResource, externalJobId
   const params = { path: { job_id: externalJobId } }
   const data = await send('GET', path, signal => {
     switch (resource) {
-      case 'label': return taxomind().GET('/label/{job_id}/status', { params, signal })
-      case 'learn': return taxomind().GET('/learn/{job_id}/status', { params, signal })
-      case 'taxonomies': return taxomind().GET('/taxonomies/{job_id}/status', { params, signal })
+      case 'label':
+        return taxomind().GET('/label/{job_id}/status', { params, signal })
+      case 'learn':
+        return taxomind().GET('/learn/{job_id}/status', { params, signal })
+      case 'taxonomies':
+        return taxomind().GET('/taxonomies/{job_id}/status', { params, signal })
     }
   })
   return parseResponse(jobStatusResponse, data, `GET ${path}`)
@@ -120,9 +124,12 @@ export async function cancelAIJob(apiPath: `/${TaxomindResource}`, externalJobId
   try {
     await send('POST', path, signal => {
       switch (apiPath) {
-        case '/label': return taxomind().POST('/label/{job_id}/cancel', { params, signal })
-        case '/learn': return taxomind().POST('/learn/{job_id}/cancel', { params, signal })
-        case '/taxonomies': return taxomind().POST('/taxonomies/{job_id}/cancel', { params, signal })
+        case '/label':
+          return taxomind().POST('/label/{job_id}/cancel', { params, signal })
+        case '/learn':
+          return taxomind().POST('/learn/{job_id}/cancel', { params, signal })
+        case '/taxonomies':
+          return taxomind().POST('/taxonomies/{job_id}/cancel', { params, signal })
       }
     })
   } catch (error) {
@@ -131,8 +138,7 @@ export async function cancelAIJob(apiPath: `/${TaxomindResource}`, externalJobId
 }
 
 export type AIJobResult =
-  | { success: true; data: JobStatusResponse }
-  | { success: false; data?: JobStatusResponse; error: string }
+  { success: true; data: JobStatusResponse } | { success: false; data?: JobStatusResponse; error: string }
 
 export async function waitForAIJobResult(resource: TaxomindResource, jobId: string): Promise<AIJobResult> {
   const startedAt = Date.now()
@@ -160,7 +166,7 @@ export async function waitForAIJobResult(resource: TaxomindResource, jobId: stri
       return { success: false, error: `AI job ${jobId} timed out after ${AI_JOB_POLL_TIMEOUT_MS}ms` }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, AI_JOB_POLL_INTERVAL_MS))
+    await new Promise(resolve => setTimeout(resolve, AI_JOB_POLL_INTERVAL_MS))
   }
 }
 

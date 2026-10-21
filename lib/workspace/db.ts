@@ -24,13 +24,36 @@ const scope = new AsyncLocalStorage<Scope>()
 
 /** Models whose rows belong to one workspace (they carry workspaceId). */
 const WORKSPACE_MODELS = new Set([
-  'Taxonomy', 'TaxonomySetting', 'TaxonomyNode', 'TaxonomySynonym', 'SentenceImport', 'SentenceAssignment',
-  'Sentence', 'SentenceAnnotation', 'SentenceAISuggestion', 'AILabelingJob', 'AILearningJob', 'Comment',
-  'WorkspaceMembership', 'AuditLog',
+  'Taxonomy',
+  'TaxonomySetting',
+  'TaxonomyNode',
+  'TaxonomySynonym',
+  'SentenceImport',
+  'SentenceAssignment',
+  'Sentence',
+  'SentenceAnnotation',
+  'SentenceAISuggestion',
+  'AILabelingJob',
+  'AILearningJob',
+  'Comment',
+  'WorkspaceMembership',
+  'AuditLog'
 ])
 const FILTERED = new Set([
-  'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
-  'update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany', 'upsert',
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'count',
+  'aggregate',
+  'groupBy',
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+  'delete',
+  'deleteMany',
+  'upsert'
 ])
 
 type Args = { where?: Record<string, unknown>; data?: unknown; create?: Record<string, unknown> }
@@ -58,7 +81,9 @@ const scopedClient = prisma.$extends({
         const a = { ...(args as Args) }
         if (FILTERED.has(operation)) a.where = { ...a.where, workspaceId }
         if (operation === 'create' || operation === 'createMany' || operation === 'createManyAndReturn') {
-          a.data = Array.isArray(a.data) ? a.data.map(row => withOwner(row, workspaceId)) : withOwner(a.data, workspaceId)
+          a.data = Array.isArray(a.data)
+            ? a.data.map(row => withOwner(row, workspaceId))
+            : withOwner(a.data, workspaceId)
         }
         if (operation === 'upsert') a.create = withOwner(a.create, workspaceId) as Record<string, unknown>
         scoped = a as typeof args
@@ -69,8 +94,8 @@ const scopedClient = prisma.$extends({
       const run = current.queue.then(() => query(scoped))
       current.queue = run.catch(() => undefined)
       return run
-    },
-  },
+    }
+  }
 })
 
 /** Raised when a write reaches a workspace that is archived (or gone). */
@@ -104,16 +129,19 @@ export async function withWorkspace<T>(
     return fn()
   }
   const afterCommit: Array<() => void> = []
-  const result = await scopedClient.$transaction(async extendedTx => {
-    const tx = extendedTx as unknown as WorkspaceDb
-    await tx.$executeRaw`SELECT set_config('app.workspace_id', ${workspaceId}, true)`
-    if (write) {
-      const active = await tx.$queryRaw<unknown[]>`
+  const result = await scopedClient.$transaction(
+    async extendedTx => {
+      const tx = extendedTx as unknown as WorkspaceDb
+      await tx.$executeRaw`SELECT set_config('app.workspace_id', ${workspaceId}, true)`
+      if (write) {
+        const active = await tx.$queryRaw<unknown[]>`
         SELECT 1 FROM "Workspace" WHERE id = ${workspaceId} AND status = 'active' FOR SHARE`
-      if (active.length === 0) throw new WorkspaceArchivedError()
-    }
-    return scope.run({ workspaceId, tx, afterCommit, queue: Promise.resolve() }, fn)
-  }, { timeout: timeoutMs, maxWait: 15_000 })
+        if (active.length === 0) throw new WorkspaceArchivedError()
+      }
+      return scope.run({ workspaceId, tx, afterCommit, queue: Promise.resolve() }, fn)
+    },
+    { timeout: timeoutMs, maxWait: 15_000 }
+  )
   for (const callback of afterCommit) callback()
   return result
 }

@@ -1,9 +1,4 @@
-import QueuePageClient, {
-  type QueueResponse,
-  type Stats,
-  type Taxonomy,
-  type QueueUser
-} from './QueuePageClient'
+import QueuePageClient, { type QueueResponse, type Stats, type Taxonomy, type QueueUser } from './QueuePageClient'
 import LoadError from '@/components/LoadError'
 import { asJson } from '@/lib/server/json'
 import { requirePageUser } from '@/lib/server/page-user'
@@ -26,13 +21,15 @@ export default async function QueuePage({ params }: { params: Promise<{ workspac
 
   let data
   try {
-    const [queue, stats, taxonomies, users, self] = await withWorkspace(workspaceId, () => Promise.all([
-      listQueue(user, queueParams),
-      getQueueStats(user, new URLSearchParams()),
-      listActiveTaxonomies(workspaceId),
-      user.role === 'admin' || user.role === 'supervisor' ? listVisibleUsers(user) : null,
-      user.role === 'supervisor' ? getVisibleUser(user, user.id) : null,
-    ]))
+    const [queue, stats, taxonomies, users, self] = await withWorkspace(workspaceId, () =>
+      Promise.all([
+        listQueue(user, queueParams),
+        getQueueStats(user, new URLSearchParams()),
+        listActiveTaxonomies(workspaceId),
+        user.role === 'admin' || user.role === 'supervisor' ? listVisibleUsers(user) : null,
+        user.role === 'supervisor' ? getVisibleUser(user, user.id) : null
+      ])
+    )
     data = asJson({ queue, stats: stats.stats, taxonomies: taxonomies.taxonomies, users: users?.users ?? [], self })
   } catch (error) {
     console.error('Queue page failed to load:', error)
@@ -41,8 +38,8 @@ export default async function QueuePage({ params }: { params: Promise<{ workspac
 
   const users: QueueUser[] = data.users.map(u => ({ id: u.id, username: u.username, name: u.name }))
   // Supervisors assign only when they have labellers below them.
-  const canAssign = user.role === 'admin' ||
-    (data.self !== null && data.self !== 'forbidden' && data.self.labellers.length > 0)
+  const canAssign =
+    user.role === 'admin' || (data.self !== null && data.self !== 'forbidden' && data.self.labellers.length > 0)
 
   return (
     <QueuePageClient

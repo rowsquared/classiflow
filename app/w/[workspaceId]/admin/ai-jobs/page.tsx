@@ -11,7 +11,9 @@ export default async function AIJobsPage({ params }: { params: Promise<{ workspa
 
   let data
   try {
-    data = asJson(await withWorkspace(workspaceId, () => listAIJobs(workspaceId, { statusParams: [], page: 1, limit: 20 })))
+    data = asJson(
+      await withWorkspace(workspaceId, () => listAIJobs(workspaceId, { statusParams: [], page: 1, limit: 20 }))
+    )
   } catch (error) {
     console.error('AI jobs page failed to load:', error)
     return <LoadError title="AI Jobs" what="the AI jobs" />

@@ -5,7 +5,19 @@ import { z } from 'zod'
 import type { Taxonomy, User } from '@/lib/generated/prisma/client'
 import openapi from '@/lib/contracts/taxomind.openapi.json'
 import { db } from '@/lib/workspace/db'
-import { prisma, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import {
+  prisma,
+  wsId,
+  inWorkspace,
+  createWorkspace,
+  createSentences,
+  createTaxonomy,
+  createUser,
+  params,
+  request,
+  resetDatabase,
+  signInAs
+} from './helpers'
 
 // The contract test: the monitor and the taxonomy sync against a stub Taxomind
 // on a local port. The stub checks every request classiflow sends, and every
@@ -31,7 +43,7 @@ type Resource = 'label' | 'learn' | 'taxonomies'
 const SCHEMAS: Record<Resource, { request: SchemaName; created: SchemaName; status: SchemaName }> = {
   label: { request: 'LabelingRequest', created: 'LabelingJobResponse', status: 'LabelingStatusResponse' },
   learn: { request: 'LearningRequest', created: 'LearningJobResponse', status: 'LearningStatusResponse' },
-  taxonomies: { request: 'TaxonomyRequest', created: 'TaxonomyJobResponse', status: 'TaxonomyStatusResponse' },
+  taxonomies: { request: 'TaxonomyRequest', created: 'TaxonomyJobResponse', status: 'TaxonomyStatusResponse' }
 }
 
 type StubJob = { resource: Resource; body: Record<string, unknown>; polls: number }
@@ -65,16 +77,33 @@ function reply(res: ServerResponse, schema: SchemaName, body: Record<string, unk
 
 function createdBody(resource: Resource, job: StubJob, id: string) {
   if (resource === 'learn') {
-    return { jobId: id, status: 'pending', taxonomyKey: String(job.body.taxonomyKey), message: 'Learning job initiated', createdAt: now() }
+    return {
+      jobId: id,
+      status: 'pending',
+      taxonomyKey: String(job.body.taxonomyKey),
+      message: 'Learning job initiated',
+      createdAt: now()
+    }
   }
-  return { job_id: id, ...(resource === 'label' ? { batch_id: String(job.body.batchId) } : {}), status: 'pending', message: 'Job started', created_at: now() }
+  return {
+    job_id: id,
+    ...(resource === 'label' ? { batch_id: String(job.body.batchId) } : {}),
+    status: 'pending',
+    message: 'Job started',
+    created_at: now()
+  }
 }
 
 function statusBody(resource: Resource, job: StubJob, id: string, fields: Record<string, unknown>) {
   if (resource === 'learn') {
     return { jobId: id, taxonomyKey: String(job.body.taxonomyKey), message: 'Learning', createdAt: now(), ...fields }
   }
-  return { job_id: id, ...(resource === 'label' ? { batch_id: String(job.body.batchId) } : {}), created_at: now(), ...fields }
+  return {
+    job_id: id,
+    ...(resource === 'label' ? { batch_id: String(job.body.batchId) } : {}),
+    created_at: now(),
+    ...fields
+  }
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
@@ -103,7 +132,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const job = status && started[Number(status[2]) - 1]
   if (status && job && job.resource === status[1]) {
     if (status[3] === 'cancel' && req.method === 'POST') {
-      return reply(res, SCHEMAS[job.resource].status, statusBody(job.resource, job, `ext-${status[2]}`, { status: 'canceled' }))
+      return reply(
+        res,
+        SCHEMAS[job.resource].status,
+        statusBody(job.resource, job, `ext-${status[2]}`, { status: 'canceled' })
+      )
     }
     if (status[3] === 'status' && req.method === 'GET') {
       job.polls++
@@ -111,14 +144,20 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       if (answer.raw !== undefined || (answer.code ?? 200) !== 200) {
         return send(res, answer.code ?? 200, answer.body, answer.raw)
       }
-      return reply(res, SCHEMAS[job.resource].status, statusBody(job.resource, job, `ext-${status[2]}`, answer.body ?? {}))
+      return reply(
+        res,
+        SCHEMAS[job.resource].status,
+        statusBody(job.resource, job, `ext-${status[2]}`, answer.body ?? {})
+      )
     }
   }
   send(res, 404, { detail: 'Not Found' })
 }
 
 beforeAll(async () => {
-  server = createServer((req, res) => { handle(req, res).catch(() => send(res, 500, {})) })
+  server = createServer((req, res) => {
+    handle(req, res).catch(() => send(res, 500, {}))
+  })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   process.env.AI_LABELING_API_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   monitor = await import('@/lib/ai-job-monitor')
@@ -154,16 +193,18 @@ afterEach(() => {
 const ACTIVE = ['pending', 'processing']
 
 async function labelingJob(sentenceIds: string[], extra: Record<string, unknown> = {}) {
-  return inWorkspace(() => db().aILabelingJob.create({
-    data: {
-      workspaceId: wsId(),
-      createdById: admin.id,
-      taxonomyId: taxonomy.id,
-      totalSentences: sentenceIds.length,
-      filterCriteria: { sentenceIds },
-      ...extra,
-    },
-  }))
+  return inWorkspace(() =>
+    db().aILabelingJob.create({
+      data: {
+        workspaceId: wsId(),
+        createdById: admin.id,
+        taxonomyId: taxonomy.id,
+        totalSentences: sentenceIds.length,
+        filterCriteria: { sentenceIds },
+        ...extra
+      }
+    })
+  )
 }
 
 /** Waits until the job leaves pending/processing (or the predicate holds). */
@@ -176,23 +217,35 @@ async function settle(id: string, done = (status: string) => !ACTIVE.includes(st
   throw new Error(`job ${id} did not settle`)
 }
 
-const completedWith = (suggestions: unknown, errors: unknown[] = []): StatusReply => job =>
-  ({ body: { status: 'completed', progress: 1, result: { batchId: job.body.batchId, suggestions, errors } } })
+const completedWith =
+  (suggestions: unknown, errors: unknown[] = []): StatusReply =>
+  job => ({ body: { status: 'completed', progress: 1, result: { batchId: job.body.batchId, suggestions, errors } } })
 
 const storedSuggestions = async () =>
-  (await prisma.sentenceAISuggestion.findMany({ orderBy: [{ sentenceId: 'asc' }, { level: 'asc' }] }))
-    .map(s => [s.sentenceId, s.level, s.nodeCode, s.confidenceScore])
+  (await prisma.sentenceAISuggestion.findMany({ orderBy: [{ sentenceId: 'asc' }, { level: 'asc' }] })).map(s => [
+    s.sentenceId,
+    s.level,
+    s.nodeCode,
+    s.confidenceScore
+  ])
 
 describe('AI job monitor against a stub service', () => {
   it('sends the records, polls to completion and stores only valid suggestions', async () => {
     const [a, b] = await createSentences(2)
-    statusReply = job => (job.polls < 3
-      ? { body: { status: 'running', progress: 0.5 } }
-      : completedWith([
-        { sentenceId: a.id, annotations: [{ level: 1, nodeCode: '01', confidence: 0.9 }, { level: 2, nodeCode: '011', confidence: 0.8 }] },
-        { sentenceId: b.id, annotations: [{ level: 1, nodeCode: '99', confidence: 0.7 }] }, // not in the taxonomy
-        { sentenceId: 'someone-else', annotations: [{ level: 1, nodeCode: '02', confidence: 0.5 }] }, // foreign record
-      ])(job))
+    statusReply = job =>
+      job.polls < 3
+        ? { body: { status: 'running', progress: 0.5 } }
+        : completedWith([
+            {
+              sentenceId: a.id,
+              annotations: [
+                { level: 1, nodeCode: '01', confidence: 0.9 },
+                { level: 2, nodeCode: '011', confidence: 0.8 }
+              ]
+            },
+            { sentenceId: b.id, annotations: [{ level: 1, nodeCode: '99', confidence: 0.7 }] }, // not in the taxonomy
+            { sentenceId: 'someone-else', annotations: [{ level: 1, nodeCode: '02', confidence: 0.5 }] } // foreign record
+          ])(job)
     const job = await labelingJob([a.id, b.id])
 
     monitor.launchJob(job.id, wsId())
@@ -209,17 +262,32 @@ describe('AI job monitor against a stub service', () => {
       batchId: job.id,
       sentences: [
         { sentence_id: a.id, fields: { text: 'record 0' } },
-        { sentence_id: b.id, fields: { text: 'record 1' } },
-      ],
+        { sentence_id: b.id, fields: { text: 'record 1' } }
+      ]
     })
-    expect(await storedSuggestions()).toEqual([[a.id, 1, '01', 0.9], [a.id, 2, '011', 0.8]])
+    expect(await storedSuggestions()).toEqual([
+      [a.id, 1, '01', 0.9],
+      [a.id, 2, '011', 0.8]
+    ])
   })
 
   it('keeps codes as strings: leading zeros and the unknown codes', async () => {
     const [a, b] = await createSentences(2)
     statusReply = completedWith([
-      { sentenceId: a.id, annotations: [{ level: 1, nodeCode: '01', confidence: 0.6 }, { level: 2, nodeCode: '012', confidence: 0.4 }] },
-      { sentenceId: b.id, annotations: [{ level: 1, nodeCode: '-9', confidence: 0.2 }, { level: 2, nodeCode: '-99', confidence: 0.1 }] },
+      {
+        sentenceId: a.id,
+        annotations: [
+          { level: 1, nodeCode: '01', confidence: 0.6 },
+          { level: 2, nodeCode: '012', confidence: 0.4 }
+        ]
+      },
+      {
+        sentenceId: b.id,
+        annotations: [
+          { level: 1, nodeCode: '-9', confidence: 0.2 },
+          { level: 2, nodeCode: '-99', confidence: 0.1 }
+        ]
+      }
     ])
     const job = await labelingJob([a.id, b.id])
 
@@ -228,10 +296,14 @@ describe('AI job monitor against a stub service', () => {
 
     const stored = await storedSuggestions()
     expect(stored).toHaveLength(4)
-    expect(stored).toEqual(expect.arrayContaining([
-      [a.id, 1, '01', 0.6], [a.id, 2, '012', 0.4],
-      [b.id, 1, '-9', 0.2], [b.id, 2, '-99', 0.1],
-    ]))
+    expect(stored).toEqual(
+      expect.arrayContaining([
+        [a.id, 1, '01', 0.6],
+        [a.id, 2, '012', 0.4],
+        [b.id, 1, '-9', 0.2],
+        [b.id, 2, '-99', 0.1]
+      ])
+    )
   })
 
   it('marks the job failed with the service error', async () => {
@@ -261,9 +333,10 @@ describe('AI job monitor against a stub service', () => {
   it('keeps a job cancelled while polling cancelled and writes no suggestions', async () => {
     const [a] = await createSentences(1)
     let cancelled = false
-    statusReply = job => (cancelled
-      ? completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
-      : { body: { status: 'running' } })
+    statusReply = job =>
+      cancelled
+        ? completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
+        : { body: { status: 'running' } }
     const job = await labelingJob([a.id])
 
     monitor.launchJob(job.id, wsId())
@@ -278,9 +351,10 @@ describe('AI job monitor against a stub service', () => {
 
   it('keeps polling through failed status requests', async () => {
     const [a] = await createSentences(1)
-    statusReply = job => (job.polls <= 2
-      ? { code: 503, body: { detail: 'busy' } }
-      : completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job))
+    statusReply = job =>
+      job.polls <= 2
+        ? { code: 503, body: { detail: 'busy' } }
+        : completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
     const job = await labelingJob([a.id])
 
     monitor.launchJob(job.id, wsId())
@@ -296,10 +370,11 @@ describe('AI job monitor against a stub service', () => {
       { raw: 'Internal Server Error' }, // not JSON
       { raw: JSON.stringify({ job_id: 'ext-1' }) }, // no status
       { raw: JSON.stringify({ status: 'done' }) }, // not one of Taxomind's statuses
-      { raw: JSON.stringify({ status: 'success' }) }, // an old alias Taxomind never sends
+      { raw: JSON.stringify({ status: 'success' }) } // an old alias Taxomind never sends
     ]
-    statusReply = job => malformed[job.polls - 1]
-      ?? completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
+    statusReply = job =>
+      malformed[job.polls - 1] ??
+      completedWith([{ sentenceId: a.id, annotations: [{ level: 1, nodeCode: '02', confidence: 1 }] }])(job)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const job = await labelingJob([a.id])
 
@@ -310,7 +385,9 @@ describe('AI job monitor against a stub service', () => {
     expect(started[0].polls).toBe(5)
     const messages = warn.mock.calls.map(call => String(call[0]))
     expect(messages.some(m => m.includes('not JSON'))).toBe(true)
-    expect(messages.some(m => m.includes('Unexpected response from the AI service (GET /label/ext-1/status): status'))).toBe(true)
+    expect(
+      messages.some(m => m.includes('Unexpected response from the AI service (GET /label/ext-1/status): status'))
+    ).toBe(true)
     warn.mockRestore()
   })
 
@@ -320,14 +397,17 @@ describe('AI job monitor against a stub service', () => {
     // one usable record, one with a numeric code, one missing.
     statusReply = () => ({
       raw: JSON.stringify({
-        job_id: 'ext-1', batch_id: 'x', status: 'completed', created_at: now(),
+        job_id: 'ext-1',
+        batch_id: 'x',
+        status: 'completed',
+        created_at: now(),
         result: {
           suggestions: [
             { sentenceId: a.id, annotations: [{ level: 1, nodeCode: '01', confidence: 0.5 }] },
-            { sentenceId: b.id, annotations: [{ level: 1, nodeCode: 1, confidence: 0.5 }] },
-          ],
-        },
-      }),
+            { sentenceId: b.id, annotations: [{ level: 1, nodeCode: 1, confidence: 0.5 }] }
+          ]
+        }
+      })
     })
     const job = await labelingJob([a.id, b.id, c.id])
 
@@ -363,10 +443,12 @@ describe('AI job monitor against a stub service', () => {
 
     expect(done.status).toBe('failed')
     expect(done.externalJobId).toBeNull()
-    expect(done.errorMessage).toBe('Unexpected response from the AI service (POST /label): job_id: Invalid input: expected string, received undefined')
+    expect(done.errorMessage).toBe(
+      'Unexpected response from the AI service (POST /label): job_id: Invalid input: expected string, received undefined'
+    )
   })
 
-  it('fails the job with the service\'s answer when the start request is refused', async () => {
+  it("fails the job with the service's answer when the start request is refused", async () => {
     const [a] = await createSentences(1)
     createdReply = () => ({ code: 401, body: { detail: 'Invalid token' } })
     vi.spyOn(console, 'error').mockImplementationOnce(() => {})
@@ -384,7 +466,7 @@ describe('AI job monitor against a stub service', () => {
     statusReply = completedWith([])
     const job = await labelingJob([a.id], {
       leaseOwner: 'other-instance',
-      leaseExpiresAt: new Date(Date.now() + 60_000),
+      leaseExpiresAt: new Date(Date.now() + 60_000)
     })
 
     monitor.launchJob(job.id, wsId())
@@ -395,7 +477,7 @@ describe('AI job monitor against a stub service', () => {
     expect(after).toMatchObject({ status: 'pending', leaseOwner: 'other-instance' })
   })
 
-  it('takes over a dead instance\'s job and resumes polling without resending it', async () => {
+  it("takes over a dead instance's job and resumes polling without resending it", async () => {
     const [a] = await createSentences(1)
     // Another instance started the external job, then died: its lease expired.
     started.push({ resource: 'label', body: { taxonomyKey: 'ISCO', batchId: 'earlier' }, polls: 0 })
@@ -404,7 +486,7 @@ describe('AI job monitor against a stub service', () => {
       status: 'processing',
       externalJobId: 'ext-1',
       leaseOwner: 'dead-instance',
-      leaseExpiresAt: new Date(Date.now() - 1000),
+      leaseExpiresAt: new Date(Date.now() - 1000)
     })
 
     await monitor.ensureJobsMonitored()
@@ -415,21 +497,48 @@ describe('AI job monitor against a stub service', () => {
     expect(await prisma.sentenceAISuggestion.count()).toBe(1)
   })
 
-  it('runs a learning job and records the taxonomy\'s last learning', async () => {
+  it("runs a learning job and records the taxonomy's last learning", async () => {
     const [a] = await createSentences(1)
-    await inWorkspace(() => db().sentenceAnnotation.createMany({
-      data: [
-        { workspaceId: wsId(), sentenceId: a.id, taxonomyId: taxonomy.id, level: 1, nodeCode: '01', source: 'user', createdById: admin.id },
-        { workspaceId: wsId(), sentenceId: a.id, taxonomyId: taxonomy.id, level: 2, nodeCode: '011', source: 'user', createdById: admin.id },
-      ],
-    }))
+    await inWorkspace(() =>
+      db().sentenceAnnotation.createMany({
+        data: [
+          {
+            workspaceId: wsId(),
+            sentenceId: a.id,
+            taxonomyId: taxonomy.id,
+            level: 1,
+            nodeCode: '01',
+            source: 'user',
+            createdById: admin.id
+          },
+          {
+            workspaceId: wsId(),
+            sentenceId: a.id,
+            taxonomyId: taxonomy.id,
+            level: 2,
+            nodeCode: '011',
+            source: 'user',
+            createdById: admin.id
+          }
+        ]
+      })
+    )
     statusReply = () => ({ body: { status: 'completed' } })
-    const job = await inWorkspace(() => db().aILearningJob.create({
-      data: { workspaceId: wsId(), createdById: admin.id, taxonomyId: taxonomy.id, totalSentences: 1, filterCriteria: { sentenceIds: [a.id] } },
-    }))
+    const job = await inWorkspace(() =>
+      db().aILearningJob.create({
+        data: {
+          workspaceId: wsId(),
+          createdById: admin.id,
+          taxonomyId: taxonomy.id,
+          totalSentences: 1,
+          filterCriteria: { sentenceIds: [a.id] }
+        }
+      })
+    )
 
     monitor.launchLearningJob(job.id, wsId())
-    await expect.poll(async () => (await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })).status)
+    await expect
+      .poll(async () => (await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })).status)
       .toBe('completed')
 
     const done = await prisma.aILearningJob.findUniqueOrThrow({ where: { id: job.id } })
@@ -438,24 +547,32 @@ describe('AI job monitor against a stub service', () => {
     expect(started[0].body).toEqual({
       taxonomyKey: 'ISCO',
       sourceSlug: `stub-deployment--${wsId()}`,
-      sentences: [{
-        sentenceId: a.id,
-        fields: { text: 'record 0' },
-        annotations: expect.arrayContaining([{ level: 1, nodeCode: '01' }, { level: 2, nodeCode: '011' }]),
-      }],
+      sentences: [
+        {
+          sentenceId: a.id,
+          fields: { text: 'record 0' },
+          annotations: expect.arrayContaining([
+            { level: 1, nodeCode: '01' },
+            { level: 2, nodeCode: '011' }
+          ])
+        }
+      ]
     })
     // Recorded right after the job's completion, outside its transaction.
-    await expect.poll(async () => (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastLearningStatus)
+    await expect
+      .poll(async () => (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastLearningStatus)
       .toBe('completed')
   })
 })
 
 describe('taxonomy sync against a stub service', () => {
-  const sync = () => syncRoute.POST(
-    request(`/api/workspaces/${wsId()}/taxonomies/ISCO/sync-ai`, { method: 'POST' }),
-    params({ key: 'ISCO' })
-  )
-  const syncStatus = async () => (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncStatus
+  const sync = () =>
+    syncRoute.POST(
+      request(`/api/workspaces/${wsId()}/taxonomies/ISCO/sync-ai`, { method: 'POST' }),
+      params({ key: 'ISCO' })
+    )
+  const syncStatus = async () =>
+    (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncStatus
 
   it('sends the taxonomy as the contract describes it and records completion', async () => {
     signInAs(admin)
@@ -466,8 +583,16 @@ describe('taxonomy sync against a stub service', () => {
     expect(await res.json()).toEqual({ ok: true, jobId: 'ext-1' })
 
     await expect.poll(syncStatus).toBe('completed')
-    const body = started[0].body as { action: string; sourceSlug: string; taxonomy: { key: string; nodes: Array<{ code: string }> } }
-    expect(body).toMatchObject({ action: 'create', sourceSlug: `stub-deployment--${wsId()}`, taxonomy: { key: 'ISCO' } })
+    const body = started[0].body as {
+      action: string
+      sourceSlug: string
+      taxonomy: { key: string; nodes: Array<{ code: string }> }
+    }
+    expect(body).toMatchObject({
+      action: 'create',
+      sourceSlug: `stub-deployment--${wsId()}`,
+      taxonomy: { key: 'ISCO' }
+    })
     expect(body.taxonomy.nodes.map(n => n.code).sort()).toEqual(['01', '011', '012', '02'])
   })
 
@@ -478,8 +603,9 @@ describe('taxonomy sync against a stub service', () => {
     expect((await sync()).status).toBe(200)
 
     await expect.poll(syncStatus).toBe('failed')
-    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncError)
-      .toBe('AI job was cancelled in the AI service')
+    expect((await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastAISyncError).toBe(
+      'AI job was cancelled in the AI service'
+    )
   })
 
   it('cancels jobs on Taxomind best-effort', async () => {

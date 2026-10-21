@@ -24,14 +24,14 @@ export const auth = betterAuth({
     enabled: true,
     disableSignUp: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
-    maxPasswordLength: PASSWORD_MAX_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH
   },
   user: {
     additionalFields: {
       // Set for new users and admin-set passwords; proxy.ts and
       // lib/api-auth.ts allow only the reset page until it is cleared.
-      mustResetPassword: { type: 'boolean', defaultValue: true, input: false },
-    },
+      mustResetPassword: { type: 'boolean', defaultValue: true, input: false }
+    }
   },
   rateLimit: {
     // Counted per client IP in the database, so every instance shares them.
@@ -39,8 +39,8 @@ export const auth = betterAuth({
     storage: 'database',
     customRules: {
       '/sign-in/email': SIGN_IN_LIMIT,
-      '/sign-in/username': SIGN_IN_LIMIT,
-    },
+      '/sign-in/username': SIGN_IN_LIMIT
+    }
   },
   databaseHooks: {
     session: {
@@ -48,20 +48,20 @@ export const auth = betterAuth({
         // Raw SQL so a sign-in does not count as an edit of the account (updatedAt).
         after: async session => {
           await prisma.$executeRaw`UPDATE "User" SET "lastLogin" = (now() AT TIME ZONE 'UTC') WHERE id = ${session.userId}`
-        },
-      },
-    },
+        }
+      }
+    }
   },
   plugins: [
     username({
       minUsernameLength: 3,
       maxUsernameLength: 100,
-      usernameValidator: name => USERNAME_PATTERN.test(name),
+      usernameValidator: name => USERNAME_PATTERN.test(name)
     }),
     // Ban/unban and per-user session listing and revocation for admins; the
     // roles stay ours (Role enum), and only "admin" may call these endpoints.
     admin({ defaultRole: 'labeller', adminRoles: ['admin'] }),
-    nextCookies(),
+    nextCookies()
   ],
   // Account changes go through app/api/users and app/api/auth/reset-password,
   // which apply the team rules and write the audit log.
@@ -80,8 +80,8 @@ export const auth = betterAuth({
     '/admin/set-user-password',
     '/admin/remove-user',
     '/admin/impersonate-user',
-    '/admin/stop-impersonating',
-  ],
+    '/admin/stop-impersonating'
+  ]
 })
 
 export type AuthSession = typeof auth.$Infer.Session

@@ -6,26 +6,26 @@ import { prisma } from '@/lib/prisma'
 // be checked against the commit CI tested. The repository is public; nothing
 // else about the deployment is exposed.
 export async function GET() {
-	const release = process.env.SOURCE_COMMIT || null
-	try {
-		await prisma.$queryRaw`SELECT 1`
+  const release = process.env.SOURCE_COMMIT || null
+  try {
+    await prisma.$queryRaw`SELECT 1`
 
-		return NextResponse.json({
-			status: 'healthy',
-			timestamp: new Date().toISOString(),
-			database: 'connected',
-			release,
-		})
-	} catch (error) {
-		console.error('Health check failed:', error)
-		return NextResponse.json(
-			{
-				status: 'unhealthy',
-				timestamp: new Date().toISOString(),
-				database: 'disconnected',
-				release,
-			},
-			{ status: 503 }
-		)
-	}
+    return NextResponse.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: 'connected',
+      release
+    })
+  } catch (error) {
+    console.error('Health check failed:', error)
+    return NextResponse.json(
+      {
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
+        database: 'disconnected',
+        release
+      },
+      { status: 503 }
+    )
+  }
 }

@@ -11,7 +11,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).optional().nullable(),
   // The first admin; defaults to the creating platform admin.
-  adminUserId: z.string().optional(),
+  adminUserId: z.string().optional()
 })
 
 export async function GET() {
@@ -31,12 +31,16 @@ export async function POST(req: Request) {
     name: parsed.data.name,
     description: parsed.data.description ?? null,
     adminUserId: parsed.data.adminUserId ?? actor.id,
-    createdById: actor.id,
+    createdById: actor.id
   })
   if (!workspace) return NextResponse.json({ error: 'Admin user not found' }, { status: 400 })
   await audit({
-    workspaceId: null, actorId: actor.id, action: 'workspace.created', entityType: 'workspace', entityId: workspace.id,
-    payload: { name: workspace.name, adminUserId: parsed.data.adminUserId ?? actor.id },
+    workspaceId: null,
+    actorId: actor.id,
+    action: 'workspace.created',
+    entityType: 'workspace',
+    entityId: workspace.id,
+    payload: { name: workspace.name, adminUserId: parsed.data.adminUserId ?? actor.id }
   })
   return NextResponse.json({ workspace }, { status: 201 })
 }

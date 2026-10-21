@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import ReactMarkdown from 'react-markdown'
 
@@ -17,9 +17,7 @@ export default function Tooltip({ content, children, side = 'top', delayDuration
   return (
     <TooltipPrimitive.Provider delayDuration={delayDuration}>
       <TooltipPrimitive.Root>
-        <TooltipPrimitive.Trigger asChild>
-          {children}
-        </TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
         <TooltipPrimitive.Portal>
           <TooltipPrimitive.Content
             side={side}
@@ -39,10 +37,15 @@ export default function Tooltip({ content, children, side = 'top', delayDuration
                     <code className="bg-gray-800 px-1 py-0.5 rounded text-xs font-mono">{children}</code>
                   ),
                   a: ({ children, href }) => (
-                    <a href={href} className="text-blue-300 underline hover:text-blue-200" target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={href}
+                      className="text-blue-300 underline hover:text-blue-200"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {children}
                     </a>
-                  ),
+                  )
                 }}
               >
                 {content}
@@ -55,4 +58,3 @@ export default function Tooltip({ content, children, side = 'top', delayDuration
     </TooltipPrimitive.Provider>
   )
 }
-

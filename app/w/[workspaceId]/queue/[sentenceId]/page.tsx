@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi, workspaceHref } from '@/lib/workspace/urls'
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
@@ -45,11 +45,11 @@ export default function LabelingPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const sentenceId = params.sentenceId as string
-  
+
   // Get navigation list from sessionStorage (reactive to URL changes)
   const { sentenceIds, currentIndex } = useMemo(() => {
     const storageKey = searchParams.get('list')
-    
+
     if (storageKey) {
       try {
         const stored = sessionStorage.getItem(storageKey)
@@ -59,7 +59,7 @@ export default function LabelingPage() {
           if (data.timestamp && Date.now() - data.timestamp < 3600000) {
             const ids = data.sentenceIds || []
             let idx = data.currentIndex !== undefined ? parseInt(String(data.currentIndex), 10) : -1
-            
+
             // Verify that the currentIndex matches the sentenceId
             if (ids.length > 0 && idx >= 0 && idx < ids.length) {
               if (ids[idx] !== sentenceId) {
@@ -69,7 +69,7 @@ export default function LabelingPage() {
                 }
               }
             }
-            
+
             return { sentenceIds: ids, currentIndex: idx }
           }
         }
@@ -77,11 +77,11 @@ export default function LabelingPage() {
         console.error('Failed to read sentence list from sessionStorage:', error)
       }
     }
-    
+
     // No valid list found
     return { sentenceIds: [], currentIndex: -1 }
   }, [searchParams, sentenceId])
-  
+
   const [sentence, setSentence] = useState<Sentence | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([])
@@ -98,14 +98,16 @@ export default function LabelingPage() {
   const [hasComment, setHasComment] = useState(false)
   const [showResolvedComments, setShowResolvedComments] = useState(false)
   const [hasResolvedComments, setHasResolvedComments] = useState(false)
-  const [existingComments, setExistingComments] = useState<Array<{
-    id: string
-    body: string
-    createdAt: string
-    resolved: boolean
-    resolvedAt: string | null
-    author: { name: string | null }
-  }>>([])
+  const [existingComments, setExistingComments] = useState<
+    Array<{
+      id: string
+      body: string
+      createdAt: string
+      resolved: boolean
+      resolvedAt: string | null
+      author: { name: string | null }
+    }>
+  >([])
   const [taxonomies, setTaxonomies] = useState<Taxonomy[]>([])
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
   const [completedTaxonomies, setCompletedTaxonomies] = useState<Set<string>>(new Set())
@@ -126,7 +128,7 @@ export default function LabelingPage() {
   const calculateCompletedTaxonomies = (annotations: Sentence['annotations'], taxonomiesList: Taxonomy[]) => {
     const completed = new Set<string>()
     taxonomiesList.forEach(tax => {
-      const userAnnotations = annotations.filter((ann) => {
+      const userAnnotations = annotations.filter(ann => {
         const annotationTaxKey = ann.taxonomy?.key
         const source = ann.source ?? 'user'
         return annotationTaxKey === tax.key && source !== 'ai'
@@ -191,7 +193,7 @@ export default function LabelingPage() {
         }
         const data = await res.json()
         setSentence(data)
-        
+
         // Check if sentence has comments
         const hasExistingComments = data._count?.comments > 0 || (data.comments && data.comments.length > 0)
         setHasComment(hasExistingComments)
@@ -210,8 +212,8 @@ export default function LabelingPage() {
   useEffect(() => {
     if (sentence?.annotations && activeTaxonomyKey) {
       const labels: SelectedLabel[] = sentence.annotations
-        .filter((ann) => ann.taxonomy.key === activeTaxonomyKey)
-        .map((ann) => ({
+        .filter(ann => ann.taxonomy.key === activeTaxonomyKey)
+        .map(ann => ({
           level: ann.level,
           nodeCode: ann.nodeCode,
           taxonomyKey: ann.taxonomy.key,
@@ -222,7 +224,7 @@ export default function LabelingPage() {
           confidenceScore: ann.confidenceScore
         }))
       setSelectedLabels(labels)
-      
+
       // If there are AI suggestions, navigate to the lowest level to show it
       const aiLabels = labels.filter(l => l.source === 'ai')
       if (aiLabels.length > 0) {
@@ -248,7 +250,9 @@ export default function LabelingPage() {
   // Load existing comments
   const loadComments = async (includeResolved = showResolvedComments) => {
     try {
-      const res = await fetch(workspaceApi(`/sentences/${sentenceId}/comments?includeResolved=${includeResolved ? 'true' : 'false'}`))
+      const res = await fetch(
+        workspaceApi(`/sentences/${sentenceId}/comments?includeResolved=${includeResolved ? 'true' : 'false'}`)
+      )
       if (res.ok) {
         const data = await res.json()
         setExistingComments(data.comments || [])
@@ -306,48 +310,45 @@ export default function LabelingPage() {
   }
 
   // Work only with labels that belong to the currently active taxonomy
-  const activeSelectedLabels = activeTaxonomy
-    ? selectedLabels.filter(l => l.taxonomyKey === activeTaxonomy.key)
-    : []
-  
+  const activeSelectedLabels = activeTaxonomy ? selectedLabels.filter(l => l.taxonomyKey === activeTaxonomy.key) : []
+
   // Check if we have a leaf or unknown selected for the active taxonomy
-  const hasLeafOrUnknown = activeSelectedLabels.some(
-    l => l.isLeaf === true || isUnknownNodeCode(l.nodeCode)
-  )
-  
+  const hasLeafOrUnknown = activeSelectedLabels.some(l => l.isLeaf === true || isUnknownNodeCode(l.nodeCode))
+
   // Also check if we have AI suggestions with a complete path (all levels from 1 to lowest level)
   const aiLabels = activeSelectedLabels.filter(l => l.source === 'ai')
-  const hasCompleteAIPath = aiLabels.length > 0 && activeTaxonomy && (() => {
-    const maxLevel = Math.max(...aiLabels.map(l => l.level))
-    const allLevels = aiLabels.map(l => l.level)
-    // Check if we have a complete path (levels 1, 2, 3, ... up to maxLevel)
-    const expectedLevels = Array.from({ length: maxLevel }, (_, i) => i + 1)
-    const hasCompletePath = expectedLevels.every(level => allLevels.includes(level))
-    // Get the lowest level label
-    const lowestLabel = aiLabels.find(l => l.level === maxLevel)
-    // Only allow AI path to count if the deepest node is a leaf, unknown, or at max depth
-    const lowestIsLeafOrUnknown =
-      lowestLabel !== undefined &&
-      (
-        lowestLabel.isLeaf === true ||
-        isUnknownNodeCode(lowestLabel.nodeCode) ||
-        lowestLabel.level >= (activeTaxonomy.maxDepth || Number.MAX_SAFE_INTEGER)
-      )
-    return hasCompletePath && lowestLabel !== undefined && lowestIsLeafOrUnknown
-  })()
-  
+  const hasCompleteAIPath =
+    aiLabels.length > 0 &&
+    activeTaxonomy &&
+    (() => {
+      const maxLevel = Math.max(...aiLabels.map(l => l.level))
+      const allLevels = aiLabels.map(l => l.level)
+      // Check if we have a complete path (levels 1, 2, 3, ... up to maxLevel)
+      const expectedLevels = Array.from({ length: maxLevel }, (_, i) => i + 1)
+      const hasCompletePath = expectedLevels.every(level => allLevels.includes(level))
+      // Get the lowest level label
+      const lowestLabel = aiLabels.find(l => l.level === maxLevel)
+      // Only allow AI path to count if the deepest node is a leaf, unknown, or at max depth
+      const lowestIsLeafOrUnknown =
+        lowestLabel !== undefined &&
+        (lowestLabel.isLeaf === true ||
+          isUnknownNodeCode(lowestLabel.nodeCode) ||
+          lowestLabel.level >= (activeTaxonomy.maxDepth || Number.MAX_SAFE_INTEGER))
+      return hasCompletePath && lowestLabel !== undefined && lowestIsLeafOrUnknown
+    })()
+
   const canSubmit = hasLeafOrUnknown || hasCompleteAIPath
 
   // Handle Unknown
   const handleUnknown = () => {
     // Mark current level as unknown, preserving lower level labels
     if (!activeTaxonomy) return
-    
+
     // Keep labels at levels below the current level
-    const lowerLevelLabels = selectedLabels.filter(l => 
-      l.taxonomyKey === activeTaxonomy.key && l.level < currentTaxonomyLevel
+    const lowerLevelLabels = selectedLabels.filter(
+      l => l.taxonomyKey === activeTaxonomy.key && l.level < currentTaxonomyLevel
     )
-    
+
     // Add unknown at the current level
     const unknownLabel: SelectedLabel = {
       level: currentTaxonomyLevel,
@@ -356,22 +357,22 @@ export default function LabelingPage() {
       label: 'Unknown',
       isLeaf: true
     }
-    
+
     // Combine: lower levels + unknown at current level
     setSelectedLabels([...lowerLevelLabels, unknownLabel])
   }
-  
+
   // Handle taxonomy tab change
   const handleTaxonomyTabChange = (index: number) => {
     if (index < 0 || index >= taxonomies.length) return
     setActiveTaxonomyIndex(index)
     setCurrentTaxonomyLevel(1) // Reset to level 1 when switching taxonomies
-    
+
     // Load selected labels for the new taxonomy
     if (sentence && taxonomies[index]) {
       const labels: SelectedLabel[] = sentence.annotations
-        .filter((ann) => ann.taxonomy.key === taxonomies[index].key)
-        .map((ann) => ({
+        .filter(ann => ann.taxonomy.key === taxonomies[index].key)
+        .map(ann => ({
           level: ann.level,
           nodeCode: ann.nodeCode,
           taxonomyKey: ann.taxonomy.key,
@@ -392,17 +393,20 @@ export default function LabelingPage() {
       router.push(workspaceHref('/queue'))
       return
     }
-    
+
     const targetId = sentenceIds[targetIndex]
     const storageKey = `sentence-list-${targetId}`
-    
+
     // Store list in sessionStorage
-    sessionStorage.setItem(storageKey, JSON.stringify({
-      sentenceIds,
-      currentIndex: targetIndex,
-      timestamp: Date.now()
-    }))
-    
+    sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        sentenceIds,
+        currentIndex: targetIndex,
+        timestamp: Date.now()
+      })
+    )
+
     const params = new URLSearchParams()
     params.set('list', storageKey)
     router.push(workspaceHref(`/queue/${targetId}?${params.toString()}`))
@@ -494,8 +498,8 @@ export default function LabelingPage() {
 
     try {
       // Prepare annotations (including unknown as -99)
-      const annotations = selectedLabels.map(l => ({ 
-        level: l.level, 
+      const annotations = selectedLabels.map(l => ({
+        level: l.level,
         nodeCode: l.nodeCode, // -99 for unknown
         taxonomyKey: activeTaxonomy.key
       }))
@@ -513,20 +517,20 @@ export default function LabelingPage() {
 
       if (res.ok) {
         const responseData = await res.json()
-        
+
         // Update sentence status from response (avoid full reload)
         if (sentence) {
           setSentence({ ...sentence, status: responseData.status })
         }
-        
+
         // Update completed taxonomies from response
         if (responseData.completedTaxonomies) {
           setCompletedTaxonomies(new Set(responseData.completedTaxonomies))
         }
-        
+
         // Check if all taxonomies are completed
         const allCompleted = responseData.allCompleted || false
-        
+
         if (allCompleted) {
           // All taxonomies done, move to next sentence in the list
           const nextId = getNextSentenceId()
@@ -573,7 +577,7 @@ export default function LabelingPage() {
         // Enter on a focused control activates that control, not Submit.
         if (e.key === 'Enter' && e.target.closest('button, a, select, [role="button"]')) return
       }
-      
+
       switch (e.key.toLowerCase()) {
         case 'c':
           loadComments(showResolvedComments)
@@ -634,7 +638,7 @@ export default function LabelingPage() {
       </>
     )
   }
-  
+
   // Calculate progress
   const completedCount = completedTaxonomies.size
   const totalCount = taxonomies.length
@@ -658,11 +662,11 @@ export default function LabelingPage() {
   // Get tab colors based on taxonomy index (matches TaxonomyBrowser)
   const getTabColors = (index: number) => {
     const colors = [
-      { active: 'text-teal-600', checkmark: 'text-teal-600' },       // Index 0: Primary/Teal
-      { active: 'text-[#3A67BB]', checkmark: 'text-[#3A67BB]' },     // Index 1: Submitted blue
-      { active: 'text-[#A14A76]', checkmark: 'text-[#A14A76]' },     // Index 2: Rose purple
-      { active: 'text-rose-600', checkmark: 'text-rose-600' },       // Index 3: Rose
-      { active: 'text-orange-600', checkmark: 'text-orange-600' },   // Index 4: Orange
+      { active: 'text-teal-600', checkmark: 'text-teal-600' }, // Index 0: Primary/Teal
+      { active: 'text-[#3A67BB]', checkmark: 'text-[#3A67BB]' }, // Index 1: Submitted blue
+      { active: 'text-[#A14A76]', checkmark: 'text-[#A14A76]' }, // Index 2: Rose purple
+      { active: 'text-rose-600', checkmark: 'text-rose-600' }, // Index 3: Rose
+      { active: 'text-orange-600', checkmark: 'text-orange-600' } // Index 4: Orange
     ]
     return colors[index % colors.length] || colors[0]
   }
@@ -700,41 +704,32 @@ export default function LabelingPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6">
               {/* Field Columns */}
-              {sentence.fieldMapping && Object.entries(sentence.fieldMapping).map(([num, name]) => {
-                const value = sentence[`field${num}` as keyof Sentence] as string | null
-                if (!value) return null
-                
-                return (
-                  <div key={num}>
-                    <h2 className="text-sm font-semibold text-indigo-700 mb-2">
-                      {formatFieldName(name)}
-                    </h2>
-                    <p className="text-gray-900 whitespace-pre-wrap leading-relaxed text-lg">
-                      {value}
-                    </p>
-                  </div>
-                )
-              })}
-              
+              {sentence.fieldMapping &&
+                Object.entries(sentence.fieldMapping).map(([num, name]) => {
+                  const value = sentence[`field${num}` as keyof Sentence] as string | null
+                  if (!value) return null
+
+                  return (
+                    <div key={num}>
+                      <h2 className="text-sm font-semibold text-indigo-700 mb-2">{formatFieldName(name)}</h2>
+                      <p className="text-gray-900 whitespace-pre-wrap leading-relaxed text-lg">{value}</p>
+                    </div>
+                  )
+                })}
+
               {/* Support Columns */}
               {sentence.supportMapping && Object.keys(sentence.supportMapping).length > 0 && (
                 <div className="pt-6 border-t border-gray-200">
-                  <h2 className="text-base font-semibold text-gray-900 mb-4">
-                    Support Information
-                  </h2>
+                  <h2 className="text-base font-semibold text-gray-900 mb-4">Support Information</h2>
                   <div className="space-y-4">
                     {Object.entries(sentence.supportMapping).map(([num, name]) => {
                       const value = sentence[`support${num}` as keyof Sentence] as string | null
                       if (!value) return null
-                      
+
                       return (
                         <div key={num}>
-                          <h3 className="text-sm font-semibold text-indigo-700 mb-2">
-                            {formatFieldName(name)}
-                          </h3>
-                          <p className="text-base text-gray-900 whitespace-pre-wrap leading-relaxed">
-                            {value}
-                          </p>
+                          <h3 className="text-sm font-semibold text-indigo-700 mb-2">{formatFieldName(name)}</h3>
+                          <p className="text-base text-gray-900 whitespace-pre-wrap leading-relaxed">{value}</p>
                         </div>
                       )
                     })}
@@ -749,7 +744,9 @@ export default function LabelingPage() {
             <div className="flex items-center gap-3 text-xs font-medium text-gray-500">
               {sentenceIds.length > 0 && currentIndex >= 0 ? (
                 <>
-                  <span>Sentence {currentIndex + 1} of {sentenceIds.length}</span>
+                  <span>
+                    Sentence {currentIndex + 1} of {sentenceIds.length}
+                  </span>
                   <div className="w-32 h-1.5 rounded-full bg-gray-200">
                     <div
                       className="h-full rounded-full bg-teal-500 transition-all"
@@ -804,20 +801,16 @@ export default function LabelingPage() {
                         }`}
                       >
                         {tax.key}
-                        {completedTaxonomies.has(tax.key) && (
-                          <span className={`ml-2 ${tabColors.checkmark}`}>✓</span>
-                        )}
+                        {completedTaxonomies.has(tax.key) && <span className={`ml-2 ${tabColors.checkmark}`}>✓</span>}
                       </button>
                     )
                   })}
                 </div>
-                <div className="text-xs text-gray-600 font-medium">
-                  {progressText}
-                </div>
+                <div className="text-xs text-gray-600 font-medium">{progressText}</div>
               </div>
             </div>
           )}
-          
+
           {/* Taxonomy Browser */}
           {activeTaxonomy && (
             <div
@@ -846,9 +839,7 @@ export default function LabelingPage() {
                     loadComments(showResolvedComments)
                     setShowCommentDialog(true)
                   }}
-                  className={`${actionButtonBaseClass} ${
-                    hasComment ? commentActiveClasses : primaryActionClasses
-                  }`}
+                  className={`${actionButtonBaseClass} ${hasComment ? commentActiveClasses : primaryActionClasses}`}
                   title="Add Comment (C)"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -864,9 +855,7 @@ export default function LabelingPage() {
                 </button>
                 <button
                   onClick={handleFlag}
-                  className={`${actionButtonBaseClass} ${
-                    sentence.flagged ? flagActiveClasses : primaryActionClasses
-                  }`}
+                  className={`${actionButtonBaseClass} ${sentence.flagged ? flagActiveClasses : primaryActionClasses}`}
                   title="Flag/Unflag (F)"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -907,7 +896,9 @@ export default function LabelingPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                   </svg>
                   <span className="text-sm font-medium">Skip</span>
-                  <span className={`${sentence?.status === 'skipped' ? shortcutClasses.light : shortcutClasses.dark}`}>S</span>
+                  <span className={`${sentence?.status === 'skipped' ? shortcutClasses.light : shortcutClasses.dark}`}>
+                    S
+                  </span>
                 </button>
                 <button
                   onClick={handleSubmit}
@@ -942,7 +933,11 @@ export default function LabelingPage() {
 
       {/* Comment Dialog */}
       {showCommentDialog && (
-        <Modal label="Comments" onClose={() => setShowCommentDialog(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <Modal
+          label="Comments"
+          onClose={() => setShowCommentDialog(false)}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        >
           <div className="bg-white rounded-lg p-6 w-[32rem] max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900">Comments</h3>
@@ -974,29 +969,19 @@ export default function LabelingPage() {
 
             {existingComments.length > 0 ? (
               <div className="mb-4 space-y-3 max-h-60 overflow-y-auto pr-1">
-                {existingComments.map((c) => (
+                {existingComments.map(c => (
                   <div
                     key={c.id}
                     className={`p-3 rounded-lg border ${
-                      c.resolved
-                        ? 'bg-gray-100 border-gray-300 opacity-80'
-                        : 'bg-gray-50 border-gray-200'
+                      c.resolved ? 'bg-gray-100 border-gray-300 opacity-80' : 'bg-gray-50 border-gray-200'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-1">
                       <div>
-                        <span className="text-xs font-medium text-gray-700">
-                          {c.author.name || 'Unknown'}
-                        </span>
-                        {c.resolved && (
-                          <span className="ml-2 text-xs font-semibold text-green-600">
-                            Resolved
-                          </span>
-                        )}
+                        <span className="text-xs font-medium text-gray-700">{c.author.name || 'Unknown'}</span>
+                        {c.resolved && <span className="ml-2 text-xs font-semibold text-green-600">Resolved</span>}
                       </div>
-                      <span className="text-xs text-gray-500">
-                        {new Date(c.createdAt).toLocaleString()}
-                      </span>
+                      <span className="text-xs text-gray-500">{new Date(c.createdAt).toLocaleString()}</span>
                     </div>
                     <p className="text-sm text-gray-900 whitespace-pre-wrap">{c.body}</p>
                     <div className="flex justify-end gap-2 mt-3">
@@ -1028,12 +1013,10 @@ export default function LabelingPage() {
 
             {/* New Comment Input */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Add new comment:
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Add new comment:</label>
               <textarea
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={e => setComment(e.target.value)}
                 placeholder="Enter your comment..."
                 className="w-full p-3 border border-gray-300 rounded-md h-24 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
@@ -1083,8 +1066,3 @@ export default function LabelingPage() {
     </>
   )
 }
-
-
-
-
-

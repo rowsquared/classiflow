@@ -16,17 +16,23 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
     })
 
     if (!existingTaxonomy) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Taxonomy not found' 
-      }, { status: 404 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Taxonomy not found'
+        },
+        { status: 404 }
+      )
     }
 
     if (existingTaxonomy.isActive) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Taxonomy is already active' 
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Taxonomy is already active'
+        },
+        { status: 400 }
+      )
     }
 
     // Check active taxonomy limit
@@ -35,10 +41,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
     })
 
     if (activeTaxonomiesCount >= MAX_ACTIVE_TAXONOMIES) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: `Maximum ${MAX_ACTIVE_TAXONOMIES} active taxonomies allowed. Please delete one before restoring.` 
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Maximum ${MAX_ACTIVE_TAXONOMIES} active taxonomies allowed. Please delete one before restoring.`
+        },
+        { status: 400 }
+      )
     }
 
     // Restore taxonomy
@@ -48,22 +57,25 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
     })
 
     await audit({
-      actorId: actor.id, action: 'taxonomy.restored', entityType: 'taxonomy', entityId: restoredTaxonomy.id,
-      payload: { key: restoredTaxonomy.key },
+      actorId: actor.id,
+      action: 'taxonomy.restored',
+      entityType: 'taxonomy',
+      entityId: restoredTaxonomy.id,
+      payload: { key: restoredTaxonomy.key }
     })
-    return NextResponse.json({ 
-      ok: true, 
+    return NextResponse.json({
+      ok: true,
       taxonomy: restoredTaxonomy
     })
-
   } catch (caught) {
-
     const error = caught as CaughtError
     console.error('Restore taxonomy error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: error?.message || String(error) 
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error?.message || String(error)
+      },
+      { status: 500 }
+    )
   }
 })
-

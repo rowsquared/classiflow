@@ -15,11 +15,11 @@ export default function setup() {
   const url = testDatabaseUrl()
   execSync('npx prisma migrate deploy', {
     env: { ...process.env, DATABASE_URL: url },
-    stdio: 'inherit',
+    stdio: 'inherit'
   })
   execSync('node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-runtime-role.ts', {
     env: { ...process.env, DATABASE_URL: url, APP_DB_USER: RUNTIME_ROLE, APP_DB_PASSWORD: RUNTIME_PASSWORD },
-    stdio: 'inherit',
+    stdio: 'inherit'
   })
 }
 
@@ -36,7 +36,7 @@ export function testDatabaseUrl(): string {
   if (!url) {
     throw new Error(
       'TEST_DATABASE_URL is not set. Point it at a disposable database whose name ends in _test, e.g.\n' +
-      '  postgresql://classiflow:classiflow_password@localhost:5434/classiflow_test'
+        '  postgresql://classiflow:classiflow_password@localhost:5434/classiflow_test'
     )
   }
   const dbName = new URL(url).pathname.replace(/^\//, '')

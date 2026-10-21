@@ -108,12 +108,14 @@ async function claimLease(workspaceId: string, jobId: string, kind: JobKind): Pr
   const where = {
     id: jobId,
     status: { in: ACTIVE },
-    OR: [{ leaseOwner: null }, { leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }, { leaseOwner: owner }],
+    OR: [{ leaseOwner: null }, { leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }, { leaseOwner: owner }]
   }
   const data = { leaseOwner: owner, leaseExpiresAt: new Date(now.getTime() + LEASE_MS) }
-  const result = await withWorkspace(workspaceId, () => kind === 'learning'
-    ? db().aILearningJob.updateMany({ where, data })
-    : db().aILabelingJob.updateMany({ where, data }))
+  const result = await withWorkspace(workspaceId, () =>
+    kind === 'learning'
+      ? db().aILearningJob.updateMany({ where, data })
+      : db().aILabelingJob.updateMany({ where, data })
+  )
   return result.count === 1
 }
 
@@ -196,14 +198,20 @@ async function startLabeling(job: JobRecord): Promise<string> {
 
   if (sentenceIds.length === 0) throw new Error('No sentences to process')
 
-  const sentences = await withWorkspace(job.workspaceId, () => db().sentence.findMany({
-    where: { workspaceId: job.workspaceId, id: { in: sentenceIds } },
-    select: {
-      id: true,
-      field1: true, field2: true, field3: true, field4: true, field5: true,
-      fieldMapping: true
-    }
-  }))
+  const sentences = await withWorkspace(job.workspaceId, () =>
+    db().sentence.findMany({
+      where: { workspaceId: job.workspaceId, id: { in: sentenceIds } },
+      select: {
+        id: true,
+        field1: true,
+        field2: true,
+        field3: true,
+        field4: true,
+        field5: true,
+        fieldMapping: true
+      }
+    })
+  )
 
   const sentenceMap = new Map(sentences.map(s => [s.id, s]))
   const payloadSentences = sentenceIds
@@ -226,7 +234,10 @@ async function startLabeling(job: JobRecord): Promise<string> {
   })
 
   await updateJobRecord(job.workspaceId, job.id, 'labeling', {
-    externalJobId, status: 'processing', startedAt: new Date(), errorMessage: null
+    externalJobId,
+    status: 'processing',
+    startedAt: new Date(),
+    errorMessage: null
   })
 
   return externalJobId
@@ -239,30 +250,39 @@ async function startLearning(job: JobRecord): Promise<string> {
   if (sentenceIds.length === 0) throw new Error('No sentences to process')
 
   // Load annotations for these sentences (user-submitted only)
-  const annotations = await withWorkspace(job.workspaceId, () => db().sentenceAnnotation.findMany({
-    where: {
-      workspaceId: job.workspaceId,
-      sentenceId: { in: sentenceIds },
-      taxonomyId: job.taxonomyId,
-      source: 'user'
-    },
-    include: {
-      sentence: {
-        select: {
-          id: true,
-          field1: true, field2: true, field3: true, field4: true, field5: true,
-          fieldMapping: true
+  const annotations = await withWorkspace(job.workspaceId, () =>
+    db().sentenceAnnotation.findMany({
+      where: {
+        workspaceId: job.workspaceId,
+        sentenceId: { in: sentenceIds },
+        taxonomyId: job.taxonomyId,
+        source: 'user'
+      },
+      include: {
+        sentence: {
+          select: {
+            id: true,
+            field1: true,
+            field2: true,
+            field3: true,
+            field4: true,
+            field5: true,
+            fieldMapping: true
+          }
         }
       }
-    }
-  }))
+    })
+  )
 
   // Group annotations by sentence
-  const sentencesMap = new Map<string, {
-    sentenceId: string
-    fields: Record<string, string>
-    annotations: Array<{ level: number; nodeCode: string }>
-  }>()
+  const sentencesMap = new Map<
+    string,
+    {
+      sentenceId: string
+      fields: Record<string, string>
+      annotations: Array<{ level: number; nodeCode: string }>
+    }
+  >()
 
   for (const ann of annotations) {
     if (!sentencesMap.has(ann.sentenceId)) {
@@ -288,7 +308,10 @@ async function startLearning(job: JobRecord): Promise<string> {
   })
 
   await updateJobRecord(job.workspaceId, job.id, 'learning', {
-    externalJobId, status: 'processing', startedAt: new Date(), errorMessage: null
+    externalJobId,
+    status: 'processing',
+    startedAt: new Date(),
+    errorMessage: null
   })
 
   return externalJobId
@@ -315,20 +338,32 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       if (!job) return
       if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return
 
-      const externalJobId = job.externalJobId
-        ?? (kind === 'learning' ? await startLearning(job) : await startLabeling(job))
+      const externalJobId =
+        job.externalJobId ?? (kind === 'learning' ? await startLearning(job) : await startLabeling(job))
 
-      await pollUntilComplete(workspaceId, jobId, externalJobId, job.totalSentences, job.taxonomyId, job.filterCriteria, kind)
+      await pollUntilComplete(
+        workspaceId,
+        jobId,
+        externalJobId,
+        job.totalSentences,
+        job.taxonomyId,
+        job.filterCriteria,
+        kind
+      )
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       console.error(`[monitor] ${kind} job ${jobId} failed: ${msg}`)
       try {
         await failIfActive(workspaceId, jobId, kind, msg)
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     } finally {
       monitors.delete(jobId)
       if (leased) {
-        await releaseLease(workspaceId, jobId, kind).catch(() => { /* expires on its own */ })
+        await releaseLease(workspaceId, jobId, kind).catch(() => {
+          /* expires on its own */
+        })
       }
     }
   })()
@@ -372,19 +407,31 @@ async function pollUntilComplete(
         // we waited for the service, nothing is written. Results and status
         // commit together, and only while the workspace is active (write: an
         // archived workspace refuses them).
-        const completed = await withWorkspace(workspaceId, async () => {
-          const tx = db()
-          const data = { status: 'completed' as const, processedSentences: totalSentences, completedAt: new Date(), errorMessage: null, leaseOwner: null, leaseExpiresAt: null }
-          const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
-          const claimed = kind === 'learning'
-            ? await tx.aILearningJob.updateMany({ where, data })
-            : await tx.aILabelingJob.updateMany({ where, data })
-          if (claimed.count === 0) return false
-          if (kind === 'labeling') {
-            await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, sentenceIds, status.result)
-          }
-          return true
-        }, { write: true, timeoutMs: 120_000 })
+        const completed = await withWorkspace(
+          workspaceId,
+          async () => {
+            const tx = db()
+            const data = {
+              status: 'completed' as const,
+              processedSentences: totalSentences,
+              completedAt: new Date(),
+              errorMessage: null,
+              leaseOwner: null,
+              leaseExpiresAt: null
+            }
+            const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
+            const claimed =
+              kind === 'learning'
+                ? await tx.aILearningJob.updateMany({ where, data })
+                : await tx.aILabelingJob.updateMany({ where, data })
+            if (claimed.count === 0) return false
+            if (kind === 'labeling') {
+              await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, sentenceIds, status.result)
+            }
+            return true
+          },
+          { write: true, timeoutMs: 120_000 }
+        )
         if (!completed) return
 
         // For learning jobs, update taxonomy lastLearningAt
@@ -412,7 +459,9 @@ async function pollUntilComplete(
         throw error
       }
       consecutiveErrors++
-      console.warn(`[monitor] ${kind} job ${jobId}: status request failed (${consecutiveErrors} in a row): ${error instanceof Error ? error.message : error}`)
+      console.warn(
+        `[monitor] ${kind} job ${jobId}: status request failed (${consecutiveErrors} in a row): ${error instanceof Error ? error.message : error}`
+      )
     }
 
     if (Date.now() - startedAt >= AI_JOB_POLL_TIMEOUT_MS) {
@@ -425,7 +474,10 @@ async function pollUntilComplete(
 
 /** Poll interval, doubled per consecutive failed status request (capped). */
 export function pollDelay(consecutiveErrors: number): number {
-  return Math.min(AI_JOB_POLL_INTERVAL_MS * 2 ** consecutiveErrors, Math.max(MAX_POLL_BACKOFF_MS, AI_JOB_POLL_INTERVAL_MS))
+  return Math.min(
+    AI_JOB_POLL_INTERVAL_MS * 2 ** consecutiveErrors,
+    Math.max(MAX_POLL_BACKOFF_MS, AI_JOB_POLL_INTERVAL_MS)
+  )
 }
 
 /**
@@ -449,7 +501,13 @@ async function updateTaxonomyLearningStatus(workspaceId: string, taxonomyId: str
 /** Marks a job failed unless it already reached a final state (e.g. cancelled). */
 async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, message: string) {
   const where = { id: jobId, status: { in: ['pending' as const, 'processing' as const] } }
-  const data = { status: 'failed' as const, errorMessage: message, completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null }
+  const data = {
+    status: 'failed' as const,
+    errorMessage: message,
+    completedAt: new Date(),
+    leaseOwner: null,
+    leaseExpiresAt: null
+  }
   await withWorkspace(workspaceId, async () => {
     if (kind === 'learning') {
       await db().aILearningJob.updateMany({ where, data })
@@ -478,10 +536,12 @@ async function storeLabelingResults(
   const codes = new Set<string>()
   bySentence.forEach(list => list.forEach(s => codes.add(s.nodeCode)))
   const known = new Set(
-    (await tx.taxonomyNode.findMany({
-      where: { taxonomyId, code: { in: Array.from(codes) } },
-      select: { code: true }
-    })).map(n => n.code)
+    (
+      await tx.taxonomyNode.findMany({
+        where: { taxonomyId, code: { in: Array.from(codes) } },
+        select: { code: true }
+      })
+    ).map(n => n.code)
   )
   let unknownCodes = 0
 
@@ -503,7 +563,9 @@ async function storeLabelingResults(
   }
 
   if (rejected > 0 || unknownCodes > 0) {
-    console.warn(`[monitor] labeling job ${jobId}: dropped ${rejected} malformed/foreign record result(s) and ${unknownCodes} suggestion(s) with codes not in the taxonomy`)
+    console.warn(
+      `[monitor] labeling job ${jobId}: dropped ${rejected} malformed/foreign record result(s) and ${unknownCodes} suggestion(s) with codes not in the taxonomy`
+    )
   }
   if (serviceErrors + rejected > 0) {
     await tx.aILabelingJob.update({ where: { id: jobId }, data: { failedSentences: serviceErrors + rejected } })

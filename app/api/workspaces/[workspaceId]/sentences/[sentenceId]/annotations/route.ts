@@ -9,11 +9,15 @@ import { Prisma } from '@/lib/generated/prisma/client'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const annotationSchema = z.object({
-  annotations: z.array(z.object({
-    level: z.number().int().min(1).max(5),
-    nodeCode: z.string().min(1).max(100),
-    taxonomyKey: z.string().min(1)
-  })).max(5),
+  annotations: z
+    .array(
+      z.object({
+        level: z.number().int().min(1).max(5),
+        nodeCode: z.string().min(1).max(100),
+        taxonomyKey: z.string().min(1)
+      })
+    )
+    .max(5),
   status: z.enum(['pending', 'submitted', 'skipped', 'escalated']),
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),

@@ -16,10 +16,14 @@ beforeAll(async () => {
   platformAdmin = await createUser('admin', { platformAdmin: true })
 })
 
-const create = (tempPassword: string) => membersRoute.POST(request('/x', {
-  method: 'POST',
-  body: { username: 'maria', email: 'maria@test.local', name: 'Maria Rossi', role: 'labeller', tempPassword },
-}), params())
+const create = (tempPassword: string) =>
+  membersRoute.POST(
+    request('/x', {
+      method: 'POST',
+      body: { username: 'maria', email: 'maria@test.local', name: 'Maria Rossi', role: 'labeller', tempPassword }
+    }),
+    params()
+  )
 
 describe('password policy', () => {
   it('refuses weak or personal temporary passwords when creating members', async () => {
@@ -37,7 +41,9 @@ describe('password policy', () => {
     signInAs(platformAdmin)
     const target = await createUser('labeller')
     const res = await accountRoute.PUT(
-      request('/x', { method: 'PUT', body: { newPassword: '1234567890' } }), plainParams({ userId: target.id }))
+      request('/x', { method: 'PUT', body: { newPassword: '1234567890' } }),
+      plainParams({ userId: target.id })
+    )
     expect(res.status).toBe(400)
   })
 
@@ -45,9 +51,13 @@ describe('password policy', () => {
     const user = await createUser('labeller', { mustResetPassword: true })
     await prisma.$transaction(tx => setPassword(tx, user.id, 'handed-out-temp-7'))
     signInAs(user)
-    const change = (newPassword: string) => resetPasswordRoute.POST(request('/api/auth/reset-password', {
-      method: 'POST', body: { currentPassword: 'handed-out-temp-7', newPassword },
-    }))
+    const change = (newPassword: string) =>
+      resetPasswordRoute.POST(
+        request('/api/auth/reset-password', {
+          method: 'POST',
+          body: { currentPassword: 'handed-out-temp-7', newPassword }
+        })
+      )
     expect((await change('handed-out-temp-7')).status).toBe(400)
     expect((await change('too-short')).status).toBe(400)
     expect((await change('quiet-river-stone')).status).toBe(200)

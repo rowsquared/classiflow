@@ -26,12 +26,14 @@ type CsvValue = string | number | boolean | null | undefined
 
 /** One CSV line (no line break) for a row laid out like `columns`. */
 export function csvLine(columns: CsvColumn[], row: CsvValue[], opts: { neutralizeFormulas: boolean }): string {
-  return row.map((value, i) => {
-    if (opts.neutralizeFormulas && columns[i]?.text && typeof value === 'string') {
-      return csvCell(neutralizeFormula(value))
-    }
-    return csvCell(value)
-  }).join(',')
+  return row
+    .map((value, i) => {
+      if (opts.neutralizeFormulas && columns[i]?.text && typeof value === 'string') {
+        return csvCell(neutralizeFormula(value))
+      }
+      return csvCell(value)
+    })
+    .join(',')
 }
 
 export function toCsv(columns: CsvColumn[], rows: CsvValue[][], opts: { neutralizeFormulas: boolean }): string {

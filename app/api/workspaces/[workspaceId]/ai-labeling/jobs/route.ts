@@ -92,12 +92,15 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
 
     console.log(
       `✅ Created ${jobs.length} AI labeling job(s) for taxonomy ${taxonomy.key} ` +
-      `(${allSentenceIds.length} sentences in batches of ${AI_LABELING_BATCH_SIZE})`
+        `(${allSentenceIds.length} sentences in batches of ${AI_LABELING_BATCH_SIZE})`
     )
 
     await audit({
-      actorId: user.id, action: 'ai.labeling_started', entityType: 'taxonomy', entityId: taxonomy.id,
-      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length },
+      actorId: user.id,
+      action: 'ai.labeling_started',
+      entityType: 'taxonomy',
+      entityId: taxonomy.id,
+      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length }
     })
     return NextResponse.json({ ok: true, jobs, totalJobs: jobs.length })
   } catch (error: unknown) {

@@ -63,13 +63,18 @@ test.describe('queue', () => {
   test('a slow, superseded search cannot overwrite the newer result', async ({ page }) => {
     // The first search is answered late, after the second one.
     let delayed = false
-    await page.route(url => isQueueRequest(url.toString()), async (route: Route) => {
-      if (!delayed && new URL(route.request().url()).searchParams.get('q') === 'nurse') {
-        delayed = true
-        await new Promise(r => setTimeout(r, 1500))
+    await page.route(
+      url => isQueueRequest(url.toString()),
+      async (route: Route) => {
+        if (!delayed && new URL(route.request().url()).searchParams.get('q') === 'nurse') {
+          delayed = true
+          await new Promise(r => setTimeout(r, 1500))
+        }
+        await route.continue().catch(() => {
+          /* aborted by the page: expected */
+        })
       }
-      await route.continue().catch(() => { /* aborted by the page: expected */ })
-    })
+    )
     const search = page.getByRole('textbox', { name: 'Search records' })
 
     await search.fill('nurse')
@@ -137,7 +142,8 @@ test('a record can be labelled with the keyboard and submitted', async ({ page }
   expect(JSON.stringify(before)).toContain('"status":"pending"')
 
   await page.getByRole('button', { name: /^Submit/ }).click()
-  await expect.poll(async () => JSON.stringify(await (await page.request.get(api(`/sentences/${recordId}`))).json()))
+  await expect
+    .poll(async () => JSON.stringify(await (await page.request.get(api(`/sentences/${recordId}`))).json()))
     .toContain('"status":"submitted"')
 })
 
@@ -147,7 +153,7 @@ test('the export contains the human label with its leading zero', async ({ page 
   await page.goto(pagePath('/admin/export'))
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Export CSV' }).click(),
+    page.getByRole('button', { name: 'Export CSV' }).click()
   ])
   const csv = (await (await download.createReadStream()).toArray()).join('')
   expect(csv).toContain('primary school teacher')
@@ -196,7 +202,7 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
   await page.getByLabel('CSV file to import').setInputFiles({
     name: 'more.csv',
     mimeType: 'text/csv',
-    buffer: Buffer.from('id,field_job_title,support_region\n0042,"baker, head",north\n'),
+    buffer: Buffer.from('id,field_job_title,support_region\n0042,"baker, head",north\n')
   })
   await page.getByRole('button', { name: 'Upload' }).click()
   await expect(page.getByText('Successfully imported 1 sentences!')).toBeVisible()
@@ -204,7 +210,7 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
   // The CSV id is kept as the record's key in this workspace.
   const res = await page.request.get(api('/sentences?q=baker'))
   expect(res.status()).toBe(200)
-  const { sentences } = await res.json() as { sentences: Array<{ recordKey: string; field1: string }> }
+  const { sentences } = (await res.json()) as { sentences: Array<{ recordKey: string; field1: string }> }
   expect(sentences.map(s => [s.recordKey, s.field1])).toEqual([['0042', 'baker, head']])
 })
 

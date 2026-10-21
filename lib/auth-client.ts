@@ -4,7 +4,7 @@ import type { auth } from '@/lib/auth'
 
 // Browser side of lib/auth.ts. Same origin, so no baseURL is needed.
 export const authClient = createAuthClient({
-  plugins: [usernameClient(), adminClient(), inferAdditionalFields<typeof auth>()],
+  plugins: [usernameClient(), adminClient(), inferAdditionalFields<typeof auth>()]
 })
 
 export const { useSession, signOut, revokeOtherSessions } = authClient

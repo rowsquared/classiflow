@@ -1,10 +1,17 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, ReferenceLine 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ReferenceLine
 } from 'recharts'
 
 export type Period = 'day' | 'week' | 'month' | 'custom'
@@ -223,9 +230,7 @@ export default function ProgressPageClient({
           <button
             onClick={() => setPeriod('day')}
             className={`px-4 py-2 rounded-lg font-medium ${
-              period === 'day'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              period === 'day' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
             Today
@@ -233,9 +238,7 @@ export default function ProgressPageClient({
           <button
             onClick={() => setPeriod('week')}
             className={`px-4 py-2 rounded-lg font-medium ${
-              period === 'week'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              period === 'week' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
             Week
@@ -243,9 +246,7 @@ export default function ProgressPageClient({
           <button
             onClick={() => setPeriod('month')}
             className={`px-4 py-2 rounded-lg font-medium ${
-              period === 'month'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              period === 'month' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
             Month
@@ -253,9 +254,7 @@ export default function ProgressPageClient({
           <button
             onClick={() => setPeriod('custom')}
             className={`px-4 py-2 rounded-lg font-medium ${
-              period === 'custom'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              period === 'custom' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
             Custom
@@ -266,14 +265,14 @@ export default function ProgressPageClient({
               <input
                 type="date"
                 value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
+                onChange={e => setCustomStart(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg"
               />
               <span className="self-center text-gray-600">to</span>
               <input
                 type="date"
                 value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
+                onChange={e => setCustomEnd(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -290,19 +289,15 @@ export default function ProgressPageClient({
               {stats?.metrics?.completion?.current || 0} of {stats?.metrics?.completion?.total || 0}
             </p>
             <div className="mt-2">
-              {stats?.metrics?.completion && getChangeIndicator(
-                stats.metrics.completion.current || 0,
-                stats.metrics.completion.previous || 0
-              )}
+              {stats?.metrics?.completion &&
+                getChangeIndicator(stats.metrics.completion.current || 0, stats.metrics.completion.previous || 0)}
             </div>
           </div>
 
           {/* Velocity */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <p className="text-sm font-medium text-gray-600 mb-2">Velocity</p>
-            <p className="text-4xl font-bold text-gray-900">
-              {stats?.metrics?.velocity?.current?.toFixed(1) || 0}
-            </p>
+            <p className="text-4xl font-bold text-gray-900">{stats?.metrics?.velocity?.current?.toFixed(1) || 0}</p>
             <p className="text-sm text-gray-600 mt-2">per day</p>
             <div className="mt-2">
               {stats?.metrics?.velocity?.estimatedDaysToComplete && (
@@ -318,20 +313,17 @@ export default function ProgressPageClient({
             <p className="text-sm font-medium text-gray-600 mb-2">AI Agreement</p>
             <p className="text-4xl font-bold text-gray-900">
               {stats?.metrics?.aiAgreement?.current !== null && stats?.metrics?.aiAgreement?.current !== undefined
-                ? `${stats.metrics.aiAgreement.current}%` 
+                ? `${stats.metrics.aiAgreement.current}%`
                 : 'N/A'}
             </p>
             <p className="text-sm text-gray-600 mt-2">
               {stats?.metrics?.aiAgreement?.totalComparisons || 0} comparisons
             </p>
             <div className="mt-2">
-              {stats?.metrics?.aiAgreement?.current !== null && 
-               stats?.metrics?.aiAgreement?.previous !== null &&
-               stats?.metrics &&
-               getChangeIndicator(
-                 stats.metrics.aiAgreement.current,
-                 stats.metrics.aiAgreement.previous
-               )}
+              {stats?.metrics?.aiAgreement?.current !== null &&
+                stats?.metrics?.aiAgreement?.previous !== null &&
+                stats?.metrics &&
+                getChangeIndicator(stats.metrics.aiAgreement.current, stats.metrics.aiAgreement.previous)}
             </div>
           </div>
 
@@ -343,13 +335,10 @@ export default function ProgressPageClient({
             </p>
             <p className="text-sm text-gray-600 mt-2">per sentence</p>
             <div className="mt-2">
-              {stats?.metrics?.medianTime?.current && 
-               stats?.metrics?.medianTime?.previous &&
-               stats?.metrics &&
-               getChangeIndicator(
-                 stats.metrics.medianTime.current,
-                 stats.metrics.medianTime.previous
-               )}
+              {stats?.metrics?.medianTime?.current &&
+                stats?.metrics?.medianTime?.previous &&
+                stats?.metrics &&
+                getChangeIndicator(stats.metrics.medianTime.current, stats.metrics.medianTime.previous)}
             </div>
           </div>
         </div>
@@ -358,27 +347,19 @@ export default function ProgressPageClient({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <p className="text-sm font-medium text-gray-600 mb-2">Flags</p>
-            <p className="text-3xl font-bold text-red-600">
-              {stats?.metrics?.flags?.current || 0}
-            </p>
+            <p className="text-3xl font-bold text-red-600">{stats?.metrics?.flags?.current || 0}</p>
             <div className="mt-2">
-              {stats?.metrics?.flags && getChangeIndicator(
-                stats.metrics.flags.current || 0,
-                stats.metrics.flags.previous || 0
-              )}
+              {stats?.metrics?.flags &&
+                getChangeIndicator(stats.metrics.flags.current || 0, stats.metrics.flags.previous || 0)}
             </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <p className="text-sm font-medium text-gray-600 mb-2">Comments</p>
-            <p className="text-3xl font-bold text-indigo-600">
-              {stats?.metrics?.comments?.current || 0}
-            </p>
+            <p className="text-3xl font-bold text-indigo-600">{stats?.metrics?.comments?.current || 0}</p>
             <div className="mt-2">
-              {stats?.metrics?.comments && getChangeIndicator(
-                stats.metrics.comments.current || 0,
-                stats.metrics.comments.previous || 0
-              )}
+              {stats?.metrics?.comments &&
+                getChangeIndicator(stats.metrics.comments.current || 0, stats.metrics.comments.previous || 0)}
             </div>
           </div>
         </div>
@@ -386,33 +367,33 @@ export default function ProgressPageClient({
         {/* Submitted & Skipped by Day */}
         {timeline.length > 0 ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Daily Activity ({timeline.length} days)
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Activity ({timeline.length} days)</h3>
             <ResponsiveContainer width="100%" height={350}>
               <BarChart data={timeline}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="date" 
-                  tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={value =>
+                    new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  }
                 />
                 <YAxis />
-                <Tooltip 
-                  labelFormatter={(value) => new Date(String(value)).toLocaleDateString()}
-                  formatter={(value) => [value, '']}
+                <Tooltip
+                  labelFormatter={value => new Date(String(value)).toLocaleDateString()}
+                  formatter={value => [value, '']}
                 />
                 <Legend />
-                  <ReferenceLine 
-                    y={timeline.reduce((sum, day) => sum + day.completed, 0) / timeline.length} 
-                    stroke="#4f46e5" 
-                    strokeDasharray="5 5"
-                    label={{ 
-                      value: `Avg: ${(timeline.reduce((sum, day) => sum + day.completed, 0) / timeline.length).toFixed(1)}`, 
-                      position: 'right', 
-                      fill: '#4f46e5', 
-                      fontSize: 12 
-                    }}
-                  />
+                <ReferenceLine
+                  y={timeline.reduce((sum, day) => sum + day.completed, 0) / timeline.length}
+                  stroke="#4f46e5"
+                  strokeDasharray="5 5"
+                  label={{
+                    value: `Avg: ${(timeline.reduce((sum, day) => sum + day.completed, 0) / timeline.length).toFixed(1)}`,
+                    position: 'right',
+                    fill: '#4f46e5',
+                    fontSize: 12
+                  }}
+                />
                 <Bar dataKey="completed" stackId="a" fill="#10b981" name="Submitted" />
                 <Bar dataKey="skipped" stackId="a" fill="#f59e0b" name="Skipped" />
               </BarChart>
@@ -457,7 +438,7 @@ export default function ProgressPageClient({
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {team.map((member) => (
+                  {team.map(member => (
                     <tr key={member.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{member.name}</div>
@@ -469,9 +450,7 @@ export default function ProgressPageClient({
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {member.stats.totalCompleted}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {member.stats.pending}
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{member.stats.pending}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {member.stats.completedInPeriod}
                       </td>
@@ -479,9 +458,7 @@ export default function ProgressPageClient({
                         {formatSeconds(member.stats.medianTime)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {member.stats.aiAgreementRate !== null 
-                          ? `${member.stats.aiAgreementRate}%` 
-                          : 'N/A'}
+                        {member.stats.aiAgreementRate !== null ? `${member.stats.aiAgreementRate}%` : 'N/A'}
                       </td>
                     </tr>
                   ))}

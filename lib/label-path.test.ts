@@ -7,7 +7,7 @@ const nodes = new Map<string, PathNode>([
   ['011', { code: '011', level: 2, parentCode: '01', isLeaf: true }],
   ['012', { code: '012', level: 2, parentCode: '01', isLeaf: false }],
   ['0121', { code: '0121', level: 3, parentCode: '012', isLeaf: true }],
-  ['02', { code: '02', level: 1, parentCode: null, isLeaf: true }],
+  ['02', { code: '02', level: 1, parentCode: null, isLeaf: true }]
 ])
 
 const path = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
@@ -33,14 +33,41 @@ describe('checkLabelPath', () => {
 
   it('rejects wrong unknown codes and unknown before the end', () => {
     expect(checkLabelPath(path('01', '-9'), nodes, 3)).toMatch(/must use code -99/)
-    expect(checkLabelPath([{ level: 1, nodeCode: '-9' }, { level: 2, nodeCode: '011' }], nodes, 3)).toMatch(/last label/)
+    expect(
+      checkLabelPath(
+        [
+          { level: 1, nodeCode: '-9' },
+          { level: 2, nodeCode: '011' }
+        ],
+        nodes,
+        3
+      )
+    ).toMatch(/last label/)
   })
 
   it('rejects broken hierarchy, gaps, duplicates and unknown codes', () => {
     expect(checkLabelPath(path('02', '011'), nodes, 3)).toMatch(/not a child of 02/)
     expect(checkLabelPath(path('011'), nodes, 3)).toMatch(/level 2, not 1/)
-    expect(checkLabelPath([{ level: 1, nodeCode: '01' }, { level: 3, nodeCode: '0121' }], nodes, 3)).toMatch(/levels 1..N/)
-    expect(checkLabelPath([{ level: 1, nodeCode: '02' }, { level: 1, nodeCode: '02' }], nodes, 3)).toMatch(/levels 1..N/)
+    expect(
+      checkLabelPath(
+        [
+          { level: 1, nodeCode: '01' },
+          { level: 3, nodeCode: '0121' }
+        ],
+        nodes,
+        3
+      )
+    ).toMatch(/levels 1..N/)
+    expect(
+      checkLabelPath(
+        [
+          { level: 1, nodeCode: '02' },
+          { level: 1, nodeCode: '02' }
+        ],
+        nodes,
+        3
+      )
+    ).toMatch(/levels 1..N/)
     expect(checkLabelPath(path('99'), nodes, 3)).toMatch(/does not exist/)
   })
 

@@ -57,22 +57,32 @@ export function filterMembers(members: TeamMember[], filters: TeamFilters, now =
   })
 }
 
-export type SortKey = 'username' | 'name' | 'email' | 'role' | 'supervisor' | 'team' | 'assignments' | 'lastSeenAt' | 'lastLogin'
+export type SortKey =
+  'username' | 'name' | 'email' | 'role' | 'supervisor' | 'team' | 'assignments' | 'lastSeenAt' | 'lastLogin'
 export type Sort = { key: SortKey; direction: 'asc' | 'desc' } | null
 
 const ROLE_RANK: Record<MemberRole, number> = { admin: 0, supervisor: 1, labeller: 2 }
 
 function sortValue(m: TeamMember, key: SortKey): string | number | null {
   switch (key) {
-    case 'username': return m.username
-    case 'name': return m.name?.toLowerCase() || null
-    case 'email': return m.email
-    case 'role': return ROLE_RANK[m.role]
-    case 'supervisor': return m.supervisor ? (m.supervisor.name || m.supervisor.email).toLowerCase() : null
-    case 'team': return m.labellers.length
-    case 'assignments': return m._count.assignedSentences
-    case 'lastSeenAt': return m.lastSeenAt ? new Date(m.lastSeenAt).getTime() : null
-    case 'lastLogin': return m.lastLogin ? new Date(m.lastLogin).getTime() : null
+    case 'username':
+      return m.username
+    case 'name':
+      return m.name?.toLowerCase() || null
+    case 'email':
+      return m.email
+    case 'role':
+      return ROLE_RANK[m.role]
+    case 'supervisor':
+      return m.supervisor ? (m.supervisor.name || m.supervisor.email).toLowerCase() : null
+    case 'team':
+      return m.labellers.length
+    case 'assignments':
+      return m._count.assignedSentences
+    case 'lastSeenAt':
+      return m.lastSeenAt ? new Date(m.lastSeenAt).getTime() : null
+    case 'lastLogin':
+      return m.lastLogin ? new Date(m.lastLogin).getTime() : null
   }
 }
 
@@ -106,6 +116,8 @@ export function nextSort(current: Sort, key: SortKey): Sort {
 const PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 /** An 18-character temporary password from an unambiguous alphabet (no 0/O, 1/l/I). */
-export function generatePassword(random: (n: number) => Uint32Array = n => crypto.getRandomValues(new Uint32Array(n))): string {
+export function generatePassword(
+  random: (n: number) => Uint32Array = n => crypto.getRandomValues(new Uint32Array(n))
+): string {
   return Array.from(random(18), v => PASSWORD_ALPHABET[v % PASSWORD_ALPHABET.length]).join('')
 }

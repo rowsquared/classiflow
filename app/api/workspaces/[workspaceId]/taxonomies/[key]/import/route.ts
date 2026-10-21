@@ -14,7 +14,9 @@ import { audit } from '@/lib/audit'
  */
 export const POST = workspaceRoute(['admin'], async (req, { user: actor, params: routeParams }) => {
   const { key } = routeParams
-  const taxonomy = await db().taxonomy.findUnique({ where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } } })
+  const taxonomy = await db().taxonomy.findUnique({
+    where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } }
+  })
   if (!taxonomy) {
     return NextResponse.json({ error: 'taxonomy not found' }, { status: 404 })
   }
@@ -66,8 +68,11 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor, params:
   }
 
   await audit({
-    actorId: actor.id, action: 'taxonomy.imported', entityType: 'taxonomy', entityId: taxonomy.id,
-    payload: { key: taxonomy.key, nodesAdded: nodes.length },
+    actorId: actor.id,
+    action: 'taxonomy.imported',
+    entityType: 'taxonomy',
+    entityId: taxonomy.id,
+    payload: { key: taxonomy.key, nodesAdded: nodes.length }
   })
   return NextResponse.json({ ok: true, dryRun: false, count: nodes.length })
 })

@@ -20,7 +20,7 @@ export function useWorkspacePaths() {
     /** `/w/<id><path>` for links and navigation. */
     href: (path: string) => `/w/${workspaceId}${path}`,
     /** `/api/workspaces/<id><path>` for fetch. */
-    api: (path: string) => `/api/workspaces/${workspaceId}${path}`,
+    api: (path: string) => `/api/workspaces/${workspaceId}${path}`
   }
 }
 

@@ -55,9 +55,7 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
     }
   })
 
-  const completionRate = totalSentences > 0 
-    ? Math.round((completedCurrent / totalSentences) * 100) 
-    : 0
+  const completionRate = totalSentences > 0 ? Math.round((completedCurrent / totalSentences) * 100) : 0
 
   // 2. VELOCITY (sentences completed per day)
   const daysInPeriod = Math.max(1, Math.ceil(duration / (1000 * 60 * 60 * 24)))
@@ -71,10 +69,8 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
       status: { in: ['pending', 'skipped'] }
     }
   })
-  
-  const estimatedDaysToComplete = velocityCurrent > 0 
-    ? Math.ceil(remainingSentences / velocityCurrent)
-    : null
+
+  const estimatedDaysToComplete = velocityCurrent > 0 ? Math.ceil(remainingSentences / velocityCurrent) : null
 
   // Human labels made in the period by the visible users (unknown-rate section)
   const annotationWhere: Prisma.SentenceAnnotationWhereInput = {
@@ -96,10 +92,13 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
       },
       select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
     })
-    const suggestions = humanLabels.length === 0 ? [] : await db().sentenceAISuggestion.findMany({
-      where: { sentenceId: { in: Array.from(new Set(humanLabels.map(a => a.sentenceId))) } },
-      select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
-    })
+    const suggestions =
+      humanLabels.length === 0
+        ? []
+        : await db().sentenceAISuggestion.findMany({
+            where: { sentenceId: { in: Array.from(new Set(humanLabels.map(a => a.sentenceId))) } },
+            select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
+          })
     return computeAgreement(humanLabels, suggestions)
   }
   const agreement = await agreementFor(start, end)
@@ -111,14 +110,12 @@ export async function getProgressStats(user: CurrentUser, { start, end }: DateRa
   // 4. MEDIAN LABELING TIME (excluding outliers > 30 min)
   const labelingTimes = await medianLabelingSeconds(user.workspaceId, visibleUserIds, start, end)
 
-  const medianTimeCurrent = labelingTimes[0]?.median_seconds 
-    ? Math.round(labelingTimes[0].median_seconds) 
-    : null
+  const medianTimeCurrent = labelingTimes[0]?.median_seconds ? Math.round(labelingTimes[0].median_seconds) : null
 
   const labelingTimesPrev = await medianLabelingSeconds(user.workspaceId, visibleUserIds, prevStart, prevEnd)
 
-  const medianTimePrevious = labelingTimesPrev[0]?.median_seconds 
-    ? Math.round(labelingTimesPrev[0].median_seconds) 
+  const medianTimePrevious = labelingTimesPrev[0]?.median_seconds
+    ? Math.round(labelingTimesPrev[0].median_seconds)
     : null
 
   // 5. UNKNOWN RATE BY LEVEL
@@ -265,7 +262,7 @@ export async function getProgressTimeline(user: CurrentUser, { start, end }: Dat
   const currentDate = new Date(start)
   while (currentDate <= end) {
     allDates.push(currentDate.toISOString().split('T')[0])
-    
+
     if (granularity === 'week') {
       currentDate.setDate(currentDate.getDate() + 7)
     } else {
@@ -305,76 +302,77 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
     select: {
       role: true,
       user: { select: { id: true, name: true, email: true } },
-      assignments: { select: { sentenceId: true } },
-    },
+      assignments: { select: { sentenceId: true } }
+    }
   })
   const teamMembers = memberships.map(m => ({
     ...m.user,
     role: m.role,
-    assignedSentenceIds: m.assignments.map(a => a.sentenceId),
+    assignedSentenceIds: m.assignments.map(a => a.sentenceId)
   }))
 
   // Calculate stats for each team member
-  const teamStats = await Promise.all(teamMembers.map(async (member) => {
-    const { assignedSentenceIds } = member
+  const teamStats = await Promise.all(
+    teamMembers.map(async member => {
+      const { assignedSentenceIds } = member
 
-    // Sentences completed in period
-    const completed = await db().sentence.count({
-      where: {
-        id: { in: assignedSentenceIds },
-        status: 'submitted',
-        lastEditedAt: {
-          gte: start,
-          lte: end
+      // Sentences completed in period
+      const completed = await db().sentence.count({
+        where: {
+          id: { in: assignedSentenceIds },
+          status: 'submitted',
+          lastEditedAt: {
+            gte: start,
+            lte: end
+          }
         }
-      }
-    })
+      })
 
-    // Sentences skipped in period
-    const skipped = await db().sentence.count({
-      where: {
-        id: { in: assignedSentenceIds },
-        status: 'skipped',
-        lastEditedAt: {
-          gte: start,
-          lte: end
+      // Sentences skipped in period
+      const skipped = await db().sentence.count({
+        where: {
+          id: { in: assignedSentenceIds },
+          status: 'skipped',
+          lastEditedAt: {
+            gte: start,
+            lte: end
+          }
         }
-      }
-    })
+      })
 
-    // Total assigned
-    const totalAssigned = assignedSentenceIds.length
+      // Total assigned
+      const totalAssigned = assignedSentenceIds.length
 
-    // Total completed (all time)
-    const totalCompleted = await db().sentence.count({
-      where: {
-        id: { in: assignedSentenceIds },
-        status: 'submitted'
-      }
-    })
-
-    // Pending
-    const pending = await db().sentence.count({
-      where: {
-        id: { in: assignedSentenceIds },
-        status: 'pending'
-      }
-    })
-
-    // Flagged in period
-    const flagged = await db().sentence.count({
-      where: {
-        id: { in: assignedSentenceIds },
-        flagged: true,
-        lastEditedAt: {
-          gte: start,
-          lte: end
+      // Total completed (all time)
+      const totalCompleted = await db().sentence.count({
+        where: {
+          id: { in: assignedSentenceIds },
+          status: 'submitted'
         }
-      }
-    })
+      })
 
-    // Median time in period
-    const labelingTimes = await db().$queryRaw<Array<{ median_seconds: number | null }>>`
+      // Pending
+      const pending = await db().sentence.count({
+        where: {
+          id: { in: assignedSentenceIds },
+          status: 'pending'
+        }
+      })
+
+      // Flagged in period
+      const flagged = await db().sentence.count({
+        where: {
+          id: { in: assignedSentenceIds },
+          flagged: true,
+          lastEditedAt: {
+            gte: start,
+            lte: end
+          }
+        }
+      })
+
+      // Median time in period
+      const labelingTimes = await db().$queryRaw<Array<{ median_seconds: number | null }>>`
       SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
         EXTRACT(EPOCH FROM ("createdAt" - "labelingStartedAt"))
       ) as median_seconds
@@ -386,47 +384,49 @@ export async function getTeamProgress(user: CurrentUser, { start, end }: DateRan
         AND "createdById" = ${member.id}
     `
 
-    const medianTime = labelingTimes[0]?.median_seconds 
-      ? Math.round(labelingTimes[0].median_seconds) 
-      : null
+      const medianTime = labelingTimes[0]?.median_seconds ? Math.round(labelingTimes[0].median_seconds) : null
 
-    // AI agreement for this user in period (lib/metrics.ts)
-    const userAnnotations = await db().sentenceAnnotation.findMany({
-      where: {
-        workspaceId: user.workspaceId,
-        createdById: member.id,
-        createdAt: {
-          gte: start,
-          lte: end
+      // AI agreement for this user in period (lib/metrics.ts)
+      const userAnnotations = await db().sentenceAnnotation.findMany({
+        where: {
+          workspaceId: user.workspaceId,
+          createdById: member.id,
+          createdAt: {
+            gte: start,
+            lte: end
+          },
+          source: 'user'
         },
-        source: 'user'
-      },
-      select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
-    })
-    const suggestions = userAnnotations.length === 0 ? [] : await db().sentenceAISuggestion.findMany({
-      where: { sentenceId: { in: Array.from(new Set(userAnnotations.map(a => a.sentenceId))) } },
-      select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
-    })
-    const { rate: aiAgreementRate, total: aiAgreementTotal } = computeAgreement(userAnnotations, suggestions)
+        select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
+      })
+      const suggestions =
+        userAnnotations.length === 0
+          ? []
+          : await db().sentenceAISuggestion.findMany({
+              where: { sentenceId: { in: Array.from(new Set(userAnnotations.map(a => a.sentenceId))) } },
+              select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true }
+            })
+      const { rate: aiAgreementRate, total: aiAgreementTotal } = computeAgreement(userAnnotations, suggestions)
 
-    return {
-      id: member.id,
-      name: member.name,
-      email: member.email,
-      role: member.role,
-      stats: {
-        totalAssigned,
-        totalCompleted,
-        pending,
-        completedInPeriod: completed,
-        skippedInPeriod: skipped,
-        flaggedInPeriod: flagged,
-        medianTime,
-        aiAgreementRate,
-        aiAgreementTotal
+      return {
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+        stats: {
+          totalAssigned,
+          totalCompleted,
+          pending,
+          completedInPeriod: completed,
+          skippedInPeriod: skipped,
+          flaggedInPeriod: flagged,
+          medianTime,
+          aiAgreementRate,
+          aiAgreementTotal
+        }
       }
-    }
-  }))
+    })
+  )
 
   return {
     ok: true,

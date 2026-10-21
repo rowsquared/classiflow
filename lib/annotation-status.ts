@@ -47,7 +47,7 @@ export async function completedTaxonomies(
   const rows = await tx.sentenceAnnotation.findMany({
     where: { sentenceId: { in: sentenceIds }, taxonomyId: { in: activeTaxonomyIds }, source: 'user' },
     select: { sentenceId: true, taxonomyId: true },
-    distinct: ['sentenceId', 'taxonomyId'],
+    distinct: ['sentenceId', 'taxonomyId']
   })
   rows.forEach(r => result.get(r.sentenceId)?.add(r.taxonomyId))
   return result

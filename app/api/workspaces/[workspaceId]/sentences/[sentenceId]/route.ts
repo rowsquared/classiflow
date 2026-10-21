@@ -38,30 +38,31 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
     // Fetch labels for annotations (including handling unknown/-99)
     // Optimize: fetch all nodes in one query instead of N queries
     const annotationsToLookup = sentence.annotations.filter(ann => !isUnknownNodeCode(ann.nodeCode))
-    
+
     const annotationTaxonomyIds = new Set<string>()
     const annotationCodes = new Set<string>()
     annotationsToLookup.forEach(ann => {
       annotationTaxonomyIds.add(ann.taxonomyId)
       annotationCodes.add(ann.nodeCode)
     })
-    
-    const annotationNodesPromise = annotationTaxonomyIds.size > 0 && annotationCodes.size > 0
-      ? db().taxonomyNode.findMany({
-          where: {
-            taxonomyId: { in: Array.from(annotationTaxonomyIds) },
-            code: { in: Array.from(annotationCodes) }
-          },
-          select: {
-            taxonomyId: true,
-            code: true,
-            label: true,
-            definition: true,
-            isLeaf: true
-          }
-        })
-      : Promise.resolve([])
-    
+
+    const annotationNodesPromise =
+      annotationTaxonomyIds.size > 0 && annotationCodes.size > 0
+        ? db().taxonomyNode.findMany({
+            where: {
+              taxonomyId: { in: Array.from(annotationTaxonomyIds) },
+              code: { in: Array.from(annotationCodes) }
+            },
+            select: {
+              taxonomyId: true,
+              code: true,
+              label: true,
+              definition: true,
+              isLeaf: true
+            }
+          })
+        : Promise.resolve([])
+
     const aiSuggestionsPromise = db().sentenceAISuggestion.findMany({
       where: {
         sentenceId: sentenceId
@@ -71,14 +72,11 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
           select: { key: true }
         }
       },
-      orderBy: [
-        { taxonomyId: 'asc' },
-        { level: 'asc' }
-      ]
+      orderBy: [{ taxonomyId: 'asc' }, { level: 'asc' }]
     })
-    
+
     const [annotationNodes, aiSuggestions] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
-    
+
     const nodeLookup = new Map<string, { label: string; definition: string | null; isLeaf: boolean | null }>()
     annotationNodes.forEach(node => {
       nodeLookup.set(`${node.taxonomyId}:${node.code}`, {
@@ -87,19 +85,19 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
         isLeaf: node.isLeaf
       })
     })
-    
+
     // Map annotations with labels
-    const annotationsWithLabels = sentence.annotations.map((ann) => {
+    const annotationsWithLabels = sentence.annotations.map(ann => {
       if (isUnknownNodeCode(ann.nodeCode)) {
         return {
           ...ann,
           nodeLabel: 'Unknown'
         }
       }
-      
+
       const key = `${ann.taxonomyId}:${ann.nodeCode}`
       const node = nodeLookup.get(key)
-      
+
       return {
         ...ann,
         nodeLabel: node?.label || '',
@@ -113,7 +111,7 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
     // For each taxonomy, show user annotations if they exist, otherwise show AI suggestions
     // Response objects only: user annotations and AI suggestions have different shapes
     const taxonomyAnnotations = new Map<string, Array<Record<string, unknown>>>()
-    
+
     // Group user annotations by taxonomy
     annotationsWithLabels.forEach(ann => {
       const key = ann.taxonomy.key
@@ -125,13 +123,13 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
         source: 'user' as const
       })
     })
-    
+
     // Add AI suggestions for taxonomies that don't have user annotations
     if (aiSuggestions.length > 0) {
       // Fetch node labels for AI suggestions
       const aiTaxonomyIds = new Set(aiSuggestions.map(s => s.taxonomyId))
       const aiCodes = new Set(aiSuggestions.map(s => s.nodeCode))
-      
+
       const aiNodes = await db().taxonomyNode.findMany({
         where: {
           taxonomyId: { in: Array.from(aiTaxonomyIds) },
@@ -145,11 +143,9 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
           isLeaf: true
         }
       })
-      
-      const aiNodeMap = new Map(
-        aiNodes.map(n => [`${n.taxonomyId}-${n.code}`, n])
-      )
-      
+
+      const aiNodeMap = new Map(aiNodes.map(n => [`${n.taxonomyId}-${n.code}`, n]))
+
       // Group AI suggestions by taxonomy
       const aiSuggestionsByTaxonomy = new Map<string, typeof aiSuggestions>()
       aiSuggestions.forEach(suggestion => {
@@ -159,7 +155,7 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
         }
         aiSuggestionsByTaxonomy.get(key)!.push(suggestion)
       })
-      
+
       // Add all AI suggestions for taxonomies that don't have user annotations
       aiSuggestionsByTaxonomy.forEach((suggestions, key) => {
         // Only add AI suggestions if there are no user annotations for this taxonomy
@@ -178,14 +174,14 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
               source: 'ai' as const,
               confidenceScore: suggestion.confidenceScore,
               taxonomy: {
-                key: suggestion.taxonomy.key,
+                key: suggestion.taxonomy.key
               }
             })
           })
         }
       })
     }
-    
+
     // Flatten back to array
     const finalAnnotations = Array.from(taxonomyAnnotations.values()).flat()
 

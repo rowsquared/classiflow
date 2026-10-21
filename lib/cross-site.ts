@@ -5,7 +5,10 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 /** True for a state-changing request whose Origin is another site. See middleware.ts. */
 export function isCrossSiteMutation(request: NextRequest): boolean {
   if (SAFE_METHODS.has(request.method)) return false
-  if (request.nextUrl.pathname.startsWith('/api/auth/') && !request.nextUrl.pathname.startsWith('/api/auth/reset-password')) {
+  if (
+    request.nextUrl.pathname.startsWith('/api/auth/') &&
+    !request.nextUrl.pathname.startsWith('/api/auth/reset-password')
+  ) {
     return false
   }
   const origin = request.headers.get('origin')

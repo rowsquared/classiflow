@@ -61,7 +61,7 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${role}`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT USAGE, SELECT ON SEQUENCES TO ${role}`,
       // AI job recovery across workspaces (ids only; see the baseline migration).
-      `GRANT EXECUTE ON FUNCTION "${schema}".app_recoverable_ai_jobs(timestamp) TO ${role}`,
+      `GRANT EXECUTE ON FUNCTION "${schema}".app_recoverable_ai_jobs(timestamp) TO ${role}`
     ].filter((sql): sql is string => sql !== null)
     await prisma.$transaction(statements.map(sql => prisma.$executeRawUnsafe(sql)))
     console.log(`✓ Database role "${user}" has row access to the application tables only`)

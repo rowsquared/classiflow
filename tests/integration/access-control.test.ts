@@ -1,7 +1,20 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { Sentence, User } from '@/lib/generated/prisma/client'
 import { db } from '@/lib/workspace/db'
-import { prisma, plainParams, wsId, inWorkspace, createWorkspace, createSentences, createTaxonomy, createUser, params, request, resetDatabase, signInAs } from './helpers'
+import {
+  prisma,
+  plainParams,
+  wsId,
+  inWorkspace,
+  createWorkspace,
+  createSentences,
+  createTaxonomy,
+  createUser,
+  params,
+  request,
+  resetDatabase,
+  signInAs
+} from './helpers'
 
 import * as queueRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as statsRoute from '@/app/api/workspaces/[workspaceId]/sentences/stats/route'
@@ -81,7 +94,7 @@ describe('labeller scope', () => {
     const annotate = await annotationsRoute.POST(
       request(`/api/sentences/${otherRecord.id}/annotations`, {
         method: 'POST',
-        body: { annotations: [{ level: 1, nodeCode: '02', taxonomyKey: taxKey }], status: 'submitted' },
+        body: { annotations: [{ level: 1, nodeCode: '02', taxonomyKey: taxKey }], status: 'submitted' }
       }),
       p
     )
@@ -89,22 +102,30 @@ describe('labeller scope', () => {
     expect(await prisma.sentenceAnnotation.count({ where: { sentenceId: otherRecord.id } })).toBe(0)
 
     expect((await commentsRoute.GET(request(`/api/sentences/${otherRecord.id}/comments`), p)).status).toBe(403)
-    expect((await flagRoute.POST(
-      request(`/api/sentences/${otherRecord.id}/flag`, { method: 'POST', body: { flagged: true } }), p
-    )).status).toBe(403)
+    expect(
+      (
+        await flagRoute.POST(
+          request(`/api/sentences/${otherRecord.id}/flag`, { method: 'POST', body: { flagged: true } }),
+          p
+        )
+      ).status
+    ).toBe(403)
     expect((await prisma.sentence.findUniqueOrThrow({ where: { id: otherRecord.id } })).flagged).toBe(false)
   })
 
   it('bulk labelling with one foreign id is rejected as a whole', async () => {
     signInAs(deep)
-    const res = await bulkRoute.POST(request('/api/sentences/bulk-label', {
-      method: 'POST',
-      body: {
-        sentenceIds: [ownRecord.id, otherRecord.id],
-        taxonomyKey: taxKey,
-        annotations: [{ level: 1, nodeCode: '02' }],
-      },
-    }), params())
+    const res = await bulkRoute.POST(
+      request('/api/sentences/bulk-label', {
+        method: 'POST',
+        body: {
+          sentenceIds: [ownRecord.id, otherRecord.id],
+          taxonomyKey: taxKey,
+          annotations: [{ level: 1, nodeCode: '02' }]
+        }
+      }),
+      params()
+    )
     expect(res.status).toBe(403)
     expect(await prisma.sentenceAnnotation.count()).toBe(0)
     expect((await prisma.sentence.findUniqueOrThrow({ where: { id: ownRecord.id } })).status).toBe('pending')
@@ -167,34 +188,80 @@ describe('supervisor scope', () => {
     expect(await prisma.sentenceAssignment.count({ where: { membership: { userId: direct.id } } })).toBe(0)
 
     expect((await assign([ownRecord.id], [direct.id])).status).toBe(200)
-    expect(await prisma.sentenceAssignment.count({ where: { sentenceId: ownRecord.id, membership: { userId: direct.id } } })).toBe(1)
+    expect(
+      await prisma.sentenceAssignment.count({ where: { sentenceId: ownRecord.id, membership: { userId: direct.id } } })
+    ).toBe(1)
   })
 
   it('unassigning without userIds only removes its own team', async () => {
-    await inWorkspace(async () => db().sentenceAssignment.create({ data: { workspaceId: wsId(), sentenceId: ownRecord.id, membershipId: (await prisma.workspaceMembership.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId: wsId(), userId: other.id } } })).id } }))
+    await inWorkspace(async () =>
+      db().sentenceAssignment.create({
+        data: {
+          workspaceId: wsId(),
+          sentenceId: ownRecord.id,
+          membershipId: (
+            await prisma.workspaceMembership.findUniqueOrThrow({
+              where: { workspaceId_userId: { workspaceId: wsId(), userId: other.id } }
+            })
+          ).id
+        }
+      })
+    )
     signInAs(s1)
-    expect((await assignRoute.DELETE(request('/api/sentences/assign', {
-      method: 'DELETE', body: { sentenceIds: [ownRecord.id], userIds: [other.id] },
-    }), params())).status).toBe(403)
+    expect(
+      (
+        await assignRoute.DELETE(
+          request('/api/sentences/assign', {
+            method: 'DELETE',
+            body: { sentenceIds: [ownRecord.id], userIds: [other.id] }
+          }),
+          params()
+        )
+      ).status
+    ).toBe(403)
 
-    const res = await assignRoute.DELETE(request('/api/sentences/assign', {
-      method: 'DELETE', body: { sentenceIds: [ownRecord.id] },
-    }), params())
+    const res = await assignRoute.DELETE(
+      request('/api/sentences/assign', {
+        method: 'DELETE',
+        body: { sentenceIds: [ownRecord.id] }
+      }),
+      params()
+    )
     expect(res.status).toBe(200)
-    const remaining = await prisma.sentenceAssignment.findMany({ where: { sentenceId: ownRecord.id }, include: { membership: true } })
+    const remaining = await prisma.sentenceAssignment.findMany({
+      where: { sentenceId: ownRecord.id },
+      include: { membership: true }
+    })
     expect(remaining.map(a => a.membership.userId)).toEqual([other.id])
 
     // Restore the fixture for later tests.
     await prisma.sentenceAssignment.deleteMany({ where: { sentenceId: ownRecord.id } })
-    await inWorkspace(async () => db().sentenceAssignment.create({ data: { workspaceId: wsId(), sentenceId: ownRecord.id, membershipId: (await prisma.workspaceMembership.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId: wsId(), userId: deep.id } } })).id } }))
+    await inWorkspace(async () =>
+      db().sentenceAssignment.create({
+        data: {
+          workspaceId: wsId(),
+          sentenceId: ownRecord.id,
+          membershipId: (
+            await prisma.workspaceMembership.findUniqueOrThrow({
+              where: { workspaceId_userId: { workspaceId: wsId(), userId: deep.id } }
+            })
+          ).id
+        }
+      })
+    )
   })
 
   it('progress stats count only the subtree', async () => {
     signInAs(t1)
-    const res = await progressStatsRoute.GET(request('/api/progress/stats?startDate=2020-01-01&endDate=2100-01-01'), params())
+    const res = await progressStatsRoute.GET(
+      request('/api/progress/stats?startDate=2020-01-01&endDate=2100-01-01'),
+      params()
+    )
     expect(res.status).toBe(200)
     expect((await res.json()).metrics.completion.total).toBe(1)
-    expect((await progressStatsRoute.GET(request('/api/progress/stats?startDate=nope&endDate=2100-01-01'), params())).status).toBe(400)
+    expect(
+      (await progressStatsRoute.GET(request('/api/progress/stats?startDate=nope&endDate=2100-01-01'), params())).status
+    ).toBe(400)
   })
 })
 
@@ -232,9 +299,12 @@ describe('session lifecycle', () => {
     expect((await res.json()).code).toBe('PASSWORD_RESET_REQUIRED')
 
     // Reaches the handler (wrong current password -> 400, not 401/403).
-    const reset = await resetPasswordRoute.POST(request('/api/auth/reset-password', {
-      method: 'POST', body: { currentPassword: 'wrong', newPassword: 'new-password-1' },
-    }))
+    const reset = await resetPasswordRoute.POST(
+      request('/api/auth/reset-password', {
+        method: 'POST',
+        body: { currentPassword: 'wrong', newPassword: 'new-password-1' }
+      })
+    )
     expect(reset.status).toBe(400)
   })
 })
@@ -242,14 +312,18 @@ describe('session lifecycle', () => {
 describe('user administration rules', () => {
   it('rejects supervisor cycles and self-supervision', async () => {
     signInAs(admin)
-    const put = (userId: string, supervisorId: string) => userRoute.PUT(
-      request(`/api/users/${userId}`, { method: 'PUT', body: { supervisorId } }),
-      params({ userId })
-    )
+    const put = (userId: string, supervisorId: string) =>
+      userRoute.PUT(request(`/api/users/${userId}`, { method: 'PUT', body: { supervisorId } }), params({ userId }))
     expect((await put(s1.id, s3.id)).status).toBe(400)
     expect((await put(s1.id, s1.id)).status).toBe(400)
     expect((await put(s1.id, deep.id)).status).toBe(400) // labellers cannot supervise
-    expect((await prisma.workspaceMembership.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId: wsId(), userId: s1.id } } })).supervisorMembershipId).toBeNull()
+    expect(
+      (
+        await prisma.workspaceMembership.findUniqueOrThrow({
+          where: { workspaceId_userId: { workspaceId: wsId(), userId: s1.id } }
+        })
+      ).supervisorMembershipId
+    ).toBeNull()
   })
 
   it('keeps at least one admin', async () => {
@@ -259,7 +333,13 @@ describe('user administration rules', () => {
       params({ userId: admin.id })
     )
     expect(res.status).toBe(400)
-    expect((await prisma.workspaceMembership.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId: wsId(), userId: admin.id } } })).role).toBe('admin')
+    expect(
+      (
+        await prisma.workspaceMembership.findUniqueOrThrow({
+          where: { workspaceId_userId: { workspaceId: wsId(), userId: admin.id } }
+        })
+      ).role
+    ).toBe('admin')
   })
 })
 
@@ -267,9 +347,18 @@ describe('user deletion', () => {
   it('removing from a workspace suspends the membership and keeps the account', async () => {
     const leaver = await createUser('labeller')
     signInAs(admin)
-    const res = await userRoute.DELETE(request(`/api/users/${leaver.id}`, { method: 'DELETE' }), params({ userId: leaver.id }))
+    const res = await userRoute.DELETE(
+      request(`/api/users/${leaver.id}`, { method: 'DELETE' }),
+      params({ userId: leaver.id })
+    )
     expect(res.status).toBe(200)
-    expect((await prisma.workspaceMembership.findUniqueOrThrow({ where: { workspaceId_userId: { workspaceId: wsId(), userId: leaver.id } } })).status).toBe('suspended')
+    expect(
+      (
+        await prisma.workspaceMembership.findUniqueOrThrow({
+          where: { workspaceId_userId: { workspaceId: wsId(), userId: leaver.id } }
+        })
+      ).status
+    ).toBe('suspended')
     expect(await prisma.user.count({ where: { id: leaver.id } })).toBe(1)
     signInAs(leaver)
     expect((await queueRoute.GET(request('/api/sentences'), params())).status).toBe(404)
@@ -278,11 +367,14 @@ describe('user deletion', () => {
   it('refuses to delete a comment author with 409 and deletes others (platform admins)', async () => {
     const author = await createUser('labeller')
     const [record] = await createSentences(1, [author.id])
-    await inWorkspace(() => db().comment.create({ data: { workspaceId: wsId(), sentenceId: record.id, authorId: author.id, body: 'kept' } }))
+    await inWorkspace(() =>
+      db().comment.create({ data: { workspaceId: wsId(), sentenceId: record.id, authorId: author.id, body: 'kept' } })
+    )
     const plain = await createUser('labeller')
 
     signInAs(admin)
-    const del = (userId: string) => accountRoute.DELETE(request(`/api/users/${userId}`, { method: 'DELETE' }), plainParams({ userId }))
+    const del = (userId: string) =>
+      accountRoute.DELETE(request(`/api/users/${userId}`, { method: 'DELETE' }), plainParams({ userId }))
     expect((await del(author.id)).status).toBe(409)
     expect(await prisma.user.count({ where: { id: author.id } })).toBe(1)
     expect((await del(plain.id)).status).toBe(200)

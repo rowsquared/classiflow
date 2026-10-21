@@ -1,8 +1,10 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
-  --font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  
+  --font-family-sans:
+    var(--font-inter), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+
   /* Custom teal color scale based on #008080 */
   --color-indigo-50: #e0f2f2;
   --color-indigo-100: #b3e0e0;
@@ -23,7 +25,8 @@
   --muted-foreground: hsl(240 3.8% 46.1%);
 }
 
-html, body {
+html,
+body {
   height: 100%;
 }
 
@@ -33,12 +36,12 @@ body {
 }
 
 /* Checkbox styling - override browser default color to custom teal */
-input[type="checkbox"] {
+input[type='checkbox'] {
   accent-color: #008080; /* indigo-600 - custom teal */
   cursor: pointer;
 }
 
-input[type="checkbox"]:focus {
+input[type='checkbox']:focus {
   outline: 2px solid #009090; /* indigo-500 - custom teal */
   outline-offset: 2px;
 }
@@ -46,11 +49,11 @@ input[type="checkbox"]:focus {
 /* Sidebar initial state - set by blocking script before React hydrates */
 /* This CSS applies immediately, then React's inline styles take over after hydration */
 /* Only apply when NOT hydrated - once hydrated, React's inline styles take over */
-html:not(.sidebar-hydrated)[data-sidebar-collapsed="true"] .sidebar-container {
+html:not(.sidebar-hydrated)[data-sidebar-collapsed='true'] .sidebar-container {
   width: 66px !important;
 }
 
-html:not(.sidebar-hydrated)[data-sidebar-collapsed="false"] .sidebar-container,
+html:not(.sidebar-hydrated)[data-sidebar-collapsed='false'] .sidebar-container,
 html:not(.sidebar-hydrated):not([data-sidebar-collapsed]) .sidebar-container {
   width: 256px !important;
 }

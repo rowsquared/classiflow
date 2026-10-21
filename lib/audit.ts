@@ -22,16 +22,34 @@ import { currentWorkspaceId, db, withWorkspace } from '@/lib/workspace/db'
  */
 
 export type AuditAction =
-  | 'user.created' | 'user.updated' | 'user.deleted' | 'user.password_changed' | 'user.sessions_revoked'
-  | 'workspace.created' | 'workspace.updated' | 'workspace.archived' | 'workspace.reopened'
-  | 'member.added' | 'member.updated' | 'member.suspended' | 'member.reactivated'
-  | 'taxonomy.created' | 'taxonomy.updated' | 'taxonomy.deleted' | 'taxonomy.imported'
-  | 'taxonomy.restored' | 'taxonomy.ai_sync_started'
-  | 'records.imported' | 'import.deleted'
-  | 'assignments.added' | 'assignments.removed'
+  | 'user.created'
+  | 'user.updated'
+  | 'user.deleted'
+  | 'user.password_changed'
+  | 'user.sessions_revoked'
+  | 'workspace.created'
+  | 'workspace.updated'
+  | 'workspace.archived'
+  | 'workspace.reopened'
+  | 'member.added'
+  | 'member.updated'
+  | 'member.suspended'
+  | 'member.reactivated'
+  | 'taxonomy.created'
+  | 'taxonomy.updated'
+  | 'taxonomy.deleted'
+  | 'taxonomy.imported'
+  | 'taxonomy.restored'
+  | 'taxonomy.ai_sync_started'
+  | 'records.imported'
+  | 'import.deleted'
+  | 'assignments.added'
+  | 'assignments.removed'
   | 'labels.bulk_applied'
   | 'export.downloaded'
-  | 'ai.labeling_started' | 'ai.learning_started' | 'ai.job_cancelled'
+  | 'ai.labeling_started'
+  | 'ai.learning_started'
+  | 'ai.job_cancelled'
   | 'access.denied'
 
 export type AuditEntry = {
@@ -49,7 +67,7 @@ export async function audit(entry: AuditEntry): Promise<void> {
   const workspaceId = entry.workspaceId === undefined ? inTransaction : entry.workspaceId
   const write = async (client: Pick<Prisma.TransactionClient, 'user' | 'auditLog'>) => {
     const actorName = entry.actorId
-      ? (await client.user.findUnique({ where: { id: entry.actorId }, select: { username: true } }))?.username ?? null
+      ? ((await client.user.findUnique({ where: { id: entry.actorId }, select: { username: true } }))?.username ?? null)
       : null
     await client.auditLog.create({ data: { ...entry, workspaceId, actorName } })
   }

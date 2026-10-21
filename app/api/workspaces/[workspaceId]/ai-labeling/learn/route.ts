@@ -30,9 +30,12 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     }
 
     if (taxonomy.newAnnotationsSinceLastLearning < AI_LEARNING_MIN_NEW_ANNOTATIONS) {
-      return NextResponse.json({
-        error: `At least ${AI_LEARNING_MIN_NEW_ANNOTATIONS} new annotations are required before training (currently ${taxonomy.newAnnotationsSinceLastLearning})`
-      }, { status: 400 })
+      return NextResponse.json(
+        {
+          error: `At least ${AI_LEARNING_MIN_NEW_ANNOTATIONS} new annotations are required before training (currently ${taxonomy.newAnnotationsSinceLastLearning})`
+        },
+        { status: 400 }
+      )
     }
 
     // Query submitted, user-created annotations since last learning run
@@ -108,12 +111,15 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
 
     console.log(
       `✅ Created ${jobs.length} AI learning job(s) for taxonomy ${taxonomy.key} ` +
-      `(${allSentenceIds.length} sentences with ${annotations.length} annotations, batches of ${AI_LEARNING_BATCH_SIZE})`
+        `(${allSentenceIds.length} sentences with ${annotations.length} annotations, batches of ${AI_LEARNING_BATCH_SIZE})`
     )
 
     await audit({
-      actorId: user.id, action: 'ai.learning_started', entityType: 'taxonomy', entityId: taxonomy.id,
-      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length },
+      actorId: user.id,
+      action: 'ai.learning_started',
+      entityType: 'taxonomy',
+      entityId: taxonomy.id,
+      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length }
     })
     return NextResponse.json({
       ok: true,

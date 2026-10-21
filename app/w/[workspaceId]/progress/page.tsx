@@ -3,12 +3,7 @@ import { asJson } from '@/lib/server/json'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import { getProgressStats, getProgressTimeline, getTeamProgress } from '@/lib/server/progress'
-import ProgressPageClient, {
-  type Stats,
-  type Timeline,
-  type TeamMember,
-  type Period
-} from './ProgressPageClient'
+import ProgressPageClient, { type Stats, type Timeline, type TeamMember, type Period } from './ProgressPageClient'
 
 const DEFAULT_PERIOD: Period = 'week'
 
@@ -52,11 +47,13 @@ export default async function ProgressPage({ params }: { params: Promise<{ works
 
   let data
   try {
-    const [stats, timeline, team] = await withWorkspace(workspaceId, () => Promise.all([
-      getProgressStats(user, range),
-      getProgressTimeline(user, range, 'day'),
-      user.role === 'admin' || user.role === 'supervisor' ? getTeamProgress(user, range) : null,
-    ]))
+    const [stats, timeline, team] = await withWorkspace(workspaceId, () =>
+      Promise.all([
+        getProgressStats(user, range),
+        getProgressTimeline(user, range, 'day'),
+        user.role === 'admin' || user.role === 'supervisor' ? getTeamProgress(user, range) : null
+      ])
+    )
     data = asJson({ stats, timeline: timeline.timeline, team: team?.team ?? [] })
   } catch (error) {
     console.error('Progress page failed to load:', error)

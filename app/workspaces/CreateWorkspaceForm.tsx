@@ -19,7 +19,7 @@ export default function CreateWorkspaceForm() {
       const res = await fetch('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description: description || null }),
+        body: JSON.stringify({ name, description: description || null })
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -35,23 +35,39 @@ export default function CreateWorkspaceForm() {
   return (
     <form onSubmit={submit} className="mt-10 p-6 rounded-lg bg-white border border-gray-200 space-y-4">
       <h2 className="text-lg font-semibold text-gray-900">New workspace</h2>
-      {error && <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm border border-red-200">{error}</div>}
+      {error && (
+        <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm border border-red-200">
+          {error}
+        </div>
+      )}
       <div>
-        <label htmlFor="workspace-name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <label htmlFor="workspace-name" className="block text-sm font-medium text-gray-700 mb-1">
+          Name
+        </label>
         <input
-          id="workspace-name" required maxLength={200} value={name} onChange={e => setName(e.target.value)}
+          id="workspace-name"
+          required
+          maxLength={200}
+          value={name}
+          onChange={e => setName(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
       <div>
-        <label htmlFor="workspace-description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <label htmlFor="workspace-description" className="block text-sm font-medium text-gray-700 mb-1">
+          Description
+        </label>
         <textarea
-          id="workspace-description" maxLength={2000} value={description} onChange={e => setDescription(e.target.value)}
+          id="workspace-description"
+          maxLength={2000}
+          value={description}
+          onChange={e => setDescription(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
       <button
-        type="submit" disabled={saving}
+        type="submit"
+        disabled={saving}
         className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
       >
         {saving ? 'Creating…' : 'Create workspace'}

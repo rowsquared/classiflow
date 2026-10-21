@@ -16,11 +16,15 @@ const roleSchema = z.enum(['admin', 'supervisor', 'labeller'])
 const createSchema = z.object({
   // Sign-in names are case-insensitive: stored in lower case (Better Auth's username plugin).
   username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen'),
-  email: z.string().email().max(254).transform(e => e.toLowerCase()),
+  email: z
+    .string()
+    .email()
+    .max(254)
+    .transform(e => e.toLowerCase()),
   name: z.string().min(1).max(200),
   role: roleSchema,
   supervisorId: z.string().optional().nullable(),
-  tempPassword: z.string().max(256),
+  tempPassword: z.string().max(256)
 })
 
 // Adding an account that already exists elsewhere: platform admins only, until
@@ -29,7 +33,7 @@ const createSchema = z.object({
 const addExistingSchema = z.object({
   existingUser: z.string().min(1).max(254),
   role: roleSchema,
-  supervisorId: z.string().optional().nullable(),
+  supervisorId: z.string().optional().nullable()
 })
 
 // GET: admins see every member (suspended ones too with ?includeSuspended=true),
@@ -49,26 +53,31 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
       return forbidden('Only platform admins can add an existing account to a workspace')
     }
     const parsed = addExistingSchema.safeParse(body)
-    if (!parsed.success) return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
+    if (!parsed.success)
+      return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
     const identifier = parsed.data.existingUser.trim().toLowerCase()
     const account = await db().user.findFirst({
       where: { OR: [{ username: identifier }, { email: identifier }] },
-      select: { id: true, username: true },
+      select: { id: true, username: true }
     })
     if (!account) return NextResponse.json({ error: 'No account with that username or email' }, { status: 404 })
     const existing = await db().workspaceMembership.findUnique({
       where: { workspaceId_userId: { workspaceId: actor.workspaceId, userId: account.id } },
-      select: { id: true },
+      select: { id: true }
     })
     if (existing) return NextResponse.json({ error: 'Already a member of this workspace' }, { status: 400 })
     const supervisorMembershipId = await resolveSupervisor(actor.workspaceId, null, parsed.data.supervisorId ?? null)
-    if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object') return NextResponse.json(supervisorMembershipId, { status: 400 })
+    if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object')
+      return NextResponse.json(supervisorMembershipId, { status: 400 })
     await db().workspaceMembership.create({
-      data: { workspaceId: actor.workspaceId, userId: account.id, role: parsed.data.role, supervisorMembershipId },
+      data: { workspaceId: actor.workspaceId, userId: account.id, role: parsed.data.role, supervisorMembershipId }
     })
     await audit({
-      actorId: actor.id, action: 'member.added', entityType: 'user', entityId: account.id,
-      payload: { username: account.username, role: parsed.data.role, existingAccount: true },
+      actorId: actor.id,
+      action: 'member.added',
+      entityType: 'user',
+      entityId: account.id,
+      payload: { username: account.username, role: parsed.data.role, existingAccount: true }
     })
     return NextResponse.json({ user: { id: account.id } }, { status: 201 })
   }
@@ -85,23 +94,30 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
 
   const taken = await db().user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
   if (taken) {
-    return NextResponse.json({ error: taken.username === username ? 'Username already in use' : 'Email already in use' }, { status: 400 })
+    return NextResponse.json(
+      { error: taken.username === username ? 'Username already in use' : 'Email already in use' },
+      { status: 400 }
+    )
   }
   const supervisorMembershipId = await resolveSupervisor(actor.workspaceId, null, supervisorId ?? null)
-  if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object') return NextResponse.json(supervisorMembershipId, { status: 400 })
+  if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object')
+    return NextResponse.json(supervisorMembershipId, { status: 400 })
 
   const created = await db().user.create({
     data: { username, displayUsername, email, name, mustResetPassword: true },
-    select: { id: true, username: true, email: true, name: true, mustResetPassword: true, createdAt: true },
+    select: { id: true, username: true, email: true, name: true, mustResetPassword: true, createdAt: true }
   })
   await setPassword(db(), created.id, tempPassword)
   await db().workspaceMembership.create({
-    data: { workspaceId: actor.workspaceId, userId: created.id, role, supervisorMembershipId },
+    data: { workspaceId: actor.workspaceId, userId: created.id, role, supervisorMembershipId }
   })
 
   await audit({
-    actorId: actor.id, action: 'user.created', entityType: 'user', entityId: created.id,
-    payload: { username, role, supervisorId: supervisorId ?? null },
+    actorId: actor.id,
+    action: 'user.created',
+    entityType: 'user',
+    entityId: created.id,
+    payload: { username, role, supervisorId: supervisorId ?? null }
   })
   return NextResponse.json({ user: { ...created, role, supervisorId: supervisorId ?? null } }, { status: 201 })
 })

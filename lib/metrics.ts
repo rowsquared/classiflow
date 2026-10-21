@@ -8,7 +8,10 @@
  */
 type Label = { sentenceId: string; taxonomyId: string; level: number; nodeCode: string }
 
-export function computeAgreement(humanLabels: Label[], suggestions: Label[]): { matches: number; total: number; rate: number | null } {
+export function computeAgreement(
+  humanLabels: Label[],
+  suggestions: Label[]
+): { matches: number; total: number; rate: number | null } {
   const key = (l: Label) => `${l.sentenceId}\u0000${l.taxonomyId}\u0000${l.level}`
   const suggested = new Map(suggestions.map(s => [key(s), s.nodeCode]))
   let matches = 0

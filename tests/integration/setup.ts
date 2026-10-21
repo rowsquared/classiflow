@@ -11,7 +11,7 @@ process.env.DATABASE_URL = runtimeDatabaseUrl()
 vi.mock('@/lib/auth', async importOriginal => {
   const { sessionFor } = await import('./helpers')
   return {
-    ...await importOriginal<typeof import('@/lib/auth')>(),
-    getSession: vi.fn(sessionFor),
+    ...(await importOriginal<typeof import('@/lib/auth')>()),
+    getSession: vi.fn(sessionFor)
   }
 })

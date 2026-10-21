@@ -66,7 +66,7 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
       },
       skip_empty_lines: true,
       bom: true,
-      cast: false,
+      cast: false
     }) as Record<string, string>[]
   } catch (caught) {
     return { nodes: [], errors: [{ row: 0, message: `CSV parsing error: ${(caught as Error).message}` }] }
@@ -74,22 +74,48 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
 
   const duplicateHeaders = headers.filter((h, i) => headers.indexOf(h) !== i)
   if (duplicateHeaders.length > 0) {
-    return { nodes: [], errors: [{ row: 1, message: `Duplicate columns: ${Array.from(new Set(duplicateHeaders)).join(', ')}` }] }
+    return {
+      nodes: [],
+      errors: [{ row: 1, message: `Duplicate columns: ${Array.from(new Set(duplicateHeaders)).join(', ')}` }]
+    }
   }
   const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h))
   if (missing.length > 0) {
-    return { nodes: [], errors: [{ row: 1, message: `Missing required columns: ${missing.join(', ')}. The CSV must contain: id, label, parent_id, and level.` }] }
+    return {
+      nodes: [],
+      errors: [
+        {
+          row: 1,
+          message: `Missing required columns: ${missing.join(', ')}. The CSV must contain: id, label, parent_id, and level.`
+        }
+      ]
+    }
   }
   const disallowed = headers.filter(h => !ALLOWED_HEADERS.has(h))
   if (disallowed.length > 0) {
-    return { nodes: [], errors: [{ row: 1, message: `Disallowed columns: ${disallowed.join(', ')}. Allowed: ${Array.from(ALLOWED_HEADERS).join(', ')}.` }] }
+    return {
+      nodes: [],
+      errors: [
+        {
+          row: 1,
+          message: `Disallowed columns: ${disallowed.join(', ')}. Allowed: ${Array.from(ALLOWED_HEADERS).join(', ')}.`
+        }
+      ]
+    }
   }
   if (records.length === 0) {
     return { nodes: [], errors: [{ row: 0, message: 'CSV file is empty or contains no data rows' }] }
   }
 
   // Pass 1: row-local checks and the id index.
-  type Row = { rowNum: number; code: string; label: string; level: number; parentCode: string | null; record: Record<string, string> }
+  type Row = {
+    rowNum: number
+    code: string
+    label: string
+    level: number
+    parentCode: string | null
+    record: Record<string, string>
+  }
   const rows: Row[] = []
   const firstRowOf = new Map<string, number>()
   records.forEach((record, idx) => {
@@ -101,23 +127,39 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
     const level = /^\d+$/.test(levelText) ? parseInt(levelText, 10) : NaN
 
     let ok = true
-    if (!code) { fail(rowNum, 'Empty id value'); ok = false }
-    else if (code.length > MAX_CODE_LENGTH) { fail(rowNum, `id is longer than ${MAX_CODE_LENGTH} characters`); ok = false }
-    else if (isUnknownNodeCode(code)) { fail(rowNum, `Code ${code} is reserved for UNKNOWN labels and cannot be used`); ok = false }
-    if (!label) { fail(rowNum, 'Empty label value'); ok = false }
+    if (!code) {
+      fail(rowNum, 'Empty id value')
+      ok = false
+    } else if (code.length > MAX_CODE_LENGTH) {
+      fail(rowNum, `id is longer than ${MAX_CODE_LENGTH} characters`)
+      ok = false
+    } else if (isUnknownNodeCode(code)) {
+      fail(rowNum, `Code ${code} is reserved for UNKNOWN labels and cannot be used`)
+      ok = false
+    }
+    if (!label) {
+      fail(rowNum, 'Empty label value')
+      ok = false
+    }
     if (!Number.isInteger(level) || level < 1 || level > maxDepth) {
-      fail(rowNum, `level must be a whole number from 1 to ${maxDepth} (got "${levelText}")`); ok = false
+      fail(rowNum, `level must be a whole number from 1 to ${maxDepth} (got "${levelText}")`)
+      ok = false
     }
     if (parentCode && isUnknownNodeCode(parentCode)) {
-      fail(rowNum, `Code ${parentCode} is reserved for UNKNOWN labels and cannot be used as parent_id`); ok = false
+      fail(rowNum, `Code ${parentCode} is reserved for UNKNOWN labels and cannot be used as parent_id`)
+      ok = false
     }
     if (code) {
       if (firstRowOf.has(code)) {
-        fail(rowNum, `Duplicate id "${code}" (also appears in row ${firstRowOf.get(code)})`); ok = false
+        fail(rowNum, `Duplicate id "${code}" (also appears in row ${firstRowOf.get(code)})`)
+        ok = false
       } else {
         firstRowOf.set(code, rowNum)
       }
-      if (existing.has(code)) { fail(rowNum, `id "${code}" already exists in this taxonomy`); ok = false }
+      if (existing.has(code)) {
+        fail(rowNum, `id "${code}" already exists in this taxonomy`)
+        ok = false
+      }
     }
     if (ok) rows.push({ rowNum, code, label, level, parentCode, record })
   })
@@ -132,14 +174,23 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
       if (r.parentCode) fail(r.rowNum, 'level 1 rows must have an empty parent_id')
       continue
     }
-    if (!r.parentCode) { fail(r.rowNum, `level ${r.level} rows need a parent_id`); continue }
+    if (!r.parentCode) {
+      fail(r.rowNum, `level ${r.level} rows need a parent_id`)
+      continue
+    }
     const parentLevel = levelOf.get(r.parentCode)
     if (parentLevel === undefined) {
-      fail(r.rowNum, `parent_id "${r.parentCode}" does not match any id ${existing.size > 0 ? 'in the file or the taxonomy' : 'in the file'}`)
+      fail(
+        r.rowNum,
+        `parent_id "${r.parentCode}" does not match any id ${existing.size > 0 ? 'in the file or the taxonomy' : 'in the file'}`
+      )
       continue
     }
     if (parentLevel !== r.level - 1) {
-      fail(r.rowNum, `parent_id "${r.parentCode}" is at level ${parentLevel}; a level ${r.level} row needs a level ${r.level - 1} parent`)
+      fail(
+        r.rowNum,
+        `parent_id "${r.parentCode}" is at level ${parentLevel}; a level ${r.level} row needs a level ${r.level - 1} parent`
+      )
       continue
     }
     hasChildren.add(r.parentCode)
@@ -164,9 +215,16 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
     parentCode: r.parentCode,
     definition: text(r.record.definition) || null,
     examples: text(r.record.examples) || null,
-    synonyms: Array.from(new Set(text(r.record.synonyms).split(/[,;|]/).map(s => s.trim()).filter(Boolean))),
+    synonyms: Array.from(
+      new Set(
+        text(r.record.synonyms)
+          .split(/[,;|]/)
+          .map(s => s.trim())
+          .filter(Boolean)
+      )
+    ),
     isLeaf: !hasChildren.has(r.code),
-    path: pathOf(r.code),
+    path: pathOf(r.code)
   }))
   return { nodes, errors: [] }
 }

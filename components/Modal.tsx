@@ -1,8 +1,9 @@
-"use client"
+'use client'
 
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /**
  * Dialog behaviour for an element that is mounted while the dialog is open:
@@ -19,7 +20,9 @@ export function useDialog(onClose: () => void, label: string) {
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusables = () =>
-      Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(el => el.getClientRects().length > 0)
+      Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+        el => el.getClientRects().length > 0
+      )
     const autofocus = ref.current?.querySelector<HTMLElement>('[autofocus]')
     ;(autofocus ?? focusables()[0] ?? ref.current)?.focus()
 
@@ -60,7 +63,7 @@ export function useDialog(onClose: () => void, label: string) {
     role: 'dialog' as const,
     'aria-modal': true as const,
     'aria-label': label,
-    tabIndex: -1,
+    tabIndex: -1
   }
 }
 
@@ -82,7 +85,13 @@ export default function Modal({ label, onClose, className, closeOnOverlayClick =
     <div
       {...dialog}
       className={`${className} focus:outline-none`}
-      onClick={closeOnOverlayClick ? event => { if (event.target === event.currentTarget) onClose() } : undefined}
+      onClick={
+        closeOnOverlayClick
+          ? event => {
+              if (event.target === event.currentTarget) onClose()
+            }
+          : undefined
+      }
     >
       {children}
     </div>

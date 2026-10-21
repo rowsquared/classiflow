@@ -62,10 +62,11 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       ]
     })
   }
-  
+
   // Status filters: comma-separated and/or repeated (?status=a,b&status=c)
   if (statusParam) {
-    const statuses = statusParam.split(',')
+    const statuses = statusParam
+      .split(',')
       .map(s => parseEnum(SentenceStatus, s.trim()))
       .filter((s): s is SentenceStatus => s !== undefined)
     if (statuses.length === 1) {
@@ -76,7 +77,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       })
     }
   }
-  
+
   // Visibility filtering based on role and assignments (admins: no filter)
   and.push(await sentenceVisibilityFilter(user))
 
@@ -84,7 +85,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   if (userId) {
     and.push({ lastEditorId: userId })
   }
-  
+
   // Assigned to user filter
   if (assignedToUserId) {
     if (assignedToUserId === 'unassigned') {
@@ -109,7 +110,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   if (lastEditorId) {
     and.push({ lastEditorId })
   }
-  
+
   // Date range filter
   if (lastEditedFrom || lastEditedTo) {
     const dateFilter: Prisma.DateTimeNullableFilter = {}
@@ -127,11 +128,11 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     }
     and.push({ lastEditedAt: dateFilter })
   }
-  
+
   // Taxonomy/annotation filters
   if (taxonomyKey || level || code || source) {
     const annotationFilter: Prisma.SentenceAnnotationWhereInput = {}
-    
+
     if (taxonomyKey) {
       annotationFilter.taxonomy = { key: taxonomyKey }
     }
@@ -144,10 +145,10 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     if (source) {
       annotationFilter.source = parseEnum(AnnotationSource, source)
     }
-    
+
     and.push({ annotations: { some: annotationFilter } })
   }
-  
+
   // AI suggestion filters
   if (aiTaxonomyKey || aiLevel || aiCode || aiConfidenceMin || aiConfidenceMax) {
     const aiFilter: Prisma.SentenceAISuggestionWhereInput = {}
@@ -210,34 +211,34 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       }
     })
   }
-  
+
   // Flagged filter
   if (flagged === 'true') {
     and.push({ flagged: true })
   } else if (flagged === 'false') {
     and.push({ flagged: false })
   }
-  
+
   // Has comments filter
   if (hasComments === 'true') {
-    and.push({ 
-      comments: { 
-        some: {} 
-      } 
+    and.push({
+      comments: {
+        some: {}
+      }
     })
   } else if (hasComments === 'false') {
-    and.push({ 
-      comments: { 
-        none: {} 
-      } 
+    and.push({
+      comments: {
+        none: {}
+      }
     })
   }
-  
+
   // Import file filter
   if (importId) {
     and.push({ importId })
   }
-  
+
   // Support column filters (dynamic)
   for (let i = 1; i <= 5; i++) {
     const supportValue = searchParams.get(`support${i}`)
@@ -247,7 +248,6 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       } as Prisma.SentenceWhereInput)
     }
   }
-  
 
   return and.length > 0 ? { AND: and } : {}
 }
@@ -327,7 +327,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     }),
     db().sentence.count({ where })
   ])
-  
+
   // Build sets for annotation nodes
   const annotationTaxonomyIds = new Set<string>()
   const annotationNodeCodes = new Set<string>()
@@ -337,28 +337,29 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
       annotationNodeCodes.add(annotation.nodeCode)
     })
   })
-  
-  const annotationNodesPromise = annotationTaxonomyIds.size > 0 && annotationNodeCodes.size > 0
-    ? db().taxonomyNode.findMany({
-        where: {
-          taxonomyId: { in: Array.from(annotationTaxonomyIds) },
-          code: { in: Array.from(annotationNodeCodes) }
-        },
-        select: {
-          taxonomyId: true,
-          code: true,
-          label: true
-        }
-      })
-    : Promise.resolve([])
-  
+
+  const annotationNodesPromise =
+    annotationTaxonomyIds.size > 0 && annotationNodeCodes.size > 0
+      ? db().taxonomyNode.findMany({
+          where: {
+            taxonomyId: { in: Array.from(annotationTaxonomyIds) },
+            code: { in: Array.from(annotationNodeCodes) }
+          },
+          select: {
+            taxonomyId: true,
+            code: true,
+            label: true
+          }
+        })
+      : Promise.resolve([])
+
   // Prepare AI suggestions fetch (only for sentences without annotations)
   const sentencesWithoutAnnotations = sentences.filter(s => s.annotations.length === 0)
   const aiSuggestionsPromise = (async () => {
     if (sentencesWithoutAnnotations.length === 0) {
       return {} as Record<string, AISuggestionView[]>
     }
-    
+
     const sentenceIds = sentencesWithoutAnnotations.map(s => s.id)
     const aiSuggestions = await db().sentenceAISuggestion.findMany({
       where: {
@@ -369,19 +370,16 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
           select: { key: true }
         }
       },
-      orderBy: [
-        { taxonomyId: 'asc' },
-        { level: 'asc' }
-      ]
+      orderBy: [{ taxonomyId: 'asc' }, { level: 'asc' }]
     })
-    
+
     if (aiSuggestions.length === 0) {
       return {} as Record<string, AISuggestionView[]>
     }
-    
+
     const aiTaxonomyIds = new Set(aiSuggestions.map(s => s.taxonomyId))
     const aiNodeCodes = new Set(aiSuggestions.map(s => s.nodeCode))
-    
+
     const aiNodes = await db().taxonomyNode.findMany({
       where: {
         taxonomyId: { in: Array.from(aiTaxonomyIds) },
@@ -393,36 +391,35 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
         label: true
       }
     })
-    
-    const aiNodeLabels = new Map(
-      aiNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label])
+
+    const aiNodeLabels = new Map(aiNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
+
+    return aiSuggestions.reduce(
+      (acc, suggestion) => {
+        if (!acc[suggestion.sentenceId]) {
+          acc[suggestion.sentenceId] = []
+        }
+        acc[suggestion.sentenceId].push({
+          id: suggestion.id,
+          level: suggestion.level,
+          nodeCode: suggestion.nodeCode,
+          nodeLabel: aiNodeLabels.get(`${suggestion.taxonomyId}-${suggestion.nodeCode}`) || null,
+          source: 'ai' as const,
+          taxonomy: {
+            key: suggestion.taxonomy.key
+          },
+          confidenceScore: suggestion.confidenceScore
+        })
+        return acc
+      },
+      {} as Record<string, AISuggestionView[]>
     )
-    
-    return aiSuggestions.reduce((acc, suggestion) => {
-      if (!acc[suggestion.sentenceId]) {
-        acc[suggestion.sentenceId] = []
-      }
-      acc[suggestion.sentenceId].push({
-        id: suggestion.id,
-        level: suggestion.level,
-        nodeCode: suggestion.nodeCode,
-        nodeLabel: aiNodeLabels.get(`${suggestion.taxonomyId}-${suggestion.nodeCode}`) || null,
-        source: 'ai' as const,
-        taxonomy: {
-          key: suggestion.taxonomy.key,
-        },
-        confidenceScore: suggestion.confidenceScore
-      })
-      return acc
-    }, {} as Record<string, AISuggestionView[]>)
   })()
-  
+
   const [annotationNodes, aiSuggestionsBySentence] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
-  
-  const nodeLabels = new Map(
-    annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label])
-  )
-  
+
+  const nodeLabels = new Map(annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
+
   // Attach labels to annotations; sentences without annotations show their AI suggestions instead
   const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
     // The API reports assignees as users, not memberships.
@@ -450,8 +447,8 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
       page,
       limit,
       total,
-      pages: Math.ceil(total / limit),
-    },
+      pages: Math.ceil(total / limit)
+    }
   }
 }
 

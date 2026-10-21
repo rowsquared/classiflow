@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useState } from 'react'
 import PageHeader from '@/components/PageHeader'
@@ -12,15 +12,15 @@ export default function ExportAdminPage() {
     try {
       setExporting(true)
       setMessage(null)
-      
+
       const params = new URLSearchParams()
       if (statusFilter !== 'all') {
         params.append('status', statusFilter)
       }
-      
+
       const url = workspaceApi(`/export${params.toString() ? '?' + params.toString() : ''}`)
       const res = await fetch(url)
-      
+
       if (res.ok) {
         const blob = await res.blob()
         const url = window.URL.createObjectURL(blob)
@@ -54,11 +54,13 @@ export default function ExportAdminPage() {
 
         {/* Message */}
         {message && (
-          <div className={`mb-6 p-4 rounded-lg ${
-            message.type === 'success' 
-              ? 'bg-green-50 text-green-800 border border-green-200' 
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}>
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              message.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
             {message.text}
           </div>
         )}
@@ -69,16 +71,14 @@ export default function ExportAdminPage() {
             <span className="text-2xl">📥</span>
             <h2 className="text-lg font-semibold text-gray-900">Export Labeled Data</h2>
           </div>
-          
+
           <div className="space-y-4">
             <div className="flex items-end gap-4">
               <div className="w-64">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Status Filter
-                </label>
-                <select 
+                <label className="block text-sm font-medium text-gray-700 mb-2">Status Filter</label>
+                <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={e => setStatusFilter(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="all">All</option>
@@ -101,10 +101,10 @@ export default function ExportAdminPage() {
           <div className="mt-6 pt-6 border-t border-gray-200">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Export Format</h3>
             <p className="text-xs text-gray-600">
-              The exported CSV includes: sentence ID, original field columns (field_FIELD_NAME format), 
-              support columns, labeled taxonomies ({'{taxonomyKey}'}_1, {'{taxonomyKey}'}_2, etc.), 
-              AI suggestions ({'{taxonomyKey}'}_ai1, {'{taxonomyKey}'}_ai2 with confidence scores), 
-              status, flagged, last_editor, last_edited, and comments.
+              The exported CSV includes: sentence ID, original field columns (field_FIELD_NAME format), support columns,
+              labeled taxonomies ({'{taxonomyKey}'}_1, {'{taxonomyKey}'}_2, etc.), AI suggestions ({'{taxonomyKey}'}
+              _ai1, {'{taxonomyKey}'}_ai2 with confidence scores), status, flagged, last_editor, last_edited, and
+              comments.
             </p>
           </div>
         </div>
@@ -112,4 +112,3 @@ export default function ExportAdminPage() {
     </>
   )
 }
-

@@ -26,7 +26,7 @@ export async function getTeamMembershipIds(workspaceId: string, rootMembershipId
   for (let depth = 0; depth < MAX_TEAM_DEPTH && frontier.length > 0; depth++) {
     const reports = await db().workspaceMembership.findMany({
       where: { workspaceId, supervisorMembershipId: { in: frontier } },
-      select: { id: true },
+      select: { id: true }
     })
     frontier = reports.map(r => r.id).filter(id => !seen.has(id))
     frontier.forEach(id => seen.add(id))
@@ -49,7 +49,7 @@ export async function getVisibleUserIds(user: CurrentUser): Promise<string[] | n
   if (membershipIds.length === 0) return []
   const rows = await db().workspaceMembership.findMany({
     where: { workspaceId: user.workspaceId, id: { in: membershipIds } },
-    select: { userId: true },
+    select: { userId: true }
   })
   return rows.map(r => r.userId)
 }
@@ -69,7 +69,7 @@ export async function canAccessSentences(user: CurrentUser, sentenceIds: string[
   const ids = Array.from(new Set(sentenceIds))
   if (ids.length === 0) return true
   const visible = await db().sentence.count({
-    where: { id: { in: ids }, ...(await sentenceVisibilityFilter(user)) },
+    where: { id: { in: ids }, ...(await sentenceVisibilityFilter(user)) }
   })
   return visible === ids.length
 }
@@ -78,8 +78,11 @@ export async function canAccessSentences(user: CurrentUser, sentenceIds: string[
 export async function denyUnlessSentencesVisible(user: CurrentUser, sentenceIds: string[]) {
   if (await canAccessSentences(user, sentenceIds)) return null
   await audit({
-    actorId: user.id, action: 'access.denied', entityType: 'sentence', entityId: sentenceIds[0] ?? '',
-    payload: { reason: 'record scope', role: user.role, records: sentenceIds.length },
+    actorId: user.id,
+    action: 'access.denied',
+    entityType: 'sentence',
+    entityId: sentenceIds[0] ?? '',
+    payload: { reason: 'record scope', role: user.role, records: sentenceIds.length }
   })
   return forbidden('You do not have access to one or more of these records')
 }

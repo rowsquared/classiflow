@@ -51,13 +51,18 @@ export async function createWorkspace(name = uid('workspace')) {
  */
 export async function createUser(
   role: Role,
-  opts: { supervisorId?: string | null; mustResetPassword?: boolean; platformAdmin?: boolean; workspaceId?: string } = {}
+  opts: {
+    supervisorId?: string | null
+    mustResetPassword?: boolean
+    platformAdmin?: boolean
+    workspaceId?: string
+  } = {}
 ) {
   const username = uid(role)
   const ws = opts.workspaceId ?? currentWorkspace()
   const supervisor = opts.supervisorId
     ? await prisma.workspaceMembership.findUniqueOrThrow({
-        where: { workspaceId_userId: { workspaceId: ws, userId: opts.supervisorId } },
+        where: { workspaceId_userId: { workspaceId: ws, userId: opts.supervisorId } }
       })
     : null
   return prisma.user.create({
@@ -68,8 +73,8 @@ export async function createUser(
       role: opts.platformAdmin ? 'admin' : 'user',
       mustResetPassword: opts.mustResetPassword ?? false,
       sessions: { create: { token: uid('token'), expiresAt: new Date(Date.now() + 3600_000) } },
-      memberships: { create: { workspaceId: ws, role, supervisorMembershipId: supervisor?.id ?? null } },
-    },
+      memberships: { create: { workspaceId: ws, role, supervisorMembershipId: supervisor?.id ?? null } }
+    }
   })
 }
 
@@ -90,7 +95,7 @@ export async function sessionFor(): Promise<AuthSession | null> {
   const session = await prisma.session.findFirst({
     where: { userId: currentUserId, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'asc' },
-    include: { user: true },
+    include: { user: true }
   })
   if (!session) return null
   const { user, ...rest } = session
@@ -102,22 +107,24 @@ export async function createSentences(count: number, assignTo: string[] = []) {
   const ws = currentWorkspace()
   const memberships = await prisma.workspaceMembership.findMany({
     where: { workspaceId: ws, userId: { in: assignTo } },
-    select: { id: true },
+    select: { id: true }
   })
   const imp = await prisma.sentenceImport.create({ data: { workspaceId: ws, fileName: 'test.csv', totalRows: count } })
   const sentences = []
   for (let i = 0; i < count; i++) {
-    sentences.push(await prisma.sentence.create({
-      data: {
-        workspaceId: ws,
-        recordKey: uid('record'),
-        importId: imp.id,
-        importOrder: i,
-        field1: `record ${i}`,
-        fieldMapping: { '1': 'text' },
-        assignments: { create: memberships.map(m => ({ membershipId: m.id })) },
-      },
-    }))
+    sentences.push(
+      await prisma.sentence.create({
+        data: {
+          workspaceId: ws,
+          recordKey: uid('record'),
+          importId: imp.id,
+          importOrder: i,
+          field1: `record ${i}`,
+          fieldMapping: { '1': 'text' },
+          assignments: { create: memberships.map(m => ({ membershipId: m.id })) }
+        }
+      })
+    )
   }
   return sentences
 }
@@ -130,17 +137,24 @@ export async function createSentences(count: number, assignTo: string[] = []) {
 export async function createTaxonomy(key = uid('tax'), opts: { isActive?: boolean } = {}) {
   const ws = currentWorkspace()
   const taxonomy = await prisma.taxonomy.create({
-    data: { workspaceId: ws, key, maxDepth: 2, isActive: opts.isActive ?? true },
+    data: { workspaceId: ws, key, maxDepth: 2, isActive: opts.isActive ?? true }
   })
-  const node = (code: string, label: string, level: number, parentCode: string | null, isLeaf: boolean) =>
-    ({ workspaceId: ws, taxonomyId: taxonomy.id, code, label, level, parentCode, isLeaf })
+  const node = (code: string, label: string, level: number, parentCode: string | null, isLeaf: boolean) => ({
+    workspaceId: ws,
+    taxonomyId: taxonomy.id,
+    code,
+    label,
+    level,
+    parentCode,
+    isLeaf
+  })
   await prisma.taxonomyNode.createMany({
     data: [
       node('01', 'Group 01', 1, null, false),
       node('011', 'Item 011', 2, '01', true),
       node('012', 'Item 012', 2, '01', true),
-      node('02', 'Group 02', 1, null, true),
-    ],
+      node('02', 'Group 02', 1, null, true)
+    ]
   })
   return taxonomy
 }
@@ -149,13 +163,15 @@ export function request(url: string, init: { method?: string; body?: unknown } =
   return new NextRequest(new URL(url, 'http://localhost:3000'), {
     method: init.method ?? 'GET',
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    headers: init.body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: init.body === undefined ? undefined : { 'content-type': 'application/json' }
   })
 }
 
 /** Route context for a handler under /api/workspaces/[workspaceId]: the current workspace plus `value`. */
 export function params<T extends Record<string, string>>(value?: T) {
-  return { params: Promise.resolve({ workspaceId: currentWorkspace(), ...(value ?? {}) } as { workspaceId: string } & T) }
+  return {
+    params: Promise.resolve({ workspaceId: currentWorkspace(), ...(value ?? {}) } as { workspaceId: string } & T)
+  }
 }
 
 /** Route context for a handler outside the workspace tree (platform APIs). */

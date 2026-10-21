@@ -19,7 +19,7 @@ const PLACEHOLDER_PASSWORDS = new Set([
   'changeme',
   'admin123',
   'password',
-  'your-secure-password',
+  'your-secure-password'
 ])
 
 const prisma = connect()
@@ -33,11 +33,7 @@ async function initAdmin() {
 
   const existing = await prisma.user.findFirst({
     where: {
-      OR: [
-        { role: 'admin' },
-        { email: adminEmail },
-        { username: adminUsername }
-      ]
+      OR: [{ role: 'admin' }, { email: adminEmail }, { username: adminUsername }]
     },
     select: { id: true }
   })

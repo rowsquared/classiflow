@@ -17,10 +17,7 @@ export const POST = workspaceRoute([], async (req, { user, params: routeParams }
     const { body } = await req.json()
 
     if (typeof body !== 'string' || body.trim() === '') {
-      return NextResponse.json(
-        { ok: false, error: 'Comment body is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ ok: false, error: 'Comment body is required' }, { status: 400 })
     }
     if (body.length > MAX_COMMENT_LENGTH) {
       return NextResponse.json(
@@ -41,19 +38,16 @@ export const POST = workspaceRoute([], async (req, { user, params: routeParams }
         author: {
           select: {
             name: true,
-            email: true,
-          },
-        },
-      },
+            email: true
+          }
+        }
+      }
     })
 
     return NextResponse.json({ ok: true, comment })
   } catch (error) {
     console.error('Failed to create comment:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Failed to create comment' },
-      { status: 500 }
-    )
+    return NextResponse.json({ ok: false, error: 'Failed to create comment' }, { status: 500 })
   }
 })
 
@@ -75,11 +69,11 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
           author: {
             select: {
               name: true,
-              email: true,
-            },
-          },
+              email: true
+            }
+          }
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' }
       }),
       db().comment.count({
         where: {
@@ -92,10 +86,7 @@ export const GET = workspaceRoute([], async (req, { user, params: routeParams })
     return NextResponse.json({ ok: true, comments, hasResolved: resolvedCount > 0 })
   } catch (error) {
     console.error('Failed to fetch comments:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Failed to fetch comments' },
-      { status: 500 }
-    )
+    return NextResponse.json({ ok: false, error: 'Failed to fetch comments' }, { status: 500 })
   }
 })
 
@@ -107,10 +98,7 @@ export const PATCH = workspaceRoute([], async (req, { user, params: routeParams 
     const { commentId, resolved } = await req.json()
 
     if (!commentId || typeof resolved !== 'boolean') {
-      return NextResponse.json(
-        { ok: false, error: 'commentId and resolved flag are required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ ok: false, error: 'commentId and resolved flag are required' }, { status: 400 })
     }
 
     const comment = await db().comment.findUnique({
@@ -119,10 +107,7 @@ export const PATCH = workspaceRoute([], async (req, { user, params: routeParams 
     })
 
     if (!comment || comment.sentenceId !== sentenceId) {
-      return NextResponse.json(
-        { ok: false, error: 'Comment not found for this sentence' },
-        { status: 404 }
-      )
+      return NextResponse.json({ ok: false, error: 'Comment not found for this sentence' }, { status: 404 })
     }
 
     const updated = await db().comment.update({
@@ -135,19 +120,16 @@ export const PATCH = workspaceRoute([], async (req, { user, params: routeParams 
         author: {
           select: {
             name: true,
-            email: true,
-          },
-        },
-      },
+            email: true
+          }
+        }
+      }
     })
 
     return NextResponse.json({ ok: true, comment: updated })
   } catch (error) {
     console.error('Failed to update comment:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Failed to update comment' },
-      { status: 500 }
-    )
+    return NextResponse.json({ ok: false, error: 'Failed to update comment' }, { status: 500 })
   }
 })
 
@@ -160,10 +142,7 @@ export const DELETE = workspaceRoute([], async (req, { user, params: routeParams
     const { commentId } = await req.json()
 
     if (!commentId) {
-      return NextResponse.json(
-        { ok: false, error: 'commentId is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ ok: false, error: 'commentId is required' }, { status: 400 })
     }
 
     const comment = await db().comment.findUnique({
@@ -172,10 +151,7 @@ export const DELETE = workspaceRoute([], async (req, { user, params: routeParams
     })
 
     if (!comment || comment.sentenceId !== sentenceId) {
-      return NextResponse.json(
-        { ok: false, error: 'Comment not found for this sentence' },
-        { status: 404 }
-      )
+      return NextResponse.json({ ok: false, error: 'Comment not found for this sentence' }, { status: 404 })
     }
 
     if (comment.authorId !== user.id && user.role !== 'admin') {
@@ -192,11 +168,6 @@ export const DELETE = workspaceRoute([], async (req, { user, params: routeParams
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Failed to delete comment:', error)
-    return NextResponse.json(
-      { ok: false, error: 'Failed to delete comment' },
-      { status: 500 }
-    )
+    return NextResponse.json({ ok: false, error: 'Failed to delete comment' }, { status: 500 })
   }
 })
-
-

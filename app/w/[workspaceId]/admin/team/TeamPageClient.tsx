@@ -9,8 +9,14 @@ import CreateMemberModal from '@/components/team/CreateMemberModal'
 import MemberDrawer from '@/components/team/MemberDrawer'
 import { formatRelativeTime } from '@/lib/utils'
 import {
-  filterMembers, nextSort, NO_FILTERS, sortMembers,
-  type Sort, type SortKey, type TeamFilters, type TeamMember,
+  filterMembers,
+  nextSort,
+  NO_FILTERS,
+  sortMembers,
+  type Sort,
+  type SortKey,
+  type TeamFilters,
+  type TeamMember
 } from '@/lib/team-table'
 import { workspaceApi } from '@/lib/workspace/urls'
 
@@ -18,7 +24,8 @@ export type User = TeamMember
 
 type Props = { initialUsers: User[] }
 
-const select = 'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const select =
+  'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
 
 const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
   { key: 'username', label: 'Username' },
@@ -28,8 +35,16 @@ const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
   { key: 'supervisor', label: 'Supervisor' },
   { key: 'team', label: 'Team' },
   { key: 'assignments', label: 'Assigned' },
-  { key: 'lastSeenAt', label: 'Last seen', title: 'Last time the app was open in this workspace (background refreshes do not count)' },
-  { key: 'lastLogin', label: 'Last sign-in', title: 'Last time they typed their password; sessions last days, so this can be old for active people' },
+  {
+    key: 'lastSeenAt',
+    label: 'Last seen',
+    title: 'Last time the app was open in this workspace (background refreshes do not count)'
+  },
+  {
+    key: 'lastLogin',
+    label: 'Last sign-in',
+    title: 'Last time they typed their password; sessions last days, so this can be old for active people'
+  }
 ]
 
 /**
@@ -68,7 +83,8 @@ export default function TeamPageClient({ initialUsers }: Props) {
   const supervisors = members.filter(m => m.status === 'active' && (m.role === 'admin' || m.role === 'supervisor'))
   const selected = members.find(m => m.id === selectedId) ?? null
   const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS)
-  const setFilter = <K extends keyof TeamFilters>(key: K, value: TeamFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
+  const setFilter = <K extends keyof TeamFilters>(key: K, value: TeamFilters[K]) =>
+    setFilters(f => ({ ...f, [key]: value }))
 
   return (
     <div className="flex flex-col h-screen">
@@ -77,34 +93,71 @@ export default function TeamPageClient({ initialUsers }: Props) {
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-48">
-            <label htmlFor="team-search" className="sr-only">Search members</label>
+            <label htmlFor="team-search" className="sr-only">
+              Search members
+            </label>
             <input
-              id="team-search" type="search" placeholder="Search username, name or email" value={filters.search}
+              id="team-search"
+              type="search"
+              placeholder="Search username, name or email"
+              value={filters.search}
               onChange={e => setFilter('search', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          <label className="sr-only" htmlFor="team-role">Role</label>
-          <select id="team-role" value={filters.role} onChange={e => setFilter('role', e.target.value as TeamFilters['role'])} className={select}>
+          <label className="sr-only" htmlFor="team-role">
+            Role
+          </label>
+          <select
+            id="team-role"
+            value={filters.role}
+            onChange={e => setFilter('role', e.target.value as TeamFilters['role'])}
+            className={select}
+          >
             <option value="">All roles</option>
             <option value="admin">Admins</option>
             <option value="supervisor">Supervisors</option>
             <option value="labeller">Labellers</option>
           </select>
-          <label className="sr-only" htmlFor="team-supervisor">Supervisor</label>
-          <select id="team-supervisor" value={filters.supervisorId} onChange={e => setFilter('supervisorId', e.target.value)} className={select}>
+          <label className="sr-only" htmlFor="team-supervisor">
+            Supervisor
+          </label>
+          <select
+            id="team-supervisor"
+            value={filters.supervisorId}
+            onChange={e => setFilter('supervisorId', e.target.value)}
+            className={select}
+          >
             <option value="">Any supervisor</option>
-            {supervisors.map(s => <option key={s.id} value={s.id}>Reports to {s.name || s.username}</option>)}
+            {supervisors.map(s => (
+              <option key={s.id} value={s.id}>
+                Reports to {s.name || s.username}
+              </option>
+            ))}
           </select>
-          <label className="sr-only" htmlFor="team-status">Status</label>
-          <select id="team-status" value={filters.status} onChange={e => setFilter('status', e.target.value as TeamFilters['status'])} className={select}>
+          <label className="sr-only" htmlFor="team-status">
+            Status
+          </label>
+          <select
+            id="team-status"
+            value={filters.status}
+            onChange={e => setFilter('status', e.target.value as TeamFilters['status'])}
+            className={select}
+          >
             <option value="active">Active</option>
             <option value="must-reset">Must reset password</option>
             <option value="removed">Removed</option>
             <option value="">Everyone</option>
           </select>
-          <label className="sr-only" htmlFor="team-activity">Activity</label>
-          <select id="team-activity" value={filters.activity} onChange={e => setFilter('activity', e.target.value as TeamFilters['activity'])} className={select}>
+          <label className="sr-only" htmlFor="team-activity">
+            Activity
+          </label>
+          <select
+            id="team-activity"
+            value={filters.activity}
+            onChange={e => setFilter('activity', e.target.value as TeamFilters['activity'])}
+            className={select}
+          >
             <option value="">Any activity</option>
             <option value="seen-7">Seen in the last 7 days</option>
             <option value="not-seen-7">Not seen for 7 days</option>
@@ -112,9 +165,19 @@ export default function TeamPageClient({ initialUsers }: Props) {
             <option value="never">Never seen here</option>
           </select>
           {filtered && (
-            <button type="button" onClick={() => setFilters(NO_FILTERS)} className="px-3 py-2 text-sm text-indigo-700 underline">Clear</button>
+            <button
+              type="button"
+              onClick={() => setFilters(NO_FILTERS)}
+              className="px-3 py-2 text-sm text-indigo-700 underline"
+            >
+              Clear
+            </button>
           )}
-          <button type="button" onClick={() => setAdding(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          >
             Add member
           </button>
         </div>
@@ -130,16 +193,27 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 {COLUMNS.map(column => {
                   const active = sort?.key === column.key
                   return (
-                    <th key={column.key} scope="col" title={column.title}
+                    <th
+                      key={column.key}
+                      scope="col"
+                      title={column.title}
                       aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-                      <button type="button" onClick={() => setSort(s => nextSort(s, column.key))} className="uppercase hover:text-gray-800">
-                        {column.label}{active ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSort(s => nextSort(s, column.key))}
+                        className="uppercase hover:text-gray-800"
+                      >
+                        {column.label}
+                        {active ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}
                       </button>
                     </th>
                   )
                 })}
-                <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-4 py-3">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-900">
@@ -147,24 +221,44 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 <tr key={m.id} className={`hover:bg-gray-50 ${m.status === 'suspended' ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-3">
                     {m.username}
-                    {m.status === 'suspended' && <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs">removed</span>}
-                    {m.mustResetPassword && m.status === 'active' && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-xs">must reset</span>}
+                    {m.status === 'suspended' && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs">removed</span>
+                    )}
+                    {m.mustResetPassword && m.status === 'active' && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-xs">must reset</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">{m.name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{m.email}</td>
                   <td className="px-4 py-3 capitalize">{m.role}</td>
-                  <td className="px-4 py-3 text-gray-600">{m.supervisor ? m.supervisor.name || m.supervisor.email : '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {m.supervisor ? m.supervisor.name || m.supervisor.email : '—'}
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{m.labellers.length || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{m._count.assignedSentences}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastSeenAt ?? undefined}>{m.lastSeenAt ? formatRelativeTime(m.lastSeenAt) : 'Never'}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastLogin ?? undefined}>{m.lastLogin ? formatRelativeTime(m.lastLogin) : 'Never'}</td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastSeenAt ?? undefined}>
+                    {m.lastSeenAt ? formatRelativeTime(m.lastSeenAt) : 'Never'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap" title={m.lastLogin ?? undefined}>
+                    {m.lastLogin ? formatRelativeTime(m.lastLogin) : 'Never'}
+                  </td>
                   <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => setSelectedId(m.id)} className="text-indigo-600 hover:text-indigo-700">Open</button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(m.id)}
+                      className="text-indigo-600 hover:text-indigo-700"
+                    >
+                      Open
+                    </button>
                   </td>
                 </tr>
               ))}
               {shown.length === 0 && (
-                <tr><td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-gray-500">No members match these filters.</td></tr>
+                <tr>
+                  <td colSpan={COLUMNS.length + 1} className="px-4 py-8 text-center text-gray-500">
+                    No members match these filters.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

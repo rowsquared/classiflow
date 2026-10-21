@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import PageHeader from '@/components/PageHeader'
@@ -154,7 +154,7 @@ export default function QueuePageClient({
   const [searchQuery, setSearchQuery] = useState('')
   const [bulkLabelOpen, setBulkLabelOpen] = useState(false)
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
-  
+
   // Data State
   const [queue, setQueue] = useState<QueueResponse | null>(initialQueue)
   const [stats, setStats] = useState<Stats>(initialStats)
@@ -170,43 +170,41 @@ export default function QueuePageClient({
   const skipInitialQueueFetch = useRef(initialQueue !== null)
   const skipInitialStatsFetch = useRef(initialStatsPrefetched)
   const [sendingToAI, setSendingToAI] = useState(false)
-  
+
   // Filter & Pagination State
   const [filters, setFilters] = useState<QueueFilters>(DEFAULT_FILTERS)
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(100)
-  
+
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  
+
   // Auto-refresh State
   const [lastRefresh, setLastRefresh] = useState(() => Date.now())
-  
+
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastIdCounter = useRef(0)
-  
+
   const addToast = useCallback((type: Toast['type'], message: string, duration?: number) => {
     const id = `toast-${toastIdCounter.current++}`
     setToasts(prev => [...prev, { id, type, message, duration }])
   }, [])
-  
+
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
-  
-  
 
   // Fetch stats with current filters applied
   const fetchStats = useCallback(async () => {
     const request = statsRequest.current.start()
     try {
       const params = new URLSearchParams()
-      
+
       // Add search query
       if (searchQuery) params.set('q', searchQuery)
-      
+
       // Add filters (same logic as fetchQueue)
       if (filters.status.length > 0) {
         filters.status.forEach(s => params.append('status', s))
@@ -230,12 +228,12 @@ export default function QueuePageClient({
       if (filters.flagged !== null) params.set('flagged', String(filters.flagged))
       if (filters.hasComments !== null) params.set('hasComments', String(filters.hasComments))
       if (filters.importId) params.set('importId', filters.importId)
-      
+
       // Support filters
       Object.entries(filters.supportFilters).forEach(([key, value]) => {
         if (value) params.set(key, value)
       })
-      
+
       const res = await fetch(workspaceApi(`/sentences/stats?${params}`), { signal: request.signal })
       const data = res.ok ? await res.json() : null
       if (!request.isCurrent()) return
@@ -266,20 +264,20 @@ export default function QueuePageClient({
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      
+
       // Search
       if (searchQuery) params.set('q', searchQuery)
-      
+
       // Tab-based status filter
       if (activeTab !== 'all') {
         params.set('status', activeTab)
       }
-      
+
       // Additional status filters from filter panel
       if (filters.status.length > 0 && activeTab === 'all') {
         params.set('status', filters.status.join(','))
       }
-      
+
       // Other filters
       if (filters.userId) params.set('userId', filters.userId)
       if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
@@ -300,12 +298,12 @@ export default function QueuePageClient({
       if (filters.flagged !== null) params.set('flagged', String(filters.flagged))
       if (filters.hasComments !== null) params.set('hasComments', String(filters.hasComments))
       if (filters.importId) params.set('importId', filters.importId)
-      
+
       // Support filters
       Object.entries(filters.supportFilters).forEach(([key, value]) => {
         if (value) params.set(key, value)
       })
-      
+
       // Pagination
       params.set('page', String(page))
       params.set('limit', String(pageSize))
@@ -431,8 +429,6 @@ export default function QueuePageClient({
     await fetchStats()
   }
 
-
-
   // Handle page size change
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize)
@@ -444,13 +440,9 @@ export default function QueuePageClient({
   const isAdmin = currentUser?.role === 'admin'
   const activeTaxonomies = taxonomies.filter(t => t.isActive !== false)
   // A taxonomy is synced once its last AI sync completed
-  const syncedTaxonomies = activeTaxonomies.filter(t => 
-    t.lastAISyncStatus === 'completed'
-  )
+  const syncedTaxonomies = activeTaxonomies.filter(t => t.lastAISyncStatus === 'completed')
   // Show all taxonomies that are not successfully synced
-  const unsyncedTaxonomies = activeTaxonomies.filter(t => 
-    t.lastAISyncStatus !== 'completed'
-  )
+  const unsyncedTaxonomies = activeTaxonomies.filter(t => t.lastAISyncStatus !== 'completed')
 
   const handleSendSelectedToAI = async () => {
     if (selectedIds.size === 0) {
@@ -463,9 +455,7 @@ export default function QueuePageClient({
       return
     }
 
-    const unsyncedTaxonomies = activeTaxonomies.filter(t =>
-      t.lastAISyncStatus !== 'completed'
-    )
+    const unsyncedTaxonomies = activeTaxonomies.filter(t => t.lastAISyncStatus !== 'completed')
     if (unsyncedTaxonomies.length > 0) {
       const names = unsyncedTaxonomies.map(t => t.key).join(', ')
       addToast('error', `Sync required before sending to AI: ${names}`)
@@ -479,7 +469,7 @@ export default function QueuePageClient({
 
       // Fire all taxonomy jobs concurrently — server splits into batches
       const results = await Promise.allSettled(
-        syncedTaxonomies.map(async (taxonomy) => {
+        syncedTaxonomies.map(async taxonomy => {
           const res = await fetch(workspaceApi('/ai-labeling/jobs'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -505,7 +495,11 @@ export default function QueuePageClient({
           (sum, r) => sum + (r as PromiseFulfilledResult<{ totalJobs: number }>).value.totalJobs,
           0
         )
-        addToast('info', `Created ${totalJobs} AI job${totalJobs !== 1 ? 's' : ''} — track progress in the badge above.`, 5000)
+        addToast(
+          'info',
+          `Created ${totalJobs} AI job${totalJobs !== 1 ? 's' : ''} — track progress in the badge above.`,
+          5000
+        )
       }
 
       if (failed.length > 0) {
@@ -523,8 +517,6 @@ export default function QueuePageClient({
       setSendingToAI(false)
     }
   }
-  
-  
 
   const showStatusColumn = activeTab === 'all'
   const contentWidthClass = showStatusColumn ? 'w-[40%]' : 'w-[45%]'
@@ -533,9 +525,7 @@ export default function QueuePageClient({
   return (
     <>
       <ToastContainer toasts={toasts} onClose={removeToast} />
-      <PageHeader 
-        title="Queue"
-      />
+      <PageHeader title="Queue" />
 
       <div className="flex h-[calc(100vh-66px)]">
         {/* Filter Panel */}
@@ -591,7 +581,10 @@ export default function QueuePageClient({
           {/* Table */}
           <div className={`flex-1 overflow-auto ${someSelected ? 'pb-20' : ''}`}>
             {queueError && (
-              <div role="alert" className="m-4 flex items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <div
+                role="alert"
+                className="m-4 flex items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+              >
                 <span>{queueError}</span>
                 <button
                   type="button"
@@ -618,18 +611,22 @@ export default function QueuePageClient({
                   <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                     <tr>
                       <th className="pl-4 pr-2 py-3 text-left w-12">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  aria-label="Select all records on this page"
-                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
-                />
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={e => handleSelectAll(e.target.checked)}
+                          aria-label="Select all records on this page"
+                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                        />
                       </th>
-                      <th className={`pl-0 pr-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${contentWidthClass}`}>
+                      <th
+                        className={`pl-0 pr-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${contentWidthClass}`}
+                      >
                         <span className="block pl-7">Content</span>
                       </th>
-                      <th className={`px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${labelWidthClass}`}>
+                      <th
+                        className={`px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${labelWidthClass}`}
+                      >
                         Labels
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -638,7 +635,7 @@ export default function QueuePageClient({
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         Editor
                       </th>
-                    {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
+                      {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                           Assigned
                         </th>
@@ -656,7 +653,7 @@ export default function QueuePageClient({
                         key={sentence.id}
                         sentence={sentence}
                         selected={selectedIds.has(sentence.id)}
-                        onSelect={(checked) => handleSelect(sentence.id, checked)}
+                        onSelect={checked => handleSelect(sentence.id, checked)}
                         showAssignedTo={currentUser?.role === 'admin' || currentUser?.role === 'supervisor'}
                         showStatus={showStatusColumn}
                         contentWidthClass={contentWidthClass}
@@ -699,7 +696,12 @@ export default function QueuePageClient({
                     title="Apply the same label to all selected sentences"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                      />
                     </svg>
                     Bulk Label
                   </button>
@@ -710,7 +712,12 @@ export default function QueuePageClient({
                       title="Manage user assignments for selected sentences"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                        />
                       </svg>
                       Assign / Unassign
                     </button>
@@ -732,7 +739,12 @@ export default function QueuePageClient({
                             : 'Send selected sentences to AI for all active taxonomies'
                         }
                       >
-                        <svg className="w-4 h-4" viewBox="0 0 12 12" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <svg
+                          className="w-4 h-4"
+                          viewBox="0 0 12 12"
+                          fill="currentColor"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
                           <path d="M11.787 6.654l-2.895-1.03-1.081-3.403A.324.324 0 007.5 2c-.143 0-.27.09-.311.221l-1.08 3.404-2.897 1.03A.313.313 0 003 6.946c0 .13.085.248.212.293l2.894 1.03 1.082 3.507A.324.324 0 007.5 12c.144 0 .271-.09.312-.224L8.893 8.27l2.895-1.029A.313.313 0 0012 6.947a.314.314 0 00-.213-.293zM4.448 1.77l-1.05-.39-.39-1.05a.444.444 0 00-.833 0l-.39 1.05-1.05.39a.445.445 0 000 .833l1.05.389.39 1.051a.445.445 0 00.833 0l.39-1.051 1.05-.389a.445.445 0 000-.834z" />
                         </svg>
                         {sendingToAI ? 'Sending…' : 'Send to AI'}
@@ -757,7 +769,7 @@ export default function QueuePageClient({
         </div>
       </div>
 
-    {/* Bulk Label Panel */}
+      {/* Bulk Label Panel */}
       {bulkLabelOpen && (
         <BulkLabelPanel
           sentenceIds={Array.from(selectedIds)}

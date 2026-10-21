@@ -3,7 +3,9 @@ import { passwordProblem } from './password-policy'
 
 describe('passwordProblem', () => {
   it('accepts a long, unrelated password', () => {
-    expect(passwordProblem('correct horse battery', { username: 'maria', email: 'maria@x.org', name: 'Maria Rossi' })).toBeNull()
+    expect(
+      passwordProblem('correct horse battery', { username: 'maria', email: 'maria@x.org', name: 'Maria Rossi' })
+    ).toBeNull()
   })
 
   it('enforces the length limits', () => {

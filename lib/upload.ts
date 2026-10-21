@@ -6,9 +6,7 @@
  */
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
-export type UploadResult =
-  | { ok: true; name: string; text: string }
-  | { ok: false; error: string }
+export type UploadResult = { ok: true; name: string; text: string } | { ok: false; error: string }
 
 export async function readUpload(entry: FormDataEntryValue | null): Promise<UploadResult> {
   if (!entry || typeof entry === 'string') {

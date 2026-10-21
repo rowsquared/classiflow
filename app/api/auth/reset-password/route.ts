@@ -20,14 +20,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { currentPassword, newPassword } = resetPasswordSchema.parse(body)
 
-    if (!await checkPassword(prisma, currentUser.id, currentPassword)) {
+    if (!(await checkPassword(prisma, currentUser.id, currentPassword))) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
     }
     const weak = passwordProblem(newPassword, session.user)
     if (weak) return NextResponse.json({ error: weak, field: 'newPassword' }, { status: 400 })
     // Otherwise the forced change could be satisfied with the handed-out password.
     if (newPassword === currentPassword) {
-      return NextResponse.json({ error: 'Choose a password different from the current one', field: 'newPassword' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Choose a password different from the current one', field: 'newPassword' },
+        { status: 400 }
+      )
     }
 
     // New password, reset flag cleared, and every other session signed out;
@@ -38,7 +41,12 @@ export async function POST(req: NextRequest) {
       await revokeSessions(tx, currentUser.id, session.session.id)
     })
 
-    await audit({ actorId: currentUser.id, action: 'user.password_changed', entityType: 'user', entityId: currentUser.id })
+    await audit({
+      actorId: currentUser.id,
+      action: 'user.password_changed',
+      entityType: 'user',
+      entityId: currentUser.id
+    })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Password reset error:', error)

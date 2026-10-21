@@ -16,7 +16,7 @@ export function createLatestRequest() {
     cancel() {
       current?.abort()
       current = null
-    },
+    }
   }
 }
 

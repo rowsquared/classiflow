@@ -12,7 +12,7 @@ describe('parseTaxonomyCsv', () => {
     expect(nodes.map(n => [n.code, n.parentCode, n.level, n.isLeaf, n.path])).toEqual([
       ['01', null, 1, false, '01'],
       ['011', '01', 2, true, '01.011'],
-      ['02', null, 1, true, '02'],
+      ['02', null, 1, true, '02']
     ])
     expect(nodes[0].synonyms).toEqual(['a', 'b'])
     expect(nodes[1].synonyms).toEqual(['c', 'd'])
@@ -34,7 +34,7 @@ describe('parseTaxonomyCsv', () => {
       '5:Empty id value',
       '6:Empty label value',
       '7:level must be a whole number from 1 to 5 (got "x")',
-      '8:level must be a whole number from 1 to 5 (got "6")',
+      '8:level must be a whole number from 1 to 5 (got "6")'
     ])
   })
 
@@ -47,13 +47,14 @@ describe('parseTaxonomyCsv', () => {
       '5:level 1 rows must have an empty parent_id',
       '6:level 2 rows need a parent_id',
       '7:parent_id "y" is at level 2; a level 2 row needs a level 1 parent',
-      '8:parent_id "x" is at level 2; a level 2 row needs a level 1 parent',
+      '8:parent_id "x" is at level 2; a level 2 row needs a level 1 parent'
     ])
   })
 
   it('respects the taxonomy depth', () => {
-    expect(parseTaxonomyCsv([HEAD, '1,A,,1', '11,B,1,2'].join('\n'), { maxDepth: 1 }).errors[0].message)
-      .toMatch(/from 1 to 1/)
+    expect(parseTaxonomyCsv([HEAD, '1,A,,1', '11,B,1,2'].join('\n'), { maxDepth: 1 }).errors[0].message).toMatch(
+      /from 1 to 1/
+    )
   })
 
   it('incremental import: parents may already exist, ids may not', () => {

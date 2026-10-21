@@ -10,20 +10,18 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
     where: { workspaceId },
     include: {
       _count: {
-        select: { 
+        select: {
           nodes: true,
           annotations: true
         }
       }
     },
-    orderBy: [
-      { createdAt: 'desc' }
-    ]
+    orderBy: [{ createdAt: 'desc' }]
   })
 
   // Add computed statistics
   const taxonomiesWithStats = await Promise.all(
-    taxonomies.map(async (taxonomy) => {
+    taxonomies.map(async taxonomy => {
       // Get actual max level from nodes
       const maxLevelNode = await db().taxonomyNode.findFirst({
         where: { taxonomyId: taxonomy.id },
@@ -42,7 +40,7 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
       const levelCounts = nodeCounts.map(lc => ({
         level: lc.level,
         count: lc._count,
-        name: taxonomy.levelNames 
+        name: taxonomy.levelNames
           ? (taxonomy.levelNames as Record<string, string>)[lc.level.toString()] || `Level ${lc.level}`
           : `Level ${lc.level}`
       }))
@@ -61,7 +59,7 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
   return {
     ok: true as const,
     learningThreshold: parseInt(process.env.AI_LEARNING_MIN_NEW_ANNOTATIONS || '500', 10),
-    taxonomies: taxonomiesWithStats,
+    taxonomies: taxonomiesWithStats
   }
 }
 

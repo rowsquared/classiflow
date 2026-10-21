@@ -15,7 +15,9 @@ export default async function WorkspacesPage() {
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
           {user.platformRole === 'admin' && (
-            <Link href="/accounts" className="text-sm text-indigo-600 hover:text-indigo-700">Manage accounts</Link>
+            <Link href="/accounts" className="text-sm text-indigo-600 hover:text-indigo-700">
+              Manage accounts
+            </Link>
           )}
         </div>
         <p className="text-sm text-gray-600 mb-8">
@@ -37,7 +39,8 @@ export default async function WorkspacesPage() {
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-medium text-gray-900">{w.name}</span>
                     <span className="text-xs text-gray-600">
-                      {w.role}{w.authority === 'platform' ? ' (platform admin)' : ''}
+                      {w.role}
+                      {w.authority === 'platform' ? ' (platform admin)' : ''}
                       {w.status === 'archived' ? ' · archived' : ''}
                     </span>
                   </div>

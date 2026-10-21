@@ -15,7 +15,9 @@ export async function listAIJobs(workspaceId: string, { statusParams, page, limi
   // Always ensure statusFilter has valid values
   let statusFilter: { in: z.infer<typeof statusSchema>[] }
   if (statusParams.length > 0) {
-    const validStatuses = statusParams.filter((s): s is z.infer<typeof statusSchema> => statusSchema.safeParse(s).success)
+    const validStatuses = statusParams.filter(
+      (s): s is z.infer<typeof statusSchema> => statusSchema.safeParse(s).success
+    )
     if (validStatuses.length > 0) {
       statusFilter = { in: validStatuses }
     } else {
@@ -52,15 +54,22 @@ export async function listAIJobs(workspaceId: string, { statusParams, page, limi
         lastAISyncStatus: statusParams.length > 0 ? { in: statusParams } : { not: null }
       },
       select: {
-        id: true, key: true,
-        lastAISyncJobId: true, lastAISyncStatus: true,
-        lastAISyncAt: true, lastAISyncError: true, updatedAt: true
+        id: true,
+        key: true,
+        lastAISyncJobId: true,
+        lastAISyncStatus: true,
+        lastAISyncAt: true,
+        lastAISyncError: true,
+        updatedAt: true
       },
       orderBy: { updatedAt: 'desc' }
     })
   ])
 
-  const formatSentenceJob = (job: typeof labelingJobs[0] | typeof learningJobs[0], type: 'labeling' | 'learning') => ({
+  const formatSentenceJob = (
+    job: (typeof labelingJobs)[0] | (typeof learningJobs)[0],
+    type: 'labeling' | 'learning'
+  ) => ({
     id: job.id,
     type,
     status: job.status,
@@ -84,7 +93,12 @@ export async function listAIJobs(workspaceId: string, { statusParams, page, limi
       status: taxonomy.lastAISyncStatus || 'pending',
       taxonomy: taxonomy.key,
       startedAt: taxonomy.lastAISyncAt?.toISOString() || taxonomy.updatedAt.toISOString(),
-      completedAt: taxonomy.lastAISyncStatus === 'completed' || taxonomy.lastAISyncStatus === 'failed' || taxonomy.lastAISyncStatus === 'cancelled' ? (taxonomy.lastAISyncAt?.toISOString() || taxonomy.updatedAt.toISOString()) : null,
+      completedAt:
+        taxonomy.lastAISyncStatus === 'completed' ||
+        taxonomy.lastAISyncStatus === 'failed' ||
+        taxonomy.lastAISyncStatus === 'cancelled'
+          ? taxonomy.lastAISyncAt?.toISOString() || taxonomy.updatedAt.toISOString()
+          : null,
       errorMessage: taxonomy.lastAISyncError,
       createdBy: null
     }))

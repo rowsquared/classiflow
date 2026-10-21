@@ -22,8 +22,8 @@ export async function createTaxonomyNodes(
         definition: n.definition,
         examples: n.examples,
         path: n.path,
-        isLeaf: n.isLeaf,
-      })),
+        isLeaf: n.isLeaf
+      }))
     })
   }
 
@@ -33,15 +33,17 @@ export async function createTaxonomyNodes(
   // Synonyms link by node id, which only exists after the insert.
   const created = await tx.taxonomyNode.findMany({
     where: { taxonomyId, code: { in: withSynonyms.map(n => n.code) } },
-    select: { id: true, code: true },
+    select: { id: true, code: true }
   })
   const idByCode = new Map(created.map(n => [n.code, n.id]))
-  const synonyms = withSynonyms.flatMap(n => n.synonyms.map(synonym => ({
-    workspaceId,
-    taxonomyId,
-    nodeId: idByCode.get(n.code)!,
-    synonym,
-  })))
+  const synonyms = withSynonyms.flatMap(n =>
+    n.synonyms.map(synonym => ({
+      workspaceId,
+      taxonomyId,
+      nodeId: idByCode.get(n.code)!,
+      synonym
+    }))
+  )
   for (let i = 0; i < synonyms.length; i += BATCH_SIZE) {
     await tx.taxonomySynonym.createMany({ data: synonyms.slice(i, i + BATCH_SIZE) })
   }

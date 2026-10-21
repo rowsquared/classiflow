@@ -41,11 +41,22 @@ type FieldSlots = Record<`field${1 | 2 | 3 | 4 | 5}` | `support${1 | 2 | 3 | 4 |
 /** Pages through the matching records in export order. */
 async function* pages<T extends { id: string }>(
   where: Prisma.SentenceWhereInput,
-  read: (args: { where: Prisma.SentenceWhereInput; orderBy: typeof ORDER; take: number; cursor?: { id: string }; skip?: number }) => Promise<T[]>
+  read: (args: {
+    where: Prisma.SentenceWhereInput
+    orderBy: typeof ORDER
+    take: number
+    cursor?: { id: string }
+    skip?: number
+  }) => Promise<T[]>
 ): AsyncGenerator<T[]> {
   let cursor: string | null = null
   while (true) {
-    const batch = await read({ where, orderBy: ORDER, take: BATCH_SIZE, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) })
+    const batch = await read({
+      where,
+      orderBy: ORDER,
+      take: BATCH_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+    })
     if (batch.length === 0) return
     yield batch
     if (batch.length < BATCH_SIZE) return
@@ -54,7 +65,10 @@ async function* pages<T extends { id: string }>(
 }
 
 const slotSelect = Object.fromEntries(
-  SLOTS.flatMap(i => [[`field${i}`, true], [`support${i}`, true]])
+  SLOTS.flatMap(i => [
+    [`field${i}`, true],
+    [`support${i}`, true]
+  ])
 ) as Record<keyof FieldSlots, true>
 
 type ColumnPlan = {
@@ -74,9 +88,14 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
       list.push(name)
     }
   }
-  for await (const batch of pages(where, args => scoped(scope, () => db().sentence.findMany({
-    ...args, select: { id: true, fieldMapping: true, supportMapping: true, ...slotSelect },
-  })))) {
+  for await (const batch of pages(where, args =>
+    scoped(scope, () =>
+      db().sentence.findMany({
+        ...args,
+        select: { id: true, fieldMapping: true, supportMapping: true, ...slotSelect }
+      })
+    )
+  )) {
     for (const s of batch) {
       const fieldMapping = (s.fieldMapping ?? {}) as Mapping
       const supportMapping = (s.supportMapping ?? {}) as Mapping
@@ -87,14 +106,18 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
     }
   }
 
-  const taxonomies = (await scoped(scope, () => db().taxonomy.findMany({
-    where: {
-      workspaceId: scope.workspaceId,
-      OR: [{ annotations: { some: { sentence: where } } }, { aiSuggestions: { some: { sentence: where } } }],
-    },
-    select: { id: true, key: true, maxDepth: true },
-    orderBy: { key: 'asc' },
-  }))).map(t => ({ ...t, maxDepth: t.maxDepth || 5 }))
+  const taxonomies = (
+    await scoped(scope, () =>
+      db().taxonomy.findMany({
+        where: {
+          workspaceId: scope.workspaceId,
+          OR: [{ annotations: { some: { sentence: where } } }, { aiSuggestions: { some: { sentence: where } } }]
+        },
+        select: { id: true, key: true, maxDepth: true },
+        orderBy: { key: 'asc' }
+      })
+    )
+  ).map(t => ({ ...t, maxDepth: t.maxDepth || 5 }))
 
   const text = (header: string) => ({ header, text: true })
   const plain = (header: string) => ({ header })
@@ -103,8 +126,14 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
     ...fields.map(text),
     ...supports.map(text),
     ...taxonomies.flatMap(t => Array.from({ length: t.maxDepth }, (_, l) => plain(`${t.key}_${l + 1}`))),
-    ...taxonomies.flatMap(t => Array.from({ length: t.maxDepth }, (_, l) => [plain(`${t.key}_ai${l + 1}`), plain(`${t.key}_ai${l + 1}c`)]).flat()),
-    plain('status'), plain('flagged'), text('last_editor'), plain('last_edited'), text('comments'),
+    ...taxonomies.flatMap(t =>
+      Array.from({ length: t.maxDepth }, (_, l) => [plain(`${t.key}_ai${l + 1}`), plain(`${t.key}_ai${l + 1}c`)]).flat()
+    ),
+    plain('status'),
+    plain('flagged'),
+    text('last_editor'),
+    plain('last_edited'),
+    text('comments')
   ]
   return { columns, fields, supports, taxonomies }
 }
@@ -118,8 +147,8 @@ async function readRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'sel
       annotations: { where: { source: 'user' }, select: { taxonomyId: true, level: true, nodeCode: true } },
       aiSuggestions: { select: { taxonomyId: true, level: true, nodeCode: true, confidenceScore: true } },
       comments: { select: { body: true, author: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
-      lastEditor: { select: { name: true } },
-    },
+      lastEditor: { select: { name: true } }
+    }
   })
 }
 
@@ -154,7 +183,7 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
     s.flagged ? 'true' : 'false',
     s.lastEditor?.name || '',
     s.lastEditedAt ? s.lastEditedAt.toISOString() : '',
-    s.comments.map(c => `[${c.author.name || 'Unknown'}]: ${c.body}`).join(' | '),
+    s.comments.map(c => `[${c.author.name || 'Unknown'}]: ${c.body}`).join(' | ')
   )
   return row
 }
@@ -176,7 +205,15 @@ export async function exportStream(
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode(csvLine(plan.columns, plan.columns.map(c => c.header), { neutralizeFormulas: false })))
+      controller.enqueue(
+        encoder.encode(
+          csvLine(
+            plan.columns,
+            plan.columns.map(c => c.header),
+            { neutralizeFormulas: false }
+          )
+        )
+      )
     },
     async pull(controller) {
       try {
@@ -196,6 +233,6 @@ export async function exportStream(
     },
     async cancel() {
       await iterator.return(undefined)
-    },
+    }
   })
 }

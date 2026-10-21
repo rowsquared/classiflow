@@ -11,10 +11,14 @@ import { passwordProblem } from '@/lib/password-policy'
 
 const createSchema = z.object({
   username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen'),
-  email: z.string().email().max(254).transform(e => e.toLowerCase()),
+  email: z
+    .string()
+    .email()
+    .max(254)
+    .transform(e => e.toLowerCase()),
   name: z.string().min(1).max(200),
   platformRole: z.enum(['admin', 'user']).default('user'),
-  tempPassword: z.string().max(256),
+  tempPassword: z.string().max(256)
 })
 
 export async function GET() {
@@ -23,17 +27,24 @@ export async function GET() {
 
   const users = await prisma.user.findMany({
     select: {
-      id: true, username: true, email: true, name: true, role: true, banned: true,
-      mustResetPassword: true, lastLogin: true, createdAt: true,
+      id: true,
+      username: true,
+      email: true,
+      name: true,
+      role: true,
+      banned: true,
+      mustResetPassword: true,
+      lastLogin: true,
+      createdAt: true,
       memberships: {
         select: { role: true, status: true, workspace: { select: { id: true, name: true } } },
-        orderBy: { workspace: { name: 'asc' } },
-      },
+        orderBy: { workspace: { name: 'asc' } }
+      }
     },
-    orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    orderBy: [{ role: 'asc' }, { name: 'asc' }]
   })
   return NextResponse.json({
-    users: users.map(({ role, ...u }) => ({ ...u, platformRole: role })),
+    users: users.map(({ role, ...u }) => ({ ...u, platformRole: role }))
   })
 }
 
@@ -53,19 +64,26 @@ export async function POST(req: Request) {
 
   const taken = await prisma.user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
   if (taken) {
-    return NextResponse.json({ error: taken.username === username ? 'Username already in use' : 'Email already in use' }, { status: 400 })
+    return NextResponse.json(
+      { error: taken.username === username ? 'Username already in use' : 'Email already in use' },
+      { status: 400 }
+    )
   }
   const user = await prisma.$transaction(async tx => {
     const created = await tx.user.create({
       data: { username, displayUsername, email, name, role: platformRole, mustResetPassword: true },
-      select: { id: true, username: true, email: true, name: true, role: true, createdAt: true },
+      select: { id: true, username: true, email: true, name: true, role: true, createdAt: true }
     })
     await setPassword(tx, created.id, tempPassword)
     return created
   })
   await audit({
-    workspaceId: null, actorId: actor.id, action: 'user.created', entityType: 'user', entityId: user.id,
-    payload: { username, platformRole },
+    workspaceId: null,
+    actorId: actor.id,
+    action: 'user.created',
+    entityType: 'user',
+    entityId: user.id,
+    payload: { username, platformRole }
   })
   return NextResponse.json({ user }, { status: 201 })
 }

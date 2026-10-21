@@ -17,7 +17,7 @@ const updateSchema = z.object({
   newPassword: z.string().max(256).optional(),
   banned: z.boolean().optional(),
   // Sign the account out everywhere without other changes.
-  revokeSessions: z.literal(true).optional(),
+  revokeSessions: z.literal(true).optional()
 })
 
 type Params = { params: Promise<{ userId: string }> }
@@ -33,7 +33,10 @@ export async function PUT(req: Request, { params }: Params) {
   }
   const { name, platformRole, newPassword, banned, revokeSessions: signOutEverywhere } = parsed.data
   if (newPassword) {
-    const account = await prisma.user.findUnique({ where: { id: userId }, select: { username: true, email: true, name: true } })
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, email: true, name: true }
+    })
     const weak = account && passwordProblem(newPassword, { ...account, name: name ?? account.name })
     if (weak) return NextResponse.json({ error: `New password: ${weak}`, field: 'newPassword' }, { status: 400 })
   }
@@ -46,7 +49,7 @@ export async function PUT(req: Request, { params }: Params) {
     const existing = await tx.user.findUnique({ where: { id: userId }, select: { role: true } })
     if (!existing) return { status: 404 as const }
     const losesAdmin = existing.role === 'admin' && (platformRole === 'user' || banned === true)
-    if (losesAdmin && await isLastPlatformAdmin(userId, tx)) return { status: 400 as const }
+    if (losesAdmin && (await isLastPlatformAdmin(userId, tx))) return { status: 400 as const }
 
     await tx.user.update({
       where: { id: userId },
@@ -55,8 +58,8 @@ export async function PUT(req: Request, { params }: Params) {
         ...(platformRole !== undefined ? { role: platformRole } : {}),
         ...(banned !== undefined ? { banned, banReason: banned ? 'Suspended by a platform admin' : null } : {}),
         // An admin-set password is temporary and ends every session.
-        ...(newPassword ? { mustResetPassword: true } : {}),
-      },
+        ...(newPassword ? { mustResetPassword: true } : {})
+      }
     })
     if (newPassword) await setPassword(tx, userId, newPassword)
     if (newPassword || banned || signOutEverywhere) await revokeSessions(tx, userId)
@@ -68,14 +71,23 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   await audit({
-    workspaceId: null, actorId: actor.id,
-    action: signOutEverywhere && !name && !platformRole && !newPassword && banned === undefined ? 'user.sessions_revoked' : 'user.updated',
-    entityType: 'user', entityId: userId,
+    workspaceId: null,
+    actorId: actor.id,
+    action:
+      signOutEverywhere && !name && !platformRole && !newPassword && banned === undefined
+        ? 'user.sessions_revoked'
+        : 'user.updated',
+    entityType: 'user',
+    entityId: userId,
     payload: {
-      fields: Object.entries({ name, platformRole, banned }).filter(([, v]) => v !== undefined).map(([k]) => k),
-      ...(platformRole && platformRole !== result.from ? { platformRole: { from: result.from, to: platformRole } } : {}),
-      ...(newPassword ? { passwordReset: true } : {}),
-    },
+      fields: Object.entries({ name, platformRole, banned })
+        .filter(([, v]) => v !== undefined)
+        .map(([k]) => k),
+      ...(platformRole && platformRole !== result.from
+        ? { platformRole: { from: result.from, to: platformRole } }
+        : {}),
+      ...(newPassword ? { passwordReset: true } : {})
+    }
   })
   return NextResponse.json({ ok: true })
 }
@@ -93,27 +105,36 @@ export async function DELETE(_req: Request, { params }: Params) {
       await lockPlatformAdmins(tx)
       const target = await tx.user.findUnique({ where: { id: userId }, select: { role: true } })
       if (!target) return null
-      if (target.role === 'admin' && await isLastPlatformAdmin(userId, tx)) return 'last-admin' as const
+      if (target.role === 'admin' && (await isLastPlatformAdmin(userId, tx))) return 'last-admin' as const
       // Memberships and sessions go with the account; labels, imports and edit
       // markers keep their data without the author. Comments and AI jobs keep
       // their author, so an account that has any cannot be deleted (below).
       return tx.user.delete({ where: { id: userId }, select: { username: true, role: true } })
     })
     if (!deleted) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    if (deleted === 'last-admin') return NextResponse.json({ error: 'Keep at least one platform admin' }, { status: 400 })
+    if (deleted === 'last-admin')
+      return NextResponse.json({ error: 'Keep at least one platform admin' }, { status: 400 })
     await audit({
-      workspaceId: null, actorId: actor.id, action: 'user.deleted', entityType: 'user', entityId: userId,
-      payload: { username: deleted.username, platformRole: deleted.role },
+      workspaceId: null,
+      actorId: actor.id,
+      action: 'user.deleted',
+      entityType: 'user',
+      entityId: userId,
+      payload: { username: deleted.username, platformRole: deleted.role }
     })
     return NextResponse.json({ ok: true })
   } catch (caught) {
     // Comments and AI jobs reference their author with a restricting foreign
     // key; the workspace tables are not readable here, so let the database say so.
     if (caught instanceof Prisma.PrismaClientKnownRequestError && caught.code === 'P2003') {
-      return NextResponse.json({
-        error: 'This account wrote comments or started AI jobs, which keep their author. ' +
-          'Ban it or remove it from its workspaces instead of deleting it.'
-      }, { status: 409 })
+      return NextResponse.json(
+        {
+          error:
+            'This account wrote comments or started AI jobs, which keep their author. ' +
+            'Ban it or remove it from its workspaces instead of deleting it.'
+        },
+        { status: 409 }
+      )
     }
     throw caught
   }

@@ -11,7 +11,7 @@ const POOL_SIZE = Number(process.env.DATABASE_POOL_SIZE) || 10
 
 export function createPrismaClient(connectionString = process.env.DATABASE_URL) {
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString, max: POOL_SIZE }),
+    adapter: new PrismaPg({ connectionString, max: POOL_SIZE })
   })
 }
 

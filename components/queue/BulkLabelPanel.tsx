@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect } from 'react'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '../TaxonomyBrowser'
@@ -42,11 +42,13 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
         if (!res.ok) throw new Error('Failed to fetch taxonomies')
         const data = await res.json()
         if (data.ok && data.taxonomies.length > 0) {
-          const loadedTaxonomies = data.taxonomies.map((t: { key: string; maxDepth?: number; levelNames?: Record<string, string> }) => ({
-            key: t.key,
-            maxDepth: t.maxDepth || 5,
-            levelNames: t.levelNames
-          }))
+          const loadedTaxonomies = data.taxonomies.map(
+            (t: { key: string; maxDepth?: number; levelNames?: Record<string, string> }) => ({
+              key: t.key,
+              maxDepth: t.maxDepth || 5,
+              levelNames: t.levelNames
+            })
+          )
           setTaxonomies(loadedTaxonomies)
           setActiveTaxonomyIndex(0) // Start with first taxonomy
         }
@@ -56,7 +58,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
     }
     loadTaxonomies()
   }, [])
-  
+
   // Handle taxonomy tab change
   const handleTaxonomyTabChange = (index: number) => {
     if (index < 0 || index >= taxonomies.length) return
@@ -84,12 +86,12 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   const handleUnknown = () => {
     // Mark current level as unknown, preserving lower level labels
     if (!activeTaxonomy) return
-    
+
     // Keep labels at levels below the current level
-    const lowerLevelLabels = selectedLabels.filter(l => 
-      l.taxonomyKey === activeTaxonomy.key && l.level < currentTaxonomyLevel
+    const lowerLevelLabels = selectedLabels.filter(
+      l => l.taxonomyKey === activeTaxonomy.key && l.level < currentTaxonomyLevel
     )
-    
+
     // Add unknown at the current level
     const unknownLabel: SelectedLabel = {
       level: currentTaxonomyLevel,
@@ -98,7 +100,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       label: 'Unknown',
       isLeaf: true
     }
-    
+
     // Combine: lower levels + unknown at current level
     setSelectedLabels([...lowerLevelLabels, unknownLabel])
   }
@@ -107,27 +109,29 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   const handleFlag = async () => {
     const newFlaggedState = !flagged
     setFlagged(newFlaggedState)
-    
+
     // Save flag state immediately for all sentences
     try {
-      const responses = await Promise.all(sentenceIds.map(id =>
-        fetch(workspaceApi(`/sentences/${id}/annotations`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'pending', // Keep current status
-            annotations: [],
-            flagged: newFlaggedState
+      const responses = await Promise.all(
+        sentenceIds.map(id =>
+          fetch(workspaceApi(`/sentences/${id}/annotations`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: 'pending', // Keep current status
+              annotations: [],
+              flagged: newFlaggedState
+            })
           })
-        })
-      ))
-      
+        )
+      )
+
       // Check if all requests succeeded
       const allSucceeded = responses.every(r => r.ok)
       if (!allSucceeded) {
         throw new Error('Some flag updates failed')
       }
-      
+
       // Refresh the queue to show updated flags
       if (onSuccess) {
         onSuccess()
@@ -142,7 +146,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   const handleSkip = async () => {
     try {
       setSubmitting(true)
-      
+
       // Update all sentences to skipped status
       // Note: flags and comments are already saved immediately when clicked/entered
       for (const id of sentenceIds) {
@@ -178,8 +182,8 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
       setSubmitting(true)
 
       // Prepare annotations (including unknown as -99)
-      const annotations = selectedLabels.map(l => ({ 
-        level: l.level, 
+      const annotations = selectedLabels.map(l => ({
+        level: l.level,
         nodeCode: l.nodeCode // -99 for unknown
       }))
 
@@ -195,11 +199,11 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
         taxonomyKey: activeTaxonomy.key,
         labelingStartedAt: labelingStartedAt.toISOString()
       }
-      
+
       if (annotations.length > 0) {
         payload.annotations = annotations
       }
-      
+
       const res = await fetch(workspaceApi('/sentences/bulk-label'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -229,7 +233,6 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
     }
   }
 
-
   if (taxonomies.length === 0) {
     return (
       <div {...dialog} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 focus:outline-none">
@@ -243,13 +246,14 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/10 z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/10 z-40" onClick={onClose} />
 
       {/* Slide-in Panel */}
-      <div {...dialog} className="fixed inset-y-0 right-0 z-50 flex focus:outline-none" style={{ width: '100vw', pointerEvents: 'none' }}>
+      <div
+        {...dialog}
+        className="fixed inset-y-0 right-0 z-50 flex focus:outline-none"
+        style={{ width: '100vw', pointerEvents: 'none' }}
+      >
         <div className="flex-1" style={{ pointerEvents: 'none' }} />
         <ResizablePanel
           defaultWidth={50}
@@ -263,17 +267,12 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Bulk Label
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900">Bulk Label</h2>
               <p className="text-sm text-gray-600 mt-1">
                 Labeling {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -305,7 +304,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
               </div>
             </div>
           )}
-          
+
           {/* Taxonomy Browser */}
           {activeTaxonomy && (
             <div
@@ -330,25 +329,31 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setShowCommentDialog(true)}
-                className={`${actionButtonBaseClass} ${
-                  comment ? commentActiveClasses : primaryActionClasses
-                }`}
+                className={`${actionButtonBaseClass} ${comment ? commentActiveClasses : primaryActionClasses}`}
                 title="Add Comment"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
                 </svg>
                 <span className="text-sm font-medium">Comment</span>
               </button>
               <button
                 onClick={handleFlag}
-                className={`${actionButtonBaseClass} ${
-                  flagged ? flagActiveClasses : primaryActionClasses
-                }`}
+                className={`${actionButtonBaseClass} ${flagged ? flagActiveClasses : primaryActionClasses}`}
                 title={flagged ? 'Unflag all selected sentences' : 'Flag all selected sentences'}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
+                  />
                 </svg>
                 <span className="text-sm font-medium">Flag</span>
               </button>
@@ -358,7 +363,12 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
                 title="Unknown"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 <span className="text-sm font-medium">Unknown</span>
               </button>
@@ -402,7 +412,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
             <h3 className="text-lg font-medium text-gray-900 mb-4">Add Comment</h3>
             <textarea
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              onChange={e => setComment(e.target.value)}
               placeholder="This comment will be added to all selected sentences..."
               className="w-full p-3 border border-gray-300 rounded-md h-32 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
@@ -418,20 +428,22 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess }: Bulk
                   if (comment.trim()) {
                     try {
                       // Save comment to all selected sentences immediately
-                      const responses = await Promise.all(sentenceIds.map(id =>
-                        fetch(workspaceApi(`/sentences/${id}/comments`), {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ body: comment.trim() })
-                        })
-                      ))
-                      
+                      const responses = await Promise.all(
+                        sentenceIds.map(id =>
+                          fetch(workspaceApi(`/sentences/${id}/comments`), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ body: comment.trim() })
+                          })
+                        )
+                      )
+
                       // Check if all requests succeeded
                       const allSucceeded = responses.every(r => r.ok)
                       if (!allSucceeded) {
                         throw new Error('Some comment saves failed')
                       }
-                      
+
                       // Refresh the queue to show updated comments
                       if (onSuccess) {
                         onSuccess()

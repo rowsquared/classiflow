@@ -14,7 +14,7 @@ export function formatFieldName(key: string): string {
  */
 export function formatRelativeTime(date: string | null): string {
   if (!date) return 'Never'
-  
+
   const now = new Date()
   const then = new Date(date)
   const diffMs = now.getTime() - then.getTime()
@@ -25,7 +25,7 @@ export function formatRelativeTime(date: string | null): string {
   const diffWeek = Math.floor(diffDay / 7)
   const diffMonth = Math.floor(diffDay / 30)
   const diffYear = Math.floor(diffDay / 365)
-  
+
   if (diffSec < 60) return 'Just now'
   if (diffMin < 60) return `${diffMin}m ago`
   if (diffHour < 24) return `${diffHour}h ago`

@@ -14,13 +14,15 @@ beforeAll(async () => {
   admin = await createUser('admin')
 })
 
-const membership = (user: User) => prisma.workspaceMembership.findUniqueOrThrow({
-  where: { workspaceId_userId: { workspaceId: wsId(), userId: user.id } },
-})
-const setLastSeen = (user: User, minutesAgo: number) => prisma.workspaceMembership.update({
-  where: { workspaceId_userId: { workspaceId: wsId(), userId: user.id } },
-  data: { lastSeenAt: new Date(Date.now() - minutesAgo * 60_000) },
-})
+const membership = (user: User) =>
+  prisma.workspaceMembership.findUniqueOrThrow({
+    where: { workspaceId_userId: { workspaceId: wsId(), userId: user.id } }
+  })
+const setLastSeen = (user: User, minutesAgo: number) =>
+  prisma.workspaceMembership.update({
+    where: { workspaceId_userId: { workspaceId: wsId(), userId: user.id } },
+    data: { lastSeenAt: new Date(Date.now() - minutesAgo * 60_000) }
+  })
 
 describe('last seen', () => {
   it('is written by a workspace request without touching updatedAt', async () => {

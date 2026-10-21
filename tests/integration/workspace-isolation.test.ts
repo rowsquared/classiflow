@@ -2,7 +2,15 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import type { Sentence, Taxonomy, User, Workspace } from '@/lib/generated/prisma/client'
 import { setWorkspaceStatus } from '@/lib/server/workspaces'
 import {
-  createSentences, createTaxonomy, createUser, createWorkspace, prisma, request, resetDatabase, signInAs, selectWorkspace,
+  createSentences,
+  createTaxonomy,
+  createUser,
+  createWorkspace,
+  prisma,
+  request,
+  resetDatabase,
+  signInAs,
+  selectWorkspace
 } from './helpers'
 
 import * as queueRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
@@ -19,8 +27,9 @@ let adminA: User, adminB: User, shared: User, platform: User
 let recordA: Sentence, recordB: Sentence
 let taxA: Taxonomy, taxB: Taxonomy
 
-const ctx = (workspace: Workspace, extra: Record<string, string> = {}) =>
-  ({ params: Promise.resolve({ workspaceId: workspace.id, ...extra }) })
+const ctx = (workspace: Workspace, extra: Record<string, string> = {}) => ({
+  params: Promise.resolve({ workspaceId: workspace.id, ...extra })
+})
 
 beforeAll(async () => {
   await resetDatabase()
@@ -54,7 +63,7 @@ describe('workspace isolation', () => {
     expect(JSON.stringify(await res.json())).not.toContain('A')
   })
 
-  it('lists only the workspace\'s own records and taxonomies', async () => {
+  it("lists only the workspace's own records and taxonomies", async () => {
     signInAs(adminA)
     const queue = await (await queueRoute.GET(request('/x'), ctx(a))).json()
     expect(queue.sentences.map((s: { id: string }) => s.id)).toEqual([recordA.id])
@@ -62,21 +71,30 @@ describe('workspace isolation', () => {
     expect(taxonomies.taxonomies.map((t: { id: string }) => t.id)).toEqual([taxA.id])
   })
 
-  it('refuses another workspace\'s record id even to that workspace\'s admin', async () => {
+  it("refuses another workspace's record id even to that workspace's admin", async () => {
     signInAs(adminA)
     expect((await detailRoute.GET(request('/x'), ctx(a, { sentenceId: recordB.id }))).status).toBe(403)
     const res = await commentsRoute.POST(
-      request('/x', { method: 'POST', body: { body: 'sneaky' } }), ctx(a, { sentenceId: recordB.id }))
+      request('/x', { method: 'POST', body: { body: 'sneaky' } }),
+      ctx(a, { sentenceId: recordB.id })
+    )
     expect(res.status).toBe(403)
     expect(await prisma.comment.count()).toBe(0)
   })
 
   it('refuses a bulk request that mixes workspaces as a whole', async () => {
     signInAs(adminA)
-    const res = await bulkRoute.POST(request('/x', {
-      method: 'POST',
-      body: { sentenceIds: [recordA.id, recordB.id], taxonomyKey: 'isco', annotations: [{ level: 1, nodeCode: '02' }] },
-    }), ctx(a))
+    const res = await bulkRoute.POST(
+      request('/x', {
+        method: 'POST',
+        body: {
+          sentenceIds: [recordA.id, recordB.id],
+          taxonomyKey: 'isco',
+          annotations: [{ level: 1, nodeCode: '02' }]
+        }
+      }),
+      ctx(a)
+    )
     expect(res.status).toBe(403)
     expect(await prisma.sentenceAnnotation.count()).toBe(0)
   })
@@ -102,7 +120,9 @@ describe('workspace isolation', () => {
     signInAs(adminB)
     expect((await queueRoute.GET(request('/x'), ctx(b))).status).toBe(200)
     const res = await commentsRoute.POST(
-      request('/x', { method: 'POST', body: { body: 'late' } }), ctx(b, { sentenceId: recordB.id }))
+      request('/x', { method: 'POST', body: { body: 'late' } }),
+      ctx(b, { sentenceId: recordB.id })
+    )
     expect(res.status).toBe(409)
     await setWorkspaceStatus(b.id, 'active')
   })

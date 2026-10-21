@@ -131,7 +131,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
       return 0 // pending
     }
     if (!job.totalSentences || job.totalSentences === 0) return 0
-    return Math.round((job.processedSentences || 0) / job.totalSentences * 100)
+    return Math.round(((job.processedSentences || 0) / job.totalSentences) * 100)
   }
 
   const getJobTypeLabel = (type: string) => {
@@ -154,27 +154,27 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
   const handleCancelJob = async (job: AIJob, e: React.MouseEvent) => {
     e.stopPropagation() // Prevent row click
-    
+
     if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
       return // Can't cancel completed/failed/cancelled jobs
     }
-    
+
     if (!confirm(`Are you sure you want to cancel this ${getJobTypeLabel(job.type).toLowerCase()} job?`)) {
       return
     }
-    
+
     try {
       const res = await fetch(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: job.type })
       })
-      
+
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed to cancel job')
       }
-      
+
       // Refresh jobs list
       await fetchJobs()
     } catch (error) {
@@ -186,7 +186,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   return (
     <div className="flex flex-col h-screen">
       <PageHeader title="AI Jobs" />
-      
+
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {/* Filters */}
         <div className="mb-6 flex items-center gap-4">
@@ -194,7 +194,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
               value={statusFilter}
-              onChange={(e) => {
+              onChange={e => {
                 setStatusFilter(e.target.value)
                 setPage(1)
               }}
@@ -235,17 +235,11 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                 {jobs.map(job => {
                   const progress = getProgress(job)
                   return (
-                    <tr
-                      key={job.id}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleJobClick(job)}
-                    >
+                    <tr key={job.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleJobClick(job)}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {getStatusIcon(job.status)}
-                          <span className={getStatusBadge(job.status)}>
-                            {job.status}
-                          </span>
+                          <span className={getStatusBadge(job.status)}>{job.status}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
@@ -253,9 +247,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                           {getJobTypeLabel(job.type)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {job.taxonomy}
-                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{job.taxonomy}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 min-w-[120px]">
                           <div className="flex-1 bg-gray-200 rounded-full h-2">
@@ -280,18 +272,16 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {job.createdBy ? (job.createdBy.name || job.createdBy.email) : '-'}
+                        {job.createdBy ? job.createdBy.name || job.createdBy.email : '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {formatRelativeTime(job.startedAt)}
-                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatRelativeTime(job.startedAt)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {job.completedAt ? formatRelativeTime(job.completedAt) : '-'}
                       </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         {(job.status === 'pending' || job.status === 'processing') && (
                           <button
-                            onClick={(e) => handleCancelJob(job, e)}
+                            onClick={e => handleCancelJob(job, e)}
                             className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
                           >
                             Cancel
@@ -310,7 +300,8 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
         {pagination.pages > 1 && (
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} jobs
+              Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+              {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} jobs
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -337,17 +328,19 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
       {/* Job Detail Modal */}
       {showDetailModal && selectedJob && (
-        <Modal label="Job details" onClose={() => setShowDetailModal(false)} className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50" closeOnOverlayClick>
+        <Modal
+          label="Job details"
+          onClose={() => setShowDetailModal(false)}
+          className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
+          closeOnOverlayClick
+        >
           <div
             className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -364,9 +357,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                 <label className="text-sm font-medium text-gray-700">Status</label>
                 <div className="flex items-center gap-2 mt-1">
                   {getStatusIcon(selectedJob.status)}
-                  <span className={getStatusBadge(selectedJob.status)}>
-                    {selectedJob.status}
-                  </span>
+                  <span className={getStatusBadge(selectedJob.status)}>{selectedJob.status}</span>
                 </div>
               </div>
 
@@ -407,7 +398,9 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
               <div>
                 <label className="text-sm font-medium text-gray-700">Created By</label>
-                <p className="text-sm text-gray-900">{selectedJob.createdBy ? (selectedJob.createdBy.name || selectedJob.createdBy.email) : '-'}</p>
+                <p className="text-sm text-gray-900">
+                  {selectedJob.createdBy ? selectedJob.createdBy.name || selectedJob.createdBy.email : '-'}
+                </p>
               </div>
 
               <div>
@@ -435,4 +428,3 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useState, useEffect } from 'react'
 import PageHeader from '@/components/PageHeader'
@@ -46,7 +46,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [learningThreshold, setLearningThreshold] = useState(initialLearningThreshold)
-  
+
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -76,17 +76,20 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
     errors?: Array<{ row: number; message: string }>
     recordCount?: number
   } | null>(null)
-  
+
   // Detected max depth from CSV
   const [detectedMaxDepth, setDetectedMaxDepth] = useState<number | null>(null)
 
   // Poll for taxonomy updates when there are active AI sync or learning jobs
   useEffect(() => {
-    const hasActiveJobs = taxonomies.some(t => 
-      (t.lastAISyncStatus === 'pending' || t.lastAISyncStatus === 'processing') ||
-      (t.lastLearningStatus === 'pending' || t.lastLearningStatus === 'processing')
+    const hasActiveJobs = taxonomies.some(
+      t =>
+        t.lastAISyncStatus === 'pending' ||
+        t.lastAISyncStatus === 'processing' ||
+        t.lastLearningStatus === 'pending' ||
+        t.lastLearningStatus === 'processing'
     )
-    
+
     if (!hasActiveJobs) return
 
     const interval = setInterval(() => {
@@ -149,24 +152,24 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
     setDetectedMaxDepth(null)
     setCreateModalOpen(true)
   }
-  
+
   // Detect max depth from CSV file
   async function detectMaxDepthFromFile(file: File): Promise<number | null> {
     try {
       const buffer = await file.arrayBuffer()
       const csv = new TextDecoder().decode(buffer)
       const { parse } = await import('csv-parse/sync')
-      const records = parse(csv, { 
-        columns: true, 
-        skip_empty_lines: true, 
+      const records = parse(csv, {
+        columns: true,
+        skip_empty_lines: true,
         bom: true,
-        cast: false 
+        cast: false
       }) as CsvRow[]
-      
+
       if (!records || records.length === 0) {
         return null
       }
-      
+
       // Find the maximum level value in the CSV
       let maxLevel = 0
       for (const record of records) {
@@ -178,7 +181,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
           }
         }
       }
-      
+
       return maxLevel > 0 ? maxLevel : null
     } catch (error) {
       console.error('Error detecting max depth:', error)
@@ -271,7 +274,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       const data = await res.json()
 
       if (res.ok) {
-        setMessage({ type: 'success', text: `Successfully created taxonomy "${formData.key}" with ${data.importedNodes} nodes!` })
+        setMessage({
+          type: 'success',
+          text: `Successfully created taxonomy "${formData.key}" with ${data.importedNodes} nodes!`
+        })
         setCreateModalOpen(false)
         setModalMessage(null)
         setValidationResult(null)
@@ -280,7 +286,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         // Format errors array if present
         let errorText = data.error || 'Failed to create taxonomy'
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          const errorList = data.errors.slice(0, 20).map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`).join('\n')
+          const errorList = data.errors
+            .slice(0, 20)
+            .map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`)
+            .join('\n')
           const moreErrors = data.errors.length > 20 ? `\n... and ${data.errors.length - 20} more errors` : ''
           errorText = `${errorText}\n\n${errorList}${moreErrors}`
         }
@@ -336,7 +345,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         // Format errors array if present
         let errorText = data.error || 'Failed to update taxonomy'
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          const errorList = data.errors.slice(0, 20).map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`).join('\n')
+          const errorList = data.errors
+            .slice(0, 20)
+            .map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`)
+            .join('\n')
           const moreErrors = data.errors.length > 20 ? `\n... and ${data.errors.length - 20} more errors` : ''
           errorText = `${errorText}\n\n${errorList}${moreErrors}`
         }
@@ -363,9 +375,9 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       const data = await res.json()
 
       if (res.ok) {
-        const deletedInfo = data.deleted ? 
-          `Deleted ${data.deleted.nodes} nodes, ${data.deleted.annotations} annotations, ${data.deleted.aiSuggestions} AI suggestions, and ${data.deleted.synonyms} synonyms.` :
-          'Taxonomy and all associated data deleted successfully.'
+        const deletedInfo = data.deleted
+          ? `Deleted ${data.deleted.nodes} nodes, ${data.deleted.annotations} annotations, ${data.deleted.aiSuggestions} AI suggestions, and ${data.deleted.synonyms} synonyms.`
+          : 'Taxonomy and all associated data deleted successfully.'
         setMessage({ type: 'success', text: `Successfully deleted taxonomy "${selectedTaxonomy.key}". ${deletedInfo}` })
         setDeleteModalOpen(false)
         setSelectedTaxonomy(null)
@@ -467,24 +479,19 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       normalized === 'success' || normalized === 'completed' || normalized === 'deleted'
         ? 'bg-green-100 text-green-800'
         : normalized === 'processing'
-        ? 'bg-indigo-100 text-indigo-800'
-        : normalized === 'pending' || normalized === 'deleting'
-        ? 'bg-yellow-100 text-yellow-800'
-        : normalized === 'failed' || normalized === 'delete_failed'
-        ? 'bg-red-100 text-red-800'
-        : 'bg-gray-100 text-gray-800'
-    return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles}`}>
-        {status.replaceAll('_', ' ')}
-      </span>
-    )
+          ? 'bg-indigo-100 text-indigo-800'
+          : normalized === 'pending' || normalized === 'deleting'
+            ? 'bg-yellow-100 text-yellow-800'
+            : normalized === 'failed' || normalized === 'delete_failed'
+              ? 'bg-red-100 text-red-800'
+              : 'bg-gray-100 text-gray-800'
+    return <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles}`}>{status.replaceAll('_', ' ')}</span>
   }
-
 
   return (
     <>
       <PageHeader title="Taxonomies" />
-      
+
       <div className="px-8 py-8">
         <div className="mb-8">
           <div className="flex items-start justify-between gap-4">
@@ -513,14 +520,14 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
         {/* Message */}
         {message && (
-          <div className={`mb-6 p-4 rounded-lg ${
-            message.type === 'success' 
-              ? 'bg-green-50 text-green-800 border border-green-200' 
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}>
-            <div className="whitespace-pre-wrap text-sm max-h-60 overflow-y-auto">
-              {message.text}
-            </div>
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              message.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
+            <div className="whitespace-pre-wrap text-sm max-h-60 overflow-y-auto">{message.text}</div>
           </div>
         )}
 
@@ -532,11 +539,16 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
             <div className="space-y-6 mb-12">
               {activeTaxonomies.length === 0 ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                  <p className="text-gray-600">No active taxonomies. Click &quot;Add New Taxonomy&quot; to create one.</p>
+                  <p className="text-gray-600">
+                    No active taxonomies. Click &quot;Add New Taxonomy&quot; to create one.
+                  </p>
                 </div>
               ) : (
                 activeTaxonomies.map(taxonomy => (
-                  <div key={taxonomy.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <div
+                    key={taxonomy.id}
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+                  >
                     {/* Header */}
                     <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
                       <div className="flex items-center justify-between">
@@ -546,16 +558,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                             <span className="text-sm text-gray-500">
                               {(taxonomy.nodeCount ?? 0).toLocaleString()} nodes
                             </span>
-                            <span className="text-sm text-gray-500">
-                              {taxonomy.actualMaxLevel ?? 0} levels
-                            </span>
-                            <span className="text-sm text-gray-500">
-                              Created {formatDate(taxonomy.createdAt)}
-                            </span>
+                            <span className="text-sm text-gray-500">{taxonomy.actualMaxLevel ?? 0} levels</span>
+                            <span className="text-sm text-gray-500">Created {formatDate(taxonomy.createdAt)}</span>
                           </div>
-                          {taxonomy.description && (
-                            <p className="text-sm text-gray-600 mt-1">{taxonomy.description}</p>
-                          )}
+                          {taxonomy.description && <p className="text-sm text-gray-600 mt-1">{taxonomy.description}</p>}
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -611,9 +617,9 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                           <div className="mt-2 text-center">
                             {renderStatusBadge(taxonomy.lastLearningStatus)}
                             <p className="text-xs text-gray-500 mt-1">
-                              {taxonomy.lastLearningAt ? formatRelativeTime(taxonomy.lastLearningAt) : 'Never trained'}
-                              {' '}
-                              <strong>{(taxonomy.newAnnotationsSinceLastLearning ?? 0).toLocaleString()}</strong> / {learningThreshold.toLocaleString()} new annotations
+                              {taxonomy.lastLearningAt ? formatRelativeTime(taxonomy.lastLearningAt) : 'Never trained'}{' '}
+                              <strong>{(taxonomy.newAnnotationsSinceLastLearning ?? 0).toLocaleString()}</strong> /{' '}
+                              {learningThreshold.toLocaleString()} new annotations
                             </p>
                           </div>
                         </div>
@@ -623,14 +629,20 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                 ))
               )}
             </div>
-
           </>
         )}
       </div>
 
       {/* Create Modal */}
       {createModalOpen && (
-        <Modal label="Create new taxonomy" onClose={() => { setCreateModalOpen(false); setValidationResult(null) }} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <Modal
+          label="Create new taxonomy"
+          onClose={() => {
+            setCreateModalOpen(false)
+            setValidationResult(null)
+          }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        >
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-gray-900">Create New Taxonomy</h2>
@@ -648,13 +660,11 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Key (short name) *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Key (short name) *</label>
                 <input
                   type="text"
                   value={formData.key}
-                  onChange={e => setFormData({...formData, key: e.target.value.toUpperCase()})}
+                  onChange={e => setFormData({ ...formData, key: e.target.value.toUpperCase() })}
                   placeholder="e.g. ISCO"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 />
@@ -662,12 +672,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description (optional)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description (optional)</label>
                 <textarea
                   value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Used for job classification worldwide..."
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
@@ -675,45 +683,45 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  CSV File *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">CSV File *</label>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 relative">
                     <input
                       type="file"
                       accept=".csv"
-                      onChange={async (e) => {
+                      onChange={async e => {
                         const newFile = e.target.files?.[0] || null
-                        
+
                         // Always update file immediately
-                        setFormData(prev => ({ 
-                          ...prev, 
+                        setFormData(prev => ({
+                          ...prev,
                           file: newFile || null
                         }))
-                        
+
                         // Clear validation results when file changes
                         setValidationResult(null)
-                        
+
                         // Detect max depth from the CSV file (async, doesn't block file setting)
                         if (newFile) {
-                          detectMaxDepthFromFile(newFile).then(maxDepth => {
-                            setDetectedMaxDepth(maxDepth)
-                            if (maxDepth) {
-                              // Update formData.maxDepth to match detected depth
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                maxDepth: maxDepth 
-                              }))
-                            }
-                          }).catch(err => {
-                            console.error('Error detecting max depth:', err)
-                          })
+                          detectMaxDepthFromFile(newFile)
+                            .then(maxDepth => {
+                              setDetectedMaxDepth(maxDepth)
+                              if (maxDepth) {
+                                // Update formData.maxDepth to match detected depth
+                                setFormData(prev => ({
+                                  ...prev,
+                                  maxDepth: maxDepth
+                                }))
+                              }
+                            })
+                            .catch(err => {
+                              console.error('Error detecting max depth:', err)
+                            })
                         } else {
                           setDetectedMaxDepth(null)
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            maxDepth: 5 
+                          setFormData(prev => ({
+                            ...prev,
+                            maxDepth: 5
                           }))
                         }
                       }}
@@ -750,38 +758,43 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                     ✓ Detected maximum depth: {detectedMaxDepth} level{detectedMaxDepth > 1 ? 's' : ''}
                   </p>
                 )}
-                
+
                 {/* Validation Results */}
                 {validationResult && (
-                  <div className={`mt-3 p-4 rounded-lg text-sm ${
-                    validationResult.ok
-                      ? 'bg-green-50 text-green-800 border border-green-200'
-                      : 'bg-red-50 text-red-800 border border-red-200'
-                  }`}>
+                  <div
+                    className={`mt-3 p-4 rounded-lg text-sm ${
+                      validationResult.ok
+                        ? 'bg-green-50 text-green-800 border border-green-200'
+                        : 'bg-red-50 text-red-800 border border-red-200'
+                    }`}
+                  >
                     <div className="flex items-start gap-2">
-                      <span className="text-lg flex-shrink-0">
-                        {validationResult.ok ? '✅' : '⚠️'}
-                      </span>
+                      <span className="text-lg flex-shrink-0">{validationResult.ok ? '✅' : '⚠️'}</span>
                       <div className="flex-1">
                         <p className="font-medium mb-1">
                           {validationResult.ok ? 'Validation Passed' : 'Validation Failed'}
                         </p>
                         {validationResult.ok ? (
-                          <p>{validationResult.message || `File is valid! Found ${validationResult.recordCount || 0} records.`}</p>
+                          <p>
+                            {validationResult.message ||
+                              `File is valid! Found ${validationResult.recordCount || 0} records.`}
+                          </p>
                         ) : (
                           <div className="break-words whitespace-pre-wrap text-sm max-h-60 overflow-y-auto">
-                            {validationResult.error && (
-                              <p className="mb-2">{validationResult.error}</p>
-                            )}
+                            {validationResult.error && <p className="mb-2">{validationResult.error}</p>}
                             {validationResult.errors && validationResult.errors.length > 0 && (
                               <div className="mt-2">
                                 <p className="font-medium mb-1">Errors:</p>
                                 <ul className="list-disc list-inside space-y-1">
                                   {validationResult.errors.slice(0, 20).map((err, idx) => (
-                                    <li key={idx}>Row {err.row}: {err.message}</li>
+                                    <li key={idx}>
+                                      Row {err.row}: {err.message}
+                                    </li>
                                   ))}
                                   {validationResult.errors.length > 20 && (
-                                    <li className="text-gray-600">... and {validationResult.errors.length - 20} more errors</li>
+                                    <li className="text-gray-600">
+                                      ... and {validationResult.errors.length - 20} more errors
+                                    </li>
                                   )}
                                 </ul>
                               </div>
@@ -795,9 +808,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Level Names (optional)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Level Names (optional)</label>
                 <div className="space-y-2">
                   {Array.from({ length: detectedMaxDepth || formData.maxDepth }, (_, i) => i + 1).map(level => (
                     <div key={level} className="flex items-center gap-2">
@@ -821,19 +832,17 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
               {/* Modal Error Message - Below file chooser */}
               {modalMessage && (
-                <div className={`p-4 rounded-lg text-sm ${
-                  modalMessage.type === 'success' 
-                    ? 'bg-green-50 text-green-800 border border-green-200' 
-                    : 'bg-red-50 text-red-800 border border-red-200'
-                }`}>
+                <div
+                  className={`p-4 rounded-lg text-sm ${
+                    modalMessage.type === 'success'
+                      ? 'bg-green-50 text-green-800 border border-green-200'
+                      : 'bg-red-50 text-red-800 border border-red-200'
+                  }`}
+                >
                   <div className="flex items-start gap-2">
-                    <span className="text-lg flex-shrink-0">
-                      {modalMessage.type === 'error' ? '⚠️' : '✅'}
-                    </span>
+                    <span className="text-lg flex-shrink-0">{modalMessage.type === 'error' ? '⚠️' : '✅'}</span>
                     <div className="flex-1">
-                      <p className="font-medium mb-1">
-                        {modalMessage.type === 'error' ? 'Import Error' : 'Success'}
-                      </p>
+                      <p className="font-medium mb-1">{modalMessage.type === 'error' ? 'Import Error' : 'Success'}</p>
                       <div className="break-words whitespace-pre-wrap text-sm max-h-60 overflow-y-auto">
                         {modalMessage.text}
                       </div>
@@ -856,7 +865,9 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </button>
               <button
                 onClick={handleCreate}
-                disabled={submitting || !formData.key || !formData.file || (validationResult !== null && !validationResult.ok)}
+                disabled={
+                  submitting || !formData.key || !formData.file || (validationResult !== null && !validationResult.ok)
+                }
                 className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {submitting ? 'Creating...' : 'Create & Import'}
@@ -868,7 +879,11 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
       {/* Edit Modal */}
       {editModalOpen && selectedTaxonomy && (
-        <Modal label={`Edit taxonomy ${selectedTaxonomy.key}`} onClose={() => setEditModalOpen(false)} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <Modal
+          label={`Edit taxonomy ${selectedTaxonomy.key}`}
+          onClose={() => setEditModalOpen(false)}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        >
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-gray-900">Edit Taxonomy: {selectedTaxonomy.key}</h2>
@@ -883,9 +898,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-500 mb-2">
-                  Key (cannot be changed)
-                </label>
+                <label className="block text-sm font-medium text-gray-500 mb-2">Key (cannot be changed)</label>
                 <input
                   type="text"
                   value={formData.key}
@@ -895,12 +908,10 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <textarea
                   value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 />
@@ -912,19 +923,19 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                 </label>
                 <select
                   value={formData.maxDepth}
-                  onChange={e => setFormData({...formData, maxDepth: parseInt(e.target.value)})}
+                  onChange={e => setFormData({ ...formData, maxDepth: parseInt(e.target.value) })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 >
                   {[1, 2, 3, 4, 5].map(d => (
-                    <option key={d} value={d}>{d} level{d > 1 ? 's' : ''}</option>
+                    <option key={d} value={d}>
+                      {d} level{d > 1 ? 's' : ''}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Level Names
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Level Names</label>
                 <div className="space-y-2">
                   {Array.from({ length: formData.maxDepth }, (_, i) => i + 1).map(level => (
                     <div key={level} className="flex items-center gap-2">
@@ -948,7 +959,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
                     <input
                       type="file"
                       accept=".csv"
-                      onChange={e => setFormData({...formData, file: e.target.files?.[0] || null})}
+                      onChange={e => setFormData({ ...formData, file: e.target.files?.[0] || null })}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                       id="edit-file-input"
                     />
@@ -993,7 +1004,16 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
       {/* Delete Modal */}
       {deleteModalOpen && selectedTaxonomy && (
-        <Modal label="Delete taxonomy" onClose={() => { if (!submitting) { setDeleteModalOpen(false); setConfirmText('') } }} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <Modal
+          label="Delete taxonomy"
+          onClose={() => {
+            if (!submitting) {
+              setDeleteModalOpen(false)
+              setConfirmText('')
+            }
+          }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        >
           <div className="bg-white rounded-lg max-w-md w-full shadow-xl">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-red-600">⚠️ Danger Zone</h3>
@@ -1002,12 +1022,14 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
             <div className="p-6 space-y-4">
               <p className="text-gray-700">You are about to delete taxonomy:</p>
               <p className="font-semibold text-gray-900">&quot;{selectedTaxonomy.key}&quot;</p>
-              
+
               <div className="text-sm text-gray-600 space-y-1">
                 <p>This will:</p>
                 <ul className="list-disc list-inside pl-2">
                   <li>Permanently delete the taxonomy and all associated data</li>
-                  <li>Delete {selectedTaxonomy.nodeCount} nodes and {selectedTaxonomy.annotationCount} annotations</li>
+                  <li>
+                    Delete {selectedTaxonomy.nodeCount} nodes and {selectedTaxonomy.annotationCount} annotations
+                  </li>
                   <li>Delete all AI suggestions for this taxonomy</li>
                   <li>This action cannot be undone</li>
                 </ul>

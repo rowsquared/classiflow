@@ -7,10 +7,22 @@ const daysAgo = (d: number) => new Date(NOW - d * 86_400_000).toISOString()
 
 function member(username: string, over: Partial<TeamMember> = {}): TeamMember {
   return {
-    id: username, username, email: `${username}@x.org`, name: username.toUpperCase(), role: 'labeller',
-    status: 'active', supervisorId: null, supervisor: null, labellers: [], mustResetPassword: false,
-    lastLogin: null, lastSeenAt: null, createdAt: daysAgo(100), updatedAt: daysAgo(100),
-    _count: { assignedSentences: 0 }, ...over,
+    id: username,
+    username,
+    email: `${username}@x.org`,
+    name: username.toUpperCase(),
+    role: 'labeller',
+    status: 'active',
+    supervisorId: null,
+    supervisor: null,
+    labellers: [],
+    mustResetPassword: false,
+    lastLogin: null,
+    lastSeenAt: null,
+    createdAt: daysAgo(100),
+    updatedAt: daysAgo(100),
+    _count: { assignedSentences: 0 },
+    ...over
   }
 }
 
@@ -18,7 +30,7 @@ const members = [
   member('carla', { role: 'admin', lastSeenAt: daysAgo(1) }),
   member('ben', { role: 'supervisor', lastSeenAt: daysAgo(10), labellers: [{ id: 'dora', name: null, email: 'd' }] }),
   member('dora', { supervisorId: 'ben', lastSeenAt: null, mustResetPassword: true }),
-  member('anna', { status: 'suspended', lastSeenAt: daysAgo(40) }),
+  member('anna', { status: 'suspended', lastSeenAt: daysAgo(40) })
 ]
 
 describe('filterMembers', () => {
@@ -33,7 +45,10 @@ describe('filterMembers', () => {
     expect(filterMembers(members, { ...NO_FILTERS, status: 'removed' }, NOW).map(m => m.username)).toEqual(['anna'])
     expect(filterMembers(members, { ...NO_FILTERS, status: 'must-reset' }, NOW).map(m => m.username)).toEqual(['dora'])
     expect(filterMembers(members, { ...NO_FILTERS, activity: 'seen-7' }, NOW).map(m => m.username)).toEqual(['carla'])
-    expect(filterMembers(members, { ...NO_FILTERS, activity: 'not-seen-7' }, NOW).map(m => m.username)).toEqual(['ben', 'dora'])
+    expect(filterMembers(members, { ...NO_FILTERS, activity: 'not-seen-7' }, NOW).map(m => m.username)).toEqual([
+      'ben',
+      'dora'
+    ])
     expect(filterMembers(members, { ...NO_FILTERS, activity: 'never' }, NOW).map(m => m.username)).toEqual(['dora'])
   })
 })

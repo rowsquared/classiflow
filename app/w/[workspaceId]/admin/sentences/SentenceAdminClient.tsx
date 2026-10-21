@@ -133,9 +133,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
       <PageHeader title="Sentences" />
       <div className="px-8 py-8">
         <div className="mb-8">
-          <p className="text-sm text-gray-600">
-            Import sentences for labeling and manage import history
-          </p>
+          <p className="text-sm text-gray-600">Import sentences for labeling and manage import history</p>
         </div>
 
         {message && (
@@ -158,15 +156,13 @@ export default function SentenceAdminClient({ initialImports }: Props) {
 
           <div className="max-w-xl space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                CSV File
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">CSV File</label>
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
                   <input
                     type="file"
                     accept=".csv"
-                    onChange={(e) => setSentenceFile(e.target.files?.[0] || null)}
+                    onChange={e => setSentenceFile(e.target.files?.[0] || null)}
                     aria-label="CSV file to import"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                     id="sentence-file-input"
@@ -185,7 +181,8 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                 </label>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Columns: an optional <code>id</code>, one to five <code>field_&lt;name&gt;</code> columns to classify, and up to five <code>support_&lt;name&gt;</code> context columns.
+                Columns: an optional <code>id</code>, one to five <code>field_&lt;name&gt;</code> columns to classify,
+                and up to five <code>support_&lt;name&gt;</code> context columns.
               </p>
             </div>
 
@@ -211,9 +208,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Import History</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Track and manage your previous sentence imports
-              </p>
+              <p className="text-sm text-gray-500 mt-1">Track and manage your previous sentence imports</p>
             </div>
             <button
               onClick={refreshImports}
@@ -226,18 +221,17 @@ export default function SentenceAdminClient({ initialImports }: Props) {
           {loadingImports ? (
             <div className="py-12 text-center text-gray-500">Loading imports...</div>
           ) : imports.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">
-              No imports yet. Upload a CSV file to get started.
-            </div>
+            <div className="py-12 text-center text-gray-500">No imports yet. Upload a CSV file to get started.</div>
           ) : (
             <div className="space-y-4">
-              {imports.map((importRecord) => (
-                <div key={importRecord.id} className="border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+              {imports.map(importRecord => (
+                <div
+                  key={importRecord.id}
+                  className="border border-gray-200 rounded-lg p-4 flex items-center justify-between"
+                >
                   <div>
                     <h3 className="font-medium text-gray-900">{importRecord.fileName}</h3>
-                    <p className="text-sm text-gray-500">
-                      Uploaded on {formatDateTime(importRecord.uploadedAt)}
-                    </p>
+                    <p className="text-sm text-gray-500">Uploaded on {formatDateTime(importRecord.uploadedAt)}</p>
                     <p className="text-sm text-gray-600 mt-1">
                       {importRecord.sentenceCount.toLocaleString()} sentences
                     </p>
@@ -261,12 +255,20 @@ export default function SentenceAdminClient({ initialImports }: Props) {
       </div>
 
       {deleteModalOpen && selectedImport && (
-        <Modal label="Delete import" onClose={() => { setDeleteModalOpen(false); setConfirmText(''); setSelectedImport(null) }} className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+        <Modal
+          label="Delete import"
+          onClose={() => {
+            setDeleteModalOpen(false)
+            setConfirmText('')
+            setSelectedImport(null)
+          }}
+          className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+        >
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8">
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Import</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Deleting the import <strong>{selectedImport.fileName}</strong> will permanently remove this import record and{' '}
-              <strong>all {selectedImport.sentenceCount.toLocaleString()} sentences</strong> associated with it.
+              Deleting the import <strong>{selectedImport.fileName}</strong> will permanently remove this import record
+              and <strong>all {selectedImport.sentenceCount.toLocaleString()} sentences</strong> associated with it.
             </p>
 
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
@@ -279,7 +281,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
             <input
               type="text"
               value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
+              onChange={e => setConfirmText(e.target.value)}
               placeholder='Type "DELETE" to confirm'
               className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-red-500 focus:border-red-500"
             />
@@ -309,4 +311,3 @@ export default function SentenceAdminClient({ initialImports }: Props) {
     </>
   )
 }
-

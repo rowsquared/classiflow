@@ -19,14 +19,14 @@ const memberSelect = {
   createdAt: true,
   updatedAt: true,
   user: {
-    select: { id: true, username: true, email: true, name: true, mustResetPassword: true, lastLogin: true },
+    select: { id: true, username: true, email: true, name: true, mustResetPassword: true, lastLogin: true }
   },
   supervisor: { select: { user: { select: { id: true, name: true, email: true } } } },
   reports: {
     where: { status: 'active' as const },
-    select: { role: true, user: { select: { id: true, name: true, email: true } } },
+    select: { role: true, user: { select: { id: true, name: true, email: true } } }
   },
-  _count: { select: { assignments: true } },
+  _count: { select: { assignments: true } }
 }
 
 type MemberRow = {
@@ -35,7 +35,14 @@ type MemberRow = {
   lastSeenAt: Date | null
   createdAt: Date
   updatedAt: Date
-  user: { id: string; username: string; email: string; name: string; mustResetPassword: boolean; lastLogin: Date | null }
+  user: {
+    id: string
+    username: string
+    email: string
+    name: string
+    mustResetPassword: boolean
+    lastLogin: Date | null
+  }
   supervisor: { user: { id: string; name: string; email: string } } | null
   reports: Array<{ role: 'admin' | 'supervisor' | 'labeller'; user: { id: string; name: string; email: string } }>
   _count: { assignments: number }
@@ -57,7 +64,7 @@ function toMember(m: MemberRow) {
     lastSeenAt: m.lastSeenAt,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
-    _count: { assignedSentences: m._count.assignments },
+    _count: { assignedSentences: m._count.assignments }
   }
 }
 
@@ -67,10 +74,10 @@ export async function listVisibleUsers(currentUser: CurrentUser, { includeSuspen
     where: {
       workspaceId: currentUser.workspaceId,
       ...(membershipIds === null ? {} : { id: { in: membershipIds } }),
-      ...(includeSuspended ? {} : { status: 'active' as const }),
+      ...(includeSuspended ? {} : { status: 'active' as const })
     },
     select: memberSelect,
-    orderBy: [{ role: 'asc' }, { user: { name: 'asc' } }],
+    orderBy: [{ role: 'asc' }, { user: { name: 'asc' } }]
   })
   return { users: rows.map(toMember) }
 }
@@ -80,9 +87,9 @@ export async function getVisibleUser(currentUser: CurrentUser, userId: string) {
   const membershipIds = await getVisibleMembershipIds(currentUser)
   const row = await db().workspaceMembership.findUnique({
     where: { workspaceId_userId: { workspaceId: currentUser.workspaceId, userId } },
-    select: { ...memberSelect, id: true },
+    select: { ...memberSelect, id: true }
   })
-  if (!row) return membershipIds === null ? null : 'forbidden' as const
+  if (!row) return membershipIds === null ? null : ('forbidden' as const)
   if (membershipIds !== null && !membershipIds.includes(row.id)) return 'forbidden' as const
   return toMember(row)
 }
@@ -91,7 +98,7 @@ export async function getVisibleUser(currentUser: CurrentUser, userId: string) {
 export async function membershipIdsForUsers(workspaceId: string, userIds: string[]) {
   const rows = await db().workspaceMembership.findMany({
     where: { workspaceId, userId: { in: userIds }, status: 'active' },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true }
   })
   return new Map(rows.map(r => [r.userId, r.id]))
 }

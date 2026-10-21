@@ -12,11 +12,11 @@ try {
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
-    path: 'prisma/migrations',
+    path: 'prisma/migrations'
   },
   // Optional so `prisma generate` (postinstall, image build) runs without a
   // database; migrate commands fail clearly when it is missing.
   datasource: {
-    url: process.env.DATABASE_URL,
-  },
+    url: process.env.DATABASE_URL
+  }
 })

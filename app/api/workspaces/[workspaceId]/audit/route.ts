@@ -29,9 +29,15 @@ export const GET = workspaceRoute(['admin'], async (req, { user }) => {
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     select: {
-      id: true, createdAt: true, action: true, entityType: true, entityId: true,
-      actorId: true, actorName: true, payload: true,
-    },
+      id: true,
+      createdAt: true,
+      action: true,
+      entityType: true,
+      entityId: true,
+      actorId: true,
+      actorName: true,
+      payload: true
+    }
   })
   const hasMore = entries.length > limit
   const page = hasMore ? entries.slice(0, limit) : entries
@@ -39,6 +45,6 @@ export const GET = workspaceRoute(['admin'], async (req, { user }) => {
   return NextResponse.json({
     ok: true,
     entries: page,
-    nextCursor: hasMore ? page[page.length - 1].id : null,
+    nextCursor: hasMore ? page[page.length - 1].id : null
   })
 })
