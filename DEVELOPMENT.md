@@ -12,7 +12,7 @@ This guide is for developers who want to run classiflow locally from source.
 
 1. Clone and install:
 ```bash
-git clone https://github.com/yourusername/classiflow.git
+git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
 npm install
 ```

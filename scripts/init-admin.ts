@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 async function initAdmin() {
   try {
     const adminUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin'
-    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classifai.local'
+    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classiflow.local'
     const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'change-me-immediately'
     const adminName = process.env.DEFAULT_ADMIN_NAME || 'System Administrator'
 

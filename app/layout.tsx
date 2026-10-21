@@ -12,7 +12,7 @@ const inter = Inter({
 })
 
 export const metadata = {
-  title: 'classifai - Labeling Tool',
+  title: 'classiflow - Labeling Tool',
   description: 'Modern annotation tool for hierarchical taxonomies',
   icons: {
     icon: [

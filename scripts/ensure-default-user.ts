@@ -11,7 +11,7 @@ async function main() {
     
     const user = await prisma.user.create({
       data: {
-        email: 'admin@classifai.local',
+        email: 'admin@classiflow.local',
         name: 'Default Admin',
         role: 'admin'
       }

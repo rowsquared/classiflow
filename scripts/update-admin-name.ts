@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma'
 
 async function updateAdminName() {
   try {
-    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classifai.local'
+    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classiflow.local'
     
     const updatedUser = await prisma.user.update({
       where: { email: adminEmail },

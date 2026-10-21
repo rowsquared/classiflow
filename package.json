@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "dev": "DATABASE_URL=postgresql://classifai:classifai_password@localhost:5433/classifai?schema=public next dev",
+    "dev": "DATABASE_URL=postgresql://classiflow:classiflow_password@localhost:5433/classiflow?schema=public next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",

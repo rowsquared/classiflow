@@ -30,7 +30,7 @@ The simplest way to try classiflow is with Docker Compose.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/classiflow.git
+git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
 ```
 

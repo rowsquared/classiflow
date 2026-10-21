@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 
 async function testLogin() {
   try {
-    const email = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classifai.local'
+    const email = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classiflow.local'
     const password = process.env.DEFAULT_ADMIN_PASSWORD || 'ChangeMe123!'
 
     console.log(`Testing login for: ${email}`)

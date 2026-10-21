@@ -76,7 +76,7 @@ export default function ResetPasswordPage() {
         <div className="flex justify-center mb-6">
           <Image
             src="/logo.svg"
-            alt="classifai Logo"
+            alt="classiflow Logo"
             width={120}
             height={32}
             className="h-8 w-auto"

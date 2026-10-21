@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 
 async function resetAdminPassword() {
   try {
-    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classifai.local'
+    const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@classiflow.local'
     const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123'
 
     console.log(`Looking for admin user with email: ${adminEmail}`)

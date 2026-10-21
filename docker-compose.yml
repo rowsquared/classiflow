@@ -2,17 +2,17 @@ version: '3.8'
 
 networks:
   default:
-    name: classifai-network
+    name: classiflow-network
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: classifai-postgres
+    container_name: classiflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-classifai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-classifai_password}
-      POSTGRES_DB: ${POSTGRES_DB:-classifai}
+      POSTGRES_USER: ${POSTGRES_USER:-classiflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-classiflow_password}
+      POSTGRES_DB: ${POSTGRES_DB:-classiflow}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # Port mapping removed for Coolify compatibility - PostgreSQL is only accessible internally
@@ -20,7 +20,7 @@ services:
     # ports:
     #   - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-classifai}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-classiflow}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
     environment:
       # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-classifai}:${POSTGRES_PASSWORD:-classifai_password}@postgres:5432/${POSTGRES_DB:-classifai}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-classiflow}:${POSTGRES_PASSWORD:-classiflow_password}@postgres:5432/${POSTGRES_DB:-classiflow}?schema=public
 
       # NextAuth
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}

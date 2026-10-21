@@ -15,7 +15,7 @@ Use this when you want the app and database deployed together.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/classiflow.git
+git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
 ```
 
