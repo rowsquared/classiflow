@@ -6,6 +6,7 @@ import { useSession } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import PageHeader from '@/components/PageHeader'
 import Modal from '@/components/Modal'
+import { formatRelativeTime } from '@/lib/utils'
 
 export type User = {
   id: string
@@ -19,6 +20,7 @@ export type User = {
   labellers: { id: string; name: string | null; email: string }[]
   mustResetPassword: boolean
   lastLogin: string | null
+  lastSeenAt: string | null
   createdAt: string
   updatedAt: string
   _count: {
@@ -282,7 +284,8 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervisor</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supervises</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignments</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Last time the app was open in this workspace (background refreshes do not count)">Last Seen</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Last time they typed their password; sessions last days, so this can be old for active users">Last Login</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -310,6 +313,9 @@ export default function TeamPageClient({ initialUsers }: Props) {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {user._count.assignedSentences}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600" title={user.lastSeenAt ? new Date(user.lastSeenAt).toISOString() : undefined}>
+                    {user.lastSeenAt ? formatRelativeTime(user.lastSeenAt) : 'Never'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {formatLastLoginDate(user.lastLogin)}

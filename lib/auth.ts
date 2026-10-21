@@ -44,8 +44,9 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        // Raw SQL so a sign-in does not count as an edit of the account (updatedAt).
         after: async session => {
-          await prisma.user.update({ where: { id: session.userId }, data: { lastLogin: new Date() } })
+          await prisma.$executeRaw`UPDATE "User" SET "lastLogin" = (now() AT TIME ZONE 'UTC') WHERE id = ${session.userId}`
         },
       },
     },

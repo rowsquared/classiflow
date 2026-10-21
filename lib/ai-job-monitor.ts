@@ -162,7 +162,7 @@ export async function ensureJobsMonitored() {
   // Ids and workspaces only (SECURITY DEFINER function, see the migration);
   // each job is then read and claimed inside its own workspace.
   const jobs = await prisma.$queryRaw<Array<{ kind: JobKind; id: string; workspaceId: string }>>`
-    SELECT kind, id, "workspaceId" FROM app_recoverable_ai_jobs(${new Date()}::timestamp)`
+    SELECT kind, id, "workspaceId" FROM app_recoverable_ai_jobs(${new Date().toISOString()}::timestamp)` // UTC wall time, as Prisma stores it
   for (const job of jobs) {
     if (monitors.has(job.id)) continue
     console.log(`[recovery] Taking over ${job.kind} job ${job.id}`)

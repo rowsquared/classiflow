@@ -3,6 +3,7 @@ import Sidebar from '@/components/Sidebar'
 import { WorkspaceProvider } from '@/components/WorkspaceProvider'
 import { prisma } from '@/lib/prisma'
 import { requirePageUser } from '@/lib/server/page-user'
+import { touchLastSeen } from '@/lib/last-seen'
 
 // Every page under /w/[workspaceId] runs inside this workspace: the access
 // check happens here on each request (404 for a workspace the user may not
@@ -17,6 +18,7 @@ export default async function WorkspaceLayout({
 }) {
   const { workspaceId } = await params
   const user = await requirePageUser(workspaceId)
+  if (user.membershipId) await touchLastSeen(user.membershipId)
   const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { name: true } })
 
   return (

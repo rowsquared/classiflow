@@ -1,6 +1,40 @@
 # User management: implementation plan
 
-**Status:** proposed 21 October 2026. Not started; nothing here is implemented.
+**Status:** proposed 21 October 2026; revised the same day for workspaces and
+Better Auth (next section, which takes precedence over the original text below).
+
+## Revision for workspaces and Better Auth (21 October 2026)
+
+Since this plan was written, Better Auth replaced next-auth (database
+sessions, scrypt hashing, `Verification` tokens, admin plugin) and accounts
+were split from workspace membership
+([workspace isolation](workspace-isolation.md)). Read every package below
+through this mapping:
+
+| Package | Now |
+| --- | --- |
+| U1 last seen | `WorkspaceMembership.lastSeenAt` (exists in the schema) is "last active **in this workspace**", written by workspace requests at most every 5 minutes with a conditional raw `UPDATE`; background polls pass `passive`. Global activity is the latest `Session.updatedAt`, shown on `/accounts` only. |
+| U2 Team page | The Team page manages **members of one workspace**; account actions (temporary password, name) follow the "local account" rule (only accounts that belong to this workspace alone and never signed in; platform admins always). The platform `/accounts` page covers global accounts. |
+| U3 lifecycle | "Deactivate" in this workspace = **suspend the membership** (done: `DELETE`/`PUT status`); deactivate everywhere = **ban** (platform admin, done). Last-admin checks are serialised (done). Emails and usernames are stored lower case (done). bcrypt's 72-byte limit is moot (scrypt). Remaining: password policy, "unassign open records" on removal. |
+| U4 CSV import | Imports **members** into the current workspace: new accounts are created; existing accounts may only be added by platform admins (no account-existence probing). Create-only. |
+| U5 sessions | "Sign out everywhere" = delete the user's `Session` rows (platform admins; a person for themselves). Lockout records and "Unlock" no longer apply: the limit is per IP in the database (`RateLimit`), not per account. |
+| U6 audit | Workspace audit only shows the workspace's events; per-member history in the drawer reads it; account events (platform) show on `/accounts`. `/w/[id]/admin/audit` reads its filters from the URL. |
+| U7 mail | Transport and outbox as written. Password links use **Better Auth's reset-password flow** (`requestPasswordReset` / `resetPassword`, token in `Verification`, `sendResetPassword` hook) instead of hand-rolled HMAC tokens; invitations are the same flow with a longer expiry and an "invitation" template. Links are built from `BETTER_AUTH_URL`. Invitations name the workspace and role; accepting never reveals other memberships. |
+
+**Decisions taken (defaults proposed in "Decisions for the maintainer"; change
+them here if needed):** 1. removal does not unassign by default (checkbox);
+2. whole email lower-cased (done); 3. minimum 10 characters for new
+passwords; 4. import is create-only; 5. invitation links only, passwords are
+never mailed; 6. generated passwords: one-time copy and a browser-built CSV
+download; 7. last seen visible to workspace admins only; 8. n8n transport only
+(no SMTP dependency); 9. invitations 72 h, password links 60 min;
+10. classiflow gets its own `N8N_EMAIL_WEBHOOK_SECRET` value.
+
+**Order now:** U1 → U5 → U3 password policy → U6 → U2 → U7 (a, c, b) → U4.
+
+### Implementation status
+
+See the end of this section; updated as packages land.
 **Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
 and outgoing email for accounts (invitations, forgotten passwords, notices).
 **Reference:** [`rowsquared/survey-hub`](https://github.com/rowsquared/survey-hub/tree/dev)

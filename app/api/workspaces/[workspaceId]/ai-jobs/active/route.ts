@@ -93,4 +93,4 @@ export const GET = workspaceRoute(['admin'], async (_req, { user }) => {
     console.error('Failed to fetch active jobs:', error)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
-})
+}, { passive: true }) // polled by every page header: not a sign of a person there
