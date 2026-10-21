@@ -2,7 +2,11 @@
 
 **Status:** 21 October 2026, after the W03 (Node 24, lockfile, dependency triage)
 and W12 (Compose secrets, runtime DB role, release health, restore drill) commits.
-**Pushing:** pushing `staging` deploys it; push only with the maintainer's go-ahead.
+**Pushing:** push only with the maintainer's go-ahead.
+**Staging deploys nothing at the moment (as of 21 October 2026):** a push to
+`staging` runs CI but no staging environment is updated. Do not treat a push as
+deployed or verified on staging; CI's `smoke` job is the only running check of
+the image. When staging deploys again, delete this note.
 
 Start here if you are continuing the hardening work from the
 [review](../reviews/2026-10-21-review.md). Each workstream in the

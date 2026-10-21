@@ -173,9 +173,8 @@ does not unexpectedly overwrite existing accounts.
 - [x] Deleting a user who authored comments or AI jobs returns 409 with an
       explanation instead of a foreign-key 500 (test added). Deactivation
       instead of deletion is listed in [ideas](../ideas.md).
-- [ ] Database fallback password `classiflow_password` in Compose: changing it
-      breaks existing volumes initialised with it; handle with W12 (verify the
-      Coolify environment first).
+- [x] Database fallback password `classiflow_password` in Compose: removed in
+      W12 (`POSTGRES_PASSWORD` is required; upgrade path in DEPLOYMENT.md).
 - [ ] Admin MFA/SSO: product decision, not started.
 
 ## W03 Dependencies and reproducible releases

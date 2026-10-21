@@ -456,6 +456,9 @@ depends on the branch; see [Deploy triggers](#deploy-triggers).
 
 The two environments are triggered differently, on purpose.
 
+> **Currently (21 October 2026) staging deploys nothing:** no staging
+> environment is updated on push. The table below is the intended setup.
+
 | Branch | Coolify auto-deploy | What deploys it |
 | --- | --- | --- |
 | `staging` | on | Coolify deploys on every push. CI also runs, as a report card. |
