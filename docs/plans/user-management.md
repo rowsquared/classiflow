@@ -34,7 +34,26 @@ download; 7. last seen visible to workspace admins only; 8. n8n transport only
 
 ### Implementation status
 
-See the end of this section; updated as packages land.
+- **U1 done:** `lib/last-seen.ts` (5-minute conditional raw UPDATE in UTC),
+  written by workspace requests and the workspace layout, passive for the AI
+  job badge poll; "Last seen" and "Last login" on the Team page;
+  `tests/integration/last-seen.test.ts`.
+- **U3 partly done:** `lib/password-policy.ts` (10–256 characters, not common,
+  not built from username/email/name; the forced change must differ) applied
+  to every password-setting path including scripts and Better Auth's own
+  minimum; suspension = removal from a workspace; ban = everywhere. Open:
+  "also unassign open records" option on removal.
+- **U5 done:** "Sign out other devices" (user menu, Better Auth
+  `revokeOtherSessions`), "Sign out everywhere" for platform admins on
+  `/accounts` (`user.sessions_revoked`).
+- **U6 partly done:** `/w/[id]/admin/audit` reads `action`, `entityType`,
+  `entityId`, `actorId` from the URL. Open: per-member history in the drawer
+  (U2), mail events (U7).
+- **Next:** U2 Team page overhaul (search, filters, sorting via
+  `lib/team-table.ts` with unit tests, detail drawer with history links,
+  generated temporary passwords, Toast/Modal instead of alert/confirm), then
+  U7 mail (n8n transport + outbox, Better Auth reset flow for password links
+  and invitations), then U4 CSV member import.
 **Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
 and outgoing email for accounts (invitations, forgotten passwords, notices).
 **Reference:** [`rowsquared/survey-hub`](https://github.com/rowsquared/survey-hub/tree/dev)
