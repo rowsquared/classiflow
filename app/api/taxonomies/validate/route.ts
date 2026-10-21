@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
         columns: true, 
         skip_empty_lines: true, 
         bom: true,
-        relax: true,
         cast: false, // Don't auto-cast to preserve string format (especially leading zeros)
         skip_records_with_error: false
       }) as any[]

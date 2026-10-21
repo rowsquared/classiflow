@@ -397,8 +397,8 @@ export default function ProgressPageClient({
                 />
                 <YAxis />
                 <Tooltip 
-                  labelFormatter={(value) => new Date(value).toLocaleDateString()}
-                  formatter={(value: number) => [value, '']}
+                  labelFormatter={(value) => new Date(String(value)).toLocaleDateString()}
+                  formatter={(value) => [value, '']}
                 />
                 <Legend />
                   <ReferenceLine 

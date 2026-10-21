@@ -139,7 +139,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
       }
 
       // Reset form and close modal
-      setFormData({ email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
+      setFormData({ username: '', email: '', name: '', role: 'labeller', supervisorId: '', tempPassword: '', newPassword: '' })
       setSelectedUser(null)
       setShowEditModal(false)
       fetchUsers()

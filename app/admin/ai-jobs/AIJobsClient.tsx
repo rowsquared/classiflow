@@ -294,10 +294,10 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                         {job.createdBy ? (job.createdBy.name || job.createdBy.email) : '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {formatRelativeTime(new Date(job.startedAt))}
+                        {formatRelativeTime(job.startedAt)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {job.completedAt ? formatRelativeTime(new Date(job.completedAt)) : '-'}
+                        {job.completedAt ? formatRelativeTime(job.completedAt) : '-'}
                       </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         {(job.status === 'pending' || job.status === 'processing') && (

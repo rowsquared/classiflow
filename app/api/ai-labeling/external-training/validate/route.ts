@@ -68,7 +68,6 @@ export async function POST(req: NextRequest) {
         skip_empty_lines: true, 
         bom: true,
         cast: false,
-        relax: true,
         skip_records_with_error: false
       }) as any[]
     } catch (parseError: any) {

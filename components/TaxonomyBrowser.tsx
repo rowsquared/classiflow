@@ -481,7 +481,7 @@ export default function TaxonomyBrowser({
   const hasDivergedFromAISuggestions = hasAISuggestions && (
     !arePathsEqual(selectedLabels, storedAISuggestions) ||
     // Also show if user deleted AI suggestions (current labels don't include all cached AI labels)
-    selectedLabels.filter(l => l.source === 'ai').length < storedAISuggestions.length
+    selectedLabels.filter(l => l.source === 'ai').length < (storedAISuggestions?.length ?? 0)
   )
 
   const handleRestoreAISuggestions = () => {

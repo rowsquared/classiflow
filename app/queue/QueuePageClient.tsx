@@ -22,6 +22,7 @@ export type Sentence = {
   lastEditedAt: string | null
   lastEditor?: {
     name: string | null
+    username: string | null
     email: string
   } | null
   assignments?: Array<{
@@ -424,7 +425,7 @@ export default function QueuePageClient({
     setPage(1)
   }
 
-  const allSelected = queue && queue.sentences.length > 0 && selectedIds.size === queue.sentences.length
+  const allSelected = !!queue && queue.sentences.length > 0 && selectedIds.size === queue.sentences.length
   const someSelected = selectedIds.size > 0
   const isAdmin = currentUser?.role === 'admin'
   const activeTaxonomies = taxonomies.filter(t => t.isActive !== false)
