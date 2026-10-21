@@ -14,6 +14,10 @@ on:
   pull_request:
     branches: [main, staging]
 
+# Jobs only read the repository; deploy-prod authenticates to Coolify with its own secrets.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -65,9 +69,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      # No lockfile in this repo (.npmrc: package-lock=false), mirrored from the Dockerfile.
-      - run: npm install --legacy-peer-deps --no-audit --no-fund
+          node-version-file: .nvmrc
+          cache: npm
+      # Same dependency graph as the Dockerfile: exactly package-lock.json.
+      - run: npm ci --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
@@ -100,8 +105,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm install --legacy-peer-deps --no-audit --no-fund
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - name: Integration tests
         run: npm run test:integration
 

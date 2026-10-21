@@ -316,10 +316,12 @@ To scale the application:
 - **Solution**: The `next.config.ts` is configured with `eslint.ignoreDuringBuilds: true`,
   so lint never breaks a deploy build. Lint is enforced in CI instead (`checks` job).
 
-**Issue**: `npm install` or `pnpm install` fails
-- **Solution**: The Dockerfile now uses `npm ci --legacy-peer-deps` with fallback to `npm install`
-- **Cause**: Dependency conflicts or lockfile issues in containerized builds
-- **Fix**: The Dockerfile copies prisma schema before install and uses npm for better compatibility
+**Issue**: `npm ci` fails during the image build
+- **Cause**: `package.json` and `package-lock.json` disagree (a dependency was
+  changed without committing the regenerated lockfile).
+- **Fix**: run `npm install` locally on Node 24 / npm 11 and commit both files.
+  The image installs exactly the lockfile, so every rebuild of a commit gets the
+  same dependency graph as CI tested.
 
 **Issue**: Prisma client generation fails
 - **Solution**: Ensure all Prisma schema files are properly copied

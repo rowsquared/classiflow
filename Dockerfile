@@ -1,30 +1,27 @@
-# Build stage
-FROM node:20-alpine AS builder
-
-# Install system dependencies
+# Node 24 LTS. The digest pins the exact image so a rebuild (Coolify, CI smoke)
+# gets the same OS packages and Node as the tested one; Dependabot bumps it.
+FROM node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS base
 RUN apk add --no-cache libc6-compat openssl
-
 WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy package files AND prisma schema (needed for postinstall)
-COPY package.json .npmrc ./
+# All dependencies, exactly as recorded in package-lock.json. The Prisma schema
+# is needed because postinstall runs `prisma generate`.
+FROM base AS deps
+COPY package.json package-lock.json .npmrc ./
 COPY prisma ./prisma
+RUN npm ci --no-audit --no-fund
 
-# CRITICAL: Force exact Prisma 6.17.1 installation
-# Remove any existing node_modules and package-lock to start fresh
-RUN rm -rf node_modules package-lock.json
+# Runtime dependencies only: Next's standalone output plus what the start
+# command needs outside it (Prisma CLI and engines for `migrate deploy`,
+# @prisma/client and bcryptjs for scripts/init-admin.js). No build or test tooling.
+FROM base AS prod-deps
+COPY package.json package-lock.json .npmrc ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# Install ONLY Prisma packages first with exact versions
-RUN npm install --save-exact --no-save prisma@6.17.1 @prisma/client@6.17.1 --legacy-peer-deps
-
-# Now install all other dependencies (Prisma won't be upgraded)
-RUN npm install --legacy-peer-deps
-
-# Copy only necessary files for build (improves cache hit rate)
-COPY next.config.ts ./
-COPY tsconfig.json ./
-COPY postcss.config.js ./
-COPY eslint.config.mjs ./
+FROM deps AS builder
+COPY next.config.ts tsconfig.json postcss.config.js eslint.config.mjs middleware.ts ./
 COPY app ./app
 COPY components ./components
 COPY lib ./lib
@@ -32,38 +29,26 @@ COPY styles ./styles
 COPY public ./public
 COPY types ./types
 COPY scripts ./scripts
-COPY middleware.ts ./
-
-# Build the application (prisma generate already ran in postinstall)
-ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS runner
+FROM base AS runner
 
-RUN apk add --no-cache openssl wget
-
-WORKDIR /app
+RUN apk add --no-cache wget
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/scripts ./scripts
-
-# Set correct permissions
-RUN chown -R nextjs:nodejs /app
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=prod-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 

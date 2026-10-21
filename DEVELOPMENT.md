@@ -5,7 +5,7 @@ The app runs on the host (`next dev`, hot reload); only PostgreSQL runs in Docke
 
 ## Prerequisites
 
-- Node.js 20+ and npm 10+
+- Node.js 24 LTS (see `.nvmrc`; `nvm use` picks it) and npm 11+
 - Docker (for the dev database)
 
 ## Setup
@@ -14,8 +14,11 @@ The app runs on the host (`next dev`, hot reload); only PostgreSQL runs in Docke
 ```bash
 git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
-npm install
+npm ci
 ```
+`npm ci` installs exactly what `package-lock.json` records, as CI and the
+Docker image do. Add or upgrade a dependency with `npm install <pkg>@<version>`
+and commit `package.json` and `package-lock.json` together.
 
 2. Configure environment:
 ```bash

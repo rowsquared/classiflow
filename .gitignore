@@ -3,8 +3,6 @@ node_modules
 .pnp
 .pnp.js
 
-# Lock files (auto-generated during Docker builds)
-package-lock.json
 docker-compose.yaml
 
 # Testing

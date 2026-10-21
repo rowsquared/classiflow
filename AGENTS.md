@@ -154,11 +154,12 @@ writes need the same scope as reads. The access matrix is in
 
 ## Local development and checks
 
-Use Node.js 20+ and npm 10+. `.npmrc` enables legacy peer dependencies, disables
-the lockfile, and saves exact versions. Follow the existing npm setup; do not
-introduce a different package manager or lockfile incidentally.
+Use Node.js 24 LTS (`.nvmrc`) and npm 11+. `package-lock.json` is committed and
+CI and the Dockerfile install it with `npm ci`; `.npmrc` saves exact versions.
+Change dependencies with `npm install <pkg>@<version>` and commit the manifest and
+lockfile together. Do not introduce a different package manager.
 
-1. `npm install` (postinstall generates the Prisma client).
+1. `npm ci` (postinstall generates the Prisma client).
 2. Copy `.env.example` to `.env` if no local environment exists; configure
    `DATABASE_URL`, auth URL/secret settings, and default-admin settings. See
    `DEVELOPMENT.md` and `ENV_SETUP.md`. Leave AI unconfigured for human-only work.
@@ -186,7 +187,8 @@ checks relevant to a code change and distinguish pre-existing failures from
 regressions.
 `db:seed` is listed in the manifest but currently has no configured Prisma seed.
 
-Production uses Next's standalone output in a Node 20 Alpine image. The Compose
+Production uses Next's standalone output in a Node 24 Alpine image (pinned by
+digest) with production dependencies only. The Compose
 startup command applies migrations, initializes the admin, then runs `server.js`;
 the Dockerfile alone only starts `server.js`. Production Compose leaves app/DB
 ports internal for reverse-proxy hosting. `/api/health` checks database
