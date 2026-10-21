@@ -53,9 +53,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.
 COPY --from=prod-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
-# scripts/*.ts run with Node's type stripping and import these directly.
+# scripts/*.ts run with Node's type stripping and import these directly
+# (tests/dockerfile.test.ts checks the list against their imports).
 COPY --from=builder --chown=nextjs:nodejs /app/lib/generated ./lib/generated
 COPY --from=builder --chown=nextjs:nodejs /app/lib/passwords.ts ./lib/passwords.ts
+COPY --from=builder --chown=nextjs:nodejs /app/lib/account-links.ts ./lib/account-links.ts
 COPY --from=builder --chown=nextjs:nodejs /app/lib/password-policy.ts ./lib/password-policy.ts
 COPY --from=builder --chown=nextjs:nodejs /app/lib/ai-credentials.ts ./lib/ai-credentials.ts
 
