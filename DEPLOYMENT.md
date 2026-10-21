@@ -124,6 +124,29 @@ usable token, and the keys alone hold no data:
 - Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files). The app rate-limits sign-in per client IP itself (`SIGN_IN_RATE_LIMIT`), reading the IP from `X-Forwarded-For`, so the proxy must set that header (and strip any value the client sent). A proxy rate limit on `POST /api/auth/sign-in/*` is still a sensible second layer.
 - Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (`next.config.ts`) and an enforced, nonce-based `Content-Security-Policy` (`proxy.ts`).
 
+## Mail
+
+Optional. With `N8N_EMAIL_WEBHOOK_SECRET` set (ENV_SETUP.md "Email") classiflow
+sends invitations, password links, emailed temporary passwords and account
+notices through the rowsquared n8n "E-MAIL API" workflow; the workflow must
+accept classiflow's secret. Links use `APP_BASE_URL` (or `BETTER_AUTH_URL`),
+never the request's host, so set it to the public `https://` address.
+
+- **Outbox:** every mail is a row in `OutgoingMail` (purpose, status, timestamps;
+  never the body, a link, a token or a password). It is sent right after the
+  request that queued it; a timer in each instance (once a minute) sends rows a
+  restart left behind and marks rows stuck while sending as **unknown** (they
+  may have arrived; they are never resent automatically). Several instances are
+  safe: a row is claimed with one conditional update before it is sent.
+- **Outcomes** on the Team page: sent, failed (the workflow refused it; resending
+  is safe), unknown (timeout or server error). Emailed temporary passwords are
+  never retried or stored; after a failure send a password link instead.
+- **Retention:** `OutgoingMail` rows are only needed for recent status. Prune
+  them with the audit log, for example after 30 days:
+  `DELETE FROM "OutgoingMail" WHERE "createdAt" < now() - interval '30 days'`.
+- **Check it:** sign in, open Team, create a test member with "Email a link to
+  choose a password", and look for "email sent" in the member's drawer.
+
 ## Health Check
 
 Use the health endpoint to verify the deployment:
@@ -172,12 +195,13 @@ Changing `DEFAULT_ADMIN_PASSWORD` later does **not** change an existing account.
 docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/reset-admin-password.ts admin
 ```
 
-The account must change it at next sign-in, its existing sessions are signed out, and a ban on it is lifted. Other users are reset by an admin on the Team page.
+The account must change it at next sign-in, its existing sessions are signed out, and a ban on it is lifted. Other users are reset by an admin on the Team page, or, with mail on, choose a new password themselves ("Forgot password?" on the sign-in page).
 
 ## Audit log
 
 Admins see an audit trail at **Audit Log** (`/admin/audit`, API `GET /api/audit`):
-user, taxonomy, import, assignment, bulk-label, export and AI-job changes, and
+user, membership, invitation, member import, mail (admin-requested mail and
+its outcome), taxonomy, import, assignment, bulk-label, export and AI-job changes, and
 refused access (`access.denied`, by role or by record scope). Each entry has
 actor (name kept after the user is deleted), action, object and time; details
 hold identifiers and counts, never record text or passwords. Individual label

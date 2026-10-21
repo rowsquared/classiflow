@@ -67,6 +67,23 @@ classiflow can call Taxomind for AI labeling. To enable it locally, run Taxomind
 
 Also set `AI_SOURCE_SLUG` to scope taxonomy keys per deployment. Use the subdomain-domain of your app host (strip `www` and the final TLD, join with `-`). For example, if your app runs at `https://classiflow.app.rowsquared.org`, set `AI_SOURCE_SLUG=classiflow-app-rowsquared`. For local development you can use any slug (e.g. `AI_SOURCE_SLUG=local-dev`).
 
+## Optional: email
+
+Mail is off by default (ENV_SETUP.md "Email"). To try invitations, password
+links and emailed passwords locally, run the mock workflow and point the app
+at it:
+
+```bash
+N8N_EMAIL_WEBHOOK_SECRET=dev-only-secret node scripts/mock-mail-webhook.mjs
+# in .env:
+N8N_EMAIL_WEBHOOK_SECRET="dev-only-secret"
+N8N_EMAIL_WEBHOOK_URL="http://localhost:4010/webhook/send-email"
+```
+
+The mock prints each mail's recipient, subject and links (marked dev only),
+never the rest of the body. `MOCK_MAIL_STATUS=500` makes it fail, to see the
+"unknown" outcome on the Team page.
+
 ## Branches and releases
 
 - `staging` is the integration branch and deploys to staging on every push.

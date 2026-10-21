@@ -38,6 +38,25 @@ changing them later does nothing. To recover access see DEPLOYMENT.md "Admin Use
 | `DEFAULT_ADMIN_EMAIL` | no | `admin@classiflow.local` (`admin@example.com` in Compose) | no | Sign-in email |
 | `DEFAULT_ADMIN_NAME` | no | `System Administrator` (`Admin User` in Compose) | no | Display name |
 
+## Email (optional)
+
+Mail goes through the rowsquared "E-MAIL API" n8n workflow, which owns the SMTP
+credentials (the same variable names as survey-hub). Mail is **on** when
+`N8N_EMAIL_WEBHOOK_SECRET` is set and a public base URL is known; otherwise it
+is off: no invitation or emailed-password options, no "Forgot password?", and
+admins hand over temporary passwords themselves. There is no SMTP transport.
+For local testing, `node scripts/mock-mail-webhook.mjs` (DEVELOPMENT.md).
+
+| Variable | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `N8N_EMAIL_WEBHOOK_SECRET` | for mail | empty (mail off) | yes | Value of the header the workflow checks. Give classiflow its own value so it can be rotated separately |
+| `N8N_EMAIL_WEBHOOK_URL` | no | `https://n8n.rowsquared.com/webhook/send-email` | no | Workflow endpoint |
+| `N8N_EMAIL_WEBHOOK_HEADER` | no | `send-email-api` | no | Name of the header that carries the secret |
+| `N8N_EMAIL_WEBHOOK_TIMEOUT` | no | `15` (seconds) | no | Bound on one delivery; the workflow answers after its SMTP send. No answer in time counts as "unknown" (it may have been sent), never as failed |
+| `APP_BASE_URL` | no | `BETTER_AUTH_URL` | no | Public URL used in mail links. Never taken from the request's `Host` header |
+| `INVITATION_LINK_HOURS` | no | `72` | no | Lifetime of invitation links (new accounts and workspace invitations) |
+| `PASSWORD_RESET_LINK_MINUTES` | no | `60` | no | Lifetime of a password link |
+
 ## AI suggestions (optional)
 
 AI is configured **per workspace** (Admin › AI Settings): a platform admin

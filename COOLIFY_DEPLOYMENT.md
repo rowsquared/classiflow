@@ -66,6 +66,20 @@ APP_DB_PASSWORD=<another long random password>
 Also turn on **Include Source Commit in Build** in the application's settings so
 `/api/health` reports the deployed commit.
 
+#### Optional email variables
+
+```bash
+# Mail through the rowsquared n8n "E-MAIL API" workflow (ENV_SETUP.md "Email").
+# Without the secret, mail is off and admins hand over temporary passwords.
+N8N_EMAIL_WEBHOOK_SECRET=<classiflow's own value, accepted by the workflow>
+# Only if links should use a different public URL than BETTER_AUTH_URL:
+# APP_BASE_URL=https://classiflow.example.org
+```
+
+Mark `N8N_EMAIL_WEBHOOK_SECRET` as a secret. After deploying, check it as in
+DEPLOYMENT.md "Mail". Staging should use the same workflow with its own secret,
+or no mail at all.
+
 #### Optional AI Labeling Variables
 
 ```env

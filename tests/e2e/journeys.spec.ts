@@ -201,6 +201,7 @@ test('team: add a member with a generated password, find, sort and remove them',
   await page.getByLabel('Username', { exact: true }).fill('e2e-new')
   await page.getByLabel('Email', { exact: true }).fill('e2e-new@test.local')
   await page.getByLabel('Name', { exact: true }).fill('Nova Member')
+  await page.getByLabel('Set a temporary password and hand it over myself').check()
   await page.getByRole('button', { name: 'Generate' }).click()
   await page.getByRole('button', { name: 'Create' }).click()
   await expect(page.getByRole('heading', { name: 'Member created' })).toBeVisible()

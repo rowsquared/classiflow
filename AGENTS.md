@@ -138,7 +138,7 @@ by Better Auth and stored on the user's `credential` `Account` row; set or check
 them only through `lib/passwords.ts`, and sign users out with
 `revokeSessions()`. Public sign-up and Better Auth's account-changing endpoints
 are disabled (`disabledPaths`); users are created and changed through
-`app/api/users`. The `admin` plugin provides ban/unban and session listing for
+`app/api/users` and the workspace member API (`/api/workspaces/[id]/users`). The `admin` plugin provides ban/unban and session listing for
 admins; the roles themselves stay our `Role` enum. Usernames and emails are
 stored in lower case.
 
@@ -154,6 +154,19 @@ everything under `/api/workspaces/[workspaceId]` — `workspaceRoute(roles, ...)
 so use the returned `user`. Server pages use `requirePageUser(workspaceId, ...roles)` from
 `lib/server/page-user.ts`. Do not infer protection from an `/admin` UI, the
 proxy, or a neighboring endpoint.
+
+**Mail and account links** (optional; ENV_SETUP.md "Email"): `lib/mail/`
+(`config.ts` with the single `mailEnabled()` gate, the n8n webhook transport,
+escaped layout and templates, `outbox.ts`). Queue mail with `queueMail()` in
+the transaction of the change that causes it and send it with `deliverSoon()`
+(after the response and the commit, `lib/after-response.ts`); `OutgoingMail`
+holds metadata only, and links are minted at send time. Generated temporary
+passwords go through `queueCredentialMail()` / `sendCredentialMailSoon()`:
+memory only, never stored or retried. Password links (`lib/account-links.ts`,
+`lib/server/accounts.ts`), workspace invitations (`lib/server/invitations.ts`)
+and the CSV member import (`lib/member-import.ts`, `lib/server/member-import.ts`)
+build on it; their public pages are listed in `proxy.ts` (`PUBLIC_PAGES`).
+Platform events that must commit with their change use `auditInTransaction()`.
 
 Record-level scoping lives in `lib/access.ts`, inside a workspace (admin: all of
 the workspace; supervisor: whole team subtree; labeller: own assignments). Any handler that reads or writes a

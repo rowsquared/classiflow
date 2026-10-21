@@ -59,6 +59,15 @@ services:
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
       DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Admin User}
 
+      # Email (optional; off without the secret). ENV_SETUP.md "Email".
+      N8N_EMAIL_WEBHOOK_SECRET: ${N8N_EMAIL_WEBHOOK_SECRET:-}
+      N8N_EMAIL_WEBHOOK_URL: ${N8N_EMAIL_WEBHOOK_URL:-https://n8n.rowsquared.com/webhook/send-email}
+      N8N_EMAIL_WEBHOOK_HEADER: ${N8N_EMAIL_WEBHOOK_HEADER:-send-email-api}
+      N8N_EMAIL_WEBHOOK_TIMEOUT: ${N8N_EMAIL_WEBHOOK_TIMEOUT:-15}
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      INVITATION_LINK_HOURS: ${INVITATION_LINK_HOURS:-72}
+      PASSWORD_RESET_LINK_MINUTES: ${PASSWORD_RESET_LINK_MINUTES:-60}
+
       # AI Labeling (Optional)
       # Encrypts the workspaces' AI tokens; back it up apart from the database.
       AI_CREDENTIALS_KEYS: ${AI_CREDENTIALS_KEYS:-}

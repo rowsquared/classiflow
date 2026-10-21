@@ -7,12 +7,21 @@ import { isLastPlatformAdmin, lockPlatformAdmins } from '@/lib/user-rules'
 import { revokeSessions, setPassword } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
 import { passwordProblem } from '@/lib/password-policy'
+import { changeEmail } from '@/lib/server/accounts'
+import { deliverSoon } from '@/lib/mail/outbox'
 
-// Platform administration of one global account: name, platform role,
+// Platform administration of one global account: name, email, platform role,
 // temporary password, ban, deletion. Workspace roles live on memberships.
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  email: z
+    .string()
+    .trim()
+    .email()
+    .max(254)
+    .transform(e => e.toLowerCase())
+    .optional(),
   platformRole: z.enum(['admin', 'user']).optional(),
   newPassword: z.string().max(256).optional(),
   banned: z.boolean().optional(),
@@ -31,7 +40,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { name, platformRole, newPassword, banned, revokeSessions: signOutEverywhere } = parsed.data
+  const { name, email, platformRole, newPassword, banned, revokeSessions: signOutEverywhere } = parsed.data
   if (newPassword) {
     const account = await prisma.user.findUnique({
       where: { id: userId },
@@ -50,6 +59,12 @@ export async function PUT(req: Request, { params }: Params) {
     if (!existing) return { status: 404 as const }
     const losesAdmin = existing.role === 'admin' && (platformRole === 'user' || banned === true)
     if (losesAdmin && (await isLastPlatformAdmin(userId, tx))) return { status: 400 as const }
+    let emailChange: { changed: boolean; mailId: string | null } | null = null
+    if (email !== undefined) {
+      const changed = await changeEmail(tx, { userId, email, actorId: actor.id, workspaceId: null })
+      if ('error' in changed) return { status: 409 as const, error: changed.error }
+      emailChange = changed
+    }
 
     await tx.user.update({
       where: { id: userId },
@@ -63,11 +78,22 @@ export async function PUT(req: Request, { params }: Params) {
     })
     if (newPassword) await setPassword(tx, userId, newPassword)
     if (newPassword || banned || signOutEverywhere) await revokeSessions(tx, userId)
-    return { status: 200 as const, from: existing.role }
+    return { status: 200 as const, from: existing.role, emailChange }
   })
   if (result.status === 404) return NextResponse.json({ error: 'User not found' }, { status: 404 })
   if (result.status === 400) {
     return NextResponse.json({ error: 'Keep at least one active platform admin' }, { status: 400 })
+  }
+  if (result.status === 409) return NextResponse.json({ error: result.error, field: 'email' }, { status: 400 })
+  if (result.emailChange?.mailId) deliverSoon([result.emailChange.mailId])
+  if (result.emailChange?.changed) {
+    await audit({
+      workspaceId: null,
+      actorId: actor.id,
+      action: 'user.email_changed',
+      entityType: 'user',
+      entityId: userId
+    })
   }
 
   await audit({

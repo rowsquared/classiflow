@@ -11,15 +11,33 @@ import { validateSupervisor } from '@/lib/user-rules'
 // The API speaks user ids (`id` is the person's user id); memberships stay an
 // implementation detail. `supervisorId` is the supervisor's user id.
 
-const memberSelect = {
+const memberSelect = (workspaceId: string) => ({
   id: true,
   role: true,
   status: true,
   lastSeenAt: true,
   createdAt: true,
   updatedAt: true,
+  addedBy: { select: { name: true, username: true } },
   user: {
-    select: { id: true, username: true, email: true, name: true, mustResetPassword: true, lastLogin: true }
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      name: true,
+      mustResetPassword: true,
+      lastLogin: true,
+      createdAt: true,
+      invitedAt: true,
+      invitationAcceptedAt: true,
+      // The latest mail sent to them from this workspace (not their self-service links).
+      outgoingMails: {
+        where: { workspaceId },
+        select: { purpose: true, status: true, createdAt: true },
+        orderBy: { createdAt: 'desc' as const },
+        take: 1
+      }
+    }
   },
   supervisor: { select: { user: { select: { id: true, name: true, email: true } } } },
   reports: {
@@ -27,7 +45,7 @@ const memberSelect = {
     select: { role: true, user: { select: { id: true, name: true, email: true } } }
   },
   _count: { select: { assignments: true } }
-}
+})
 
 type MemberRow = {
   role: 'admin' | 'supervisor' | 'labeller'
@@ -35,6 +53,7 @@ type MemberRow = {
   lastSeenAt: Date | null
   createdAt: Date
   updatedAt: Date
+  addedBy: { name: string; username: string } | null
   user: {
     id: string
     username: string
@@ -42,6 +61,10 @@ type MemberRow = {
     name: string
     mustResetPassword: boolean
     lastLogin: Date | null
+    createdAt: Date
+    invitedAt: Date | null
+    invitationAcceptedAt: Date | null
+    outgoingMails: Array<{ purpose: string; status: string; createdAt: Date }>
   }
   supervisor: { user: { id: string; name: string; email: string } } | null
   reports: Array<{ role: 'admin' | 'supervisor' | 'labeller'; user: { id: string; name: string; email: string } }>
@@ -64,6 +87,11 @@ function toMember(m: MemberRow) {
     lastSeenAt: m.lastSeenAt,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
+    addedBy: m.addedBy ? m.addedBy.name || m.addedBy.username : null,
+    accountCreatedAt: m.user.createdAt,
+    // Created with an invitation link and no password chosen yet.
+    invitationPending: !!m.user.invitedAt && !m.user.invitationAcceptedAt,
+    lastMail: m.user.outgoingMails[0] ?? null,
     _count: { assignedSentences: m._count.assignments }
   }
 }
@@ -76,7 +104,7 @@ export async function listVisibleUsers(currentUser: CurrentUser, { includeSuspen
       ...(membershipIds === null ? {} : { id: { in: membershipIds } }),
       ...(includeSuspended ? {} : { status: 'active' as const })
     },
-    select: memberSelect,
+    select: memberSelect(currentUser.workspaceId),
     orderBy: [{ role: 'asc' }, { user: { name: 'asc' } }]
   })
   return { users: rows.map(toMember) }
@@ -87,7 +115,7 @@ export async function getVisibleUser(currentUser: CurrentUser, userId: string) {
   const membershipIds = await getVisibleMembershipIds(currentUser)
   const row = await db().workspaceMembership.findUnique({
     where: { workspaceId_userId: { workspaceId: currentUser.workspaceId, userId } },
-    select: { ...memberSelect, id: true }
+    select: memberSelect(currentUser.workspaceId)
   })
   if (!row) return membershipIds === null ? null : ('forbidden' as const)
   if (membershipIds !== null && !membershipIds.includes(row.id)) return 'forbidden' as const
@@ -117,4 +145,20 @@ export async function resolveSupervisor(
   if (!supervisorMembershipId) return { error: 'Supervisor not found' }
   const problem = await validateSupervisor(workspaceId, membershipId, supervisorMembershipId)
   return problem ? { error: problem } : supervisorMembershipId
+}
+
+/**
+ * Whether a workspace admin may change this account's global profile or
+ * password: platform admins always; otherwise only for an account that
+ * belongs to this workspace alone and has never signed in (a new account
+ * this workspace created). Anything else would let one workspace's admin take
+ * over a person's access to other workspaces.
+ */
+export async function mayManageAccount(actor: CurrentUser, userId: string): Promise<boolean> {
+  if (actor.authority === 'platform') return true
+  const account = await db().user.findUnique({
+    where: { id: userId },
+    select: { lastLogin: true, role: true, _count: { select: { memberships: true } } }
+  })
+  return !!account && account.role !== 'admin' && account.lastLogin === null && account._count.memberships === 1
 }

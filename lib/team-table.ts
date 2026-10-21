@@ -21,10 +21,17 @@ export type TeamMember = {
   lastSeenAt: string | null
   createdAt: string
   updatedAt: string
+  /** Who added them to this workspace. */
+  addedBy: string | null
+  accountCreatedAt: string
+  /** Created with an invitation link and no password chosen yet. */
+  invitationPending: boolean
+  /** The latest mail sent to them from this workspace. */
+  lastMail: { purpose: string; status: string; createdAt: string } | null
   _count: { assignedSentences: number }
 }
 
-export type StatusFilter = '' | 'active' | 'removed' | 'must-reset'
+export type StatusFilter = '' | 'active' | 'removed' | 'must-reset' | 'invited'
 export type ActivityFilter = '' | 'seen-7' | 'not-seen-7' | 'not-seen-30' | 'never'
 
 export type TeamFilters = {
@@ -48,6 +55,7 @@ export function filterMembers(members: TeamMember[], filters: TeamFilters, now =
     if (filters.status === 'active' && m.status !== 'active') return false
     if (filters.status === 'removed' && m.status !== 'suspended') return false
     if (filters.status === 'must-reset' && !m.mustResetPassword) return false
+    if (filters.status === 'invited' && !m.invitationPending) return false
     const seen = m.lastSeenAt ? now - new Date(m.lastSeenAt).getTime() : null
     if (filters.activity === 'seen-7' && (seen === null || seen > 7 * DAY)) return false
     if (filters.activity === 'not-seen-7' && seen !== null && seen <= 7 * DAY) return false

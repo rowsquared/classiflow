@@ -10,8 +10,9 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
   Passwords are hashed by Better Auth (scrypt) and stored on the user's
   `credential` row in `Account`, never on `User`. Public sign-up and Better
   Auth's own account-changing endpoints are switched off (`disabledPaths`);
-  accounts are created and changed only through `app/api/users` and
-  `POST /api/auth/reset-password`.
+  accounts are created and changed only through `app/api/users`, the
+  workspace member API, `POST /api/auth/reset-password` and the password-link
+  endpoints below.
 - Sessions are **database rows** (`Session`), identified by an HTTP-only
   cookie. Every check reads the session and its user from the database (no
   cookie cache), so:
@@ -29,8 +30,10 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
   redirect, password-reset redirect) and sets the Content-Security-Policy. It
   lets every `/api` request through apart from a cross-site check, so every API
   handler starts with `requireSession()` / `requireSession('admin', …)` from
-  `lib/api-auth.ts`. Public exceptions: `/api/health` and Better Auth's routes
-  under `/api/auth/[...all]` (sign-in, sign-out, session).
+  `lib/api-auth.ts`. Public exceptions: `/api/health`, Better Auth's routes
+  under `/api/auth/[...all]` (sign-in, sign-out, session) and the token-gated
+  password-link and invitation endpoints (below). The pages `/forgot-password`,
+  `/set-password` and `/invitation` work signed out.
 - Server pages under `app/` load data through `lib/server/*`, which apply the
   caller's scope the same way the API does; admin pages redirect other roles
   (`lib/server/page-user.ts`).
@@ -40,6 +43,41 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
   against, so timing does not reveal which accounts exist.
 - Content-Security-Policy is enforced with a per-request nonce for scripts
   (`proxy.ts`); styles allow `'unsafe-inline'` for React style attributes.
+
+## Mail, password links and invitations
+
+Only when mail is configured (ENV_SETUP.md "Email"; `lib/mail/`).
+
+- **Password links** (forgotten password, an admin's "Send password link", and
+  the invitation of a new account): a random secret in the URL **fragment**
+  (`/set-password#t=…`), so it never reaches a server log, the proxy or a
+  `Referer`; only its SHA-256 is stored (`Verification`, `lib/account-links.ts`).
+  Opening the page only checks the link (a mail scanner cannot use it up);
+  setting the password locks the account row, applies the password policy,
+  refuses the current password, deletes every link and session of the account
+  and signs nobody in. A link dies when used, after `PASSWORD_RESET_LINK_MINUTES`
+  (invitations `INVITATION_LINK_HOURS`), when the password is set or sessions are
+  revoked, when the email changes, or when the account is banned.
+- **Forgot password** answers the same for every well-formed address and looks
+  nothing up during the request (the lookup and the mail run after the
+  response), so neither the answer nor its timing reveals accounts. One link
+  per account per 15 minutes, across instances. Public endpoints are rate
+  limited per client IP in the database (`lib/rate-limit.ts`).
+- **New accounts** can be created with an invitation link (no password until
+  the person chooses one; signing in fails until then) or a generated temporary
+  password sent by mail: generated on the server, kept only in memory until it
+  is sent after the account commits, never stored, logged, audited or retried.
+- **Workspace invitations** go to an email address, whatever accounts exist, and
+  the answer is the same either way: a workspace admin cannot probe for
+  accounts. Accepting needs the signed-in account whose email matches, and
+  re-checks at that moment that the workspace is active and the inviter is
+  still its admin (or a platform admin). Inviting never creates, resets or mails
+  a password. A resend replaces the link; withdrawing kills it.
+- **Changing an email** follows the local-account rule below; the old address
+  gets a notice and open links of the account end. The audit entry holds no
+  addresses.
+- Mail bodies, links, tokens and passwords never go into `OutgoingMail`, logs,
+  audit payloads or error details.
 
 ## Workspaces
 
@@ -129,11 +167,16 @@ admin) with a valid session who does not have to reset their password.
 | `/api/health` | GET | public (DB connectivity only) |
 | `/api/auth/[...all]` | * | public (Better Auth: sign-in, sign-out, session; admin-plugin endpoints need the platform admin role) |
 | `/api/auth/reset-password` | POST | signed in, including users who must reset |
+| `/api/auth/forgot-password` | POST | public, rate limited; 404 without mail |
+| `/api/auth/set-password/check`, `/confirm` | POST | public, rate limited; needs a valid password link |
+| `/api/invitations/check` | POST | public, rate limited; needs a valid invitation link |
+| `/api/invitations/accept` | POST | signed in as the invited address |
+| `/api/system/mail` | GET | platform admin (mail on/off, base URL; no secrets) |
 | `/api/workspaces` | GET | signed in; lists only workspaces the caller may enter |
 | `/api/workspaces` | POST | platform admin (creates the workspace and its first admin) |
 | `/api/workspaces/[workspaceId]` | GET | member |
 | `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
-| `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, temporary password, ban, delete) |
+| `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
 | `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
 | `/sentences/[id]` | GET | member; record in scope |
@@ -146,9 +189,12 @@ admin) with a valid session who does not have to reset their password.
 | `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |
 | `/taxonomies` and `/taxonomies/[key]/*` writes | POST, PUT, DELETE | admin |
 | `/users` | GET | admin (all members), supervisor (own team) |
-| `/users` | POST | admin (new account + membership); adding an existing account: platform admin |
+| `/users` | POST | admin (new account + membership; access by handed-over password, invitation link or emailed password); adding an existing account directly: platform admin |
+| `/users/import`, `/users/import/[id]`, `/users/import/template` | POST, GET | admin (CSV member import: new accounts only) |
+| `/users/[id]/mail` | POST | admin (not supervisors); password link or invitation resend, local-account rule |
+| `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
-| `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name and password only for accounts that belong to this workspace alone and never signed in, otherwise platform admin |
+| `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
 | `/export` | GET | admin; re-checked before every page of the stream |
 | `/progress/stats`, `/timeline` | GET | member; limited to own work (labeller) or team (supervisor) |
 | `/progress/team` | GET | admin, supervisor (own team) |

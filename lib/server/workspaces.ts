@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { Role, SessionUser } from '@/lib/api-auth'
 import { afterCommit, db, withWorkspace } from '@/lib/workspace/db'
 import { cancelExternalJob } from '@/lib/ai-job-monitor'
+import { auditInTransaction } from '@/lib/audit'
 
 // The workspace directory and lifecycle (control plane). Workspace and
 // membership rows have no row security; workspace data is touched only
@@ -43,7 +44,11 @@ export async function listAccessibleWorkspaces(user: SessionUser): Promise<Works
   return memberships.map(m => ({ ...m.workspace, role: m.role, authority: 'membership' }))
 }
 
-/** A new workspace with its first admin membership, in one transaction. Null when the admin user does not exist. */
+/**
+ * A new workspace with its first admin membership and both audit entries
+ * (platform: workspace.created; workspace: member.added), in one transaction.
+ * Null when the admin user does not exist.
+ */
 export async function createWorkspace(input: {
   name: string
   description: string | null
@@ -51,14 +56,38 @@ export async function createWorkspace(input: {
   createdById: string
 }) {
   return prisma.$transaction(async tx => {
-    const admin = await tx.user.findUnique({ where: { id: input.adminUserId }, select: { id: true } })
+    const admin = await tx.user.findUnique({ where: { id: input.adminUserId }, select: { id: true, username: true } })
     if (!admin) return null
     const workspace = await tx.workspace.create({
       data: { name: input.name, description: input.description, createdById: input.createdById },
       select: { id: true, name: true, description: true, status: true }
     })
     await tx.workspaceMembership.create({
-      data: { workspaceId: workspace.id, userId: admin.id, role: 'admin' }
+      data: { workspaceId: workspace.id, userId: admin.id, role: 'admin', addedById: input.createdById }
+    })
+    await auditInTransaction(tx, {
+      workspaceId: null,
+      actorId: input.createdById,
+      action: 'workspace.created',
+      entityType: 'workspace',
+      entityId: workspace.id,
+      payload: { name: workspace.name, adminUserId: admin.id }
+    })
+    // The workspace's own entry needs the workspace's row-security context
+    // (transaction-local, like withWorkspace()).
+    await tx.$executeRaw`SELECT set_config('app.workspace_id', ${workspace.id}, true)`
+    const actorName = (await tx.user.findUnique({ where: { id: input.createdById }, select: { username: true } }))
+      ?.username
+    await tx.auditLog.create({
+      data: {
+        workspaceId: workspace.id,
+        actorId: input.createdById,
+        actorName: actorName ?? null,
+        action: 'member.added',
+        entityType: 'user',
+        entityId: admin.id,
+        payload: { username: admin.username, role: 'admin', firstAdmin: true, authority: 'platform' }
+      }
     })
     return workspace
   })

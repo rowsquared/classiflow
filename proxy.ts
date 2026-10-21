@@ -26,6 +26,8 @@ function contentSecurityPolicy(nonce: string) {
   ].join('; ')
 }
 
+const PUBLIC_PAGES = new Set(['/forgot-password', '/set-password', '/invitation'])
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -56,14 +58,17 @@ export async function proxy(request: NextRequest) {
   const session = await auth.api.getSession({ headers: request.headers })
   const user = session?.user
   const isLoginPage = pathname === '/login'
+  // Password links and invitations work signed out (and for someone who
+  // still has to change their password); their APIs check the token.
+  const isPublicPage = PUBLIC_PAGES.has(pathname)
 
-  if (!user?.id && !isLoginPage) {
+  if (!user?.id && !isLoginPage && !isPublicPage) {
     return withId(NextResponse.redirect(new URL('/login', request.url)))
   }
   if (user?.id && isLoginPage) {
     return withId(NextResponse.redirect(new URL('/', request.url)))
   }
-  if (user?.mustResetPassword && pathname !== '/reset-password') {
+  if (user?.mustResetPassword && pathname !== '/reset-password' && !isPublicPage) {
     return withId(NextResponse.redirect(new URL('/reset-password', request.url)))
   }
 

@@ -128,13 +128,17 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    and running jobs (all three kinds) in its transaction and asks Taxomind to
    cancel after commit, through each job's connection; leases are also given
    back on SIGTERM/SIGINT.
-8. **Still open:** P4 invitations (with user management U7); P7
-   transactional audit for membership changes, import/lint boundary check
-   against the `prisma` singleton; a searchable header
-   switcher (today: "Switch workspace" link to the chooser); Taxomind
-   namespace isolation verified live (release gate for AI: two namespaces with
-   one credential, identical taxonomy keys; until then give independent
-   workspaces separate Taxomind credentials or instances).
+8. ~~P4 invitations~~ done 22 October 2026 with user management U7b
+   (workspace invitations by email, acceptance by the matching account). P7
+   transactional audit for membership changes done: every membership change
+   runs in its workspace transaction with its audit entry, and workspace
+   creation writes `workspace.created` and the first admin's `member.added` in
+   its own transaction (`auditInTransaction()`).
+9. **Still open:** import/lint boundary check against the `prisma`
+   singleton; a searchable header switcher (today: "Switch workspace" link to
+   the chooser); Taxomind namespace isolation verified live (release gate for
+   AI: two namespaces with one credential, identical taxonomy keys; until then
+   give independent workspaces separate Taxomind credentials or instances).
 
 ## Recommendation and agreed requirements
 

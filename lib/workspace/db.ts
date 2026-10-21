@@ -12,8 +12,9 @@ import type { Prisma } from '@/lib/generated/prisma/client'
  * Outside withWorkspace() db() throws, and the database itself shows no
  * workspace rows to the runtime role: access fails closed.
  *
- * Control-plane tables (User, Workspace, WorkspaceMembership, Better Auth's
- * tables) have no row security and may be read with the plain client too.
+ * Control-plane tables (User, Workspace, WorkspaceMembership,
+ * WorkspaceInvitation, OutgoingMail, Better Auth's tables) have no row
+ * security and may be read with the plain client too.
  */
 
 export type WorkspaceDb = Prisma.TransactionClient
@@ -41,6 +42,9 @@ const WORKSPACE_MODELS = new Set([
   'AIConnectionVersion',
   'Comment',
   'WorkspaceMembership',
+  'WorkspaceInvitation',
+  'MemberImport',
+  'MemberImportRow',
   'AuditLog'
 ])
 const FILTERED = new Set([

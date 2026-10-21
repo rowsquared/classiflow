@@ -71,7 +71,15 @@ export async function POST(req: Request) {
   }
   const user = await prisma.$transaction(async tx => {
     const created = await tx.user.create({
-      data: { username, displayUsername, email, name, role: platformRole, mustResetPassword: true },
+      data: {
+        username,
+        displayUsername,
+        email,
+        name,
+        role: platformRole,
+        mustResetPassword: true,
+        createdById: actor.id
+      },
       select: { id: true, username: true, email: true, name: true, role: true, createdAt: true }
     })
     await setPassword(tx, created.id, tempPassword)

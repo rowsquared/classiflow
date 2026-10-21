@@ -60,21 +60,26 @@ enum AnnotationSource {
 // schema (lib/auth.ts): core fields plus the username and admin plugins (whose
 // `role` is the platform role). Passwords live on the "credential" Account row.
 model User {
-  id                String       @id @default(cuid())
-  username          String       @unique // Lower case; what people sign in with
-  displayUsername   String?
-  email             String       @unique // Lower case
-  emailVerified     Boolean      @default(false)
-  name              String
-  image             String?
-  role              PlatformRole @default(user)
-  banned            Boolean?     @default(false)
-  banReason         String?
-  banExpires        DateTime?
-  mustResetPassword Boolean      @default(true) // Force password reset on first login
-  lastLogin         DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                   String       @id @default(cuid())
+  username             String       @unique // Lower case; what people sign in with
+  displayUsername      String?
+  email                String       @unique // Lower case
+  emailVerified        Boolean      @default(false)
+  name                 String
+  image                String?
+  role                 PlatformRole @default(user)
+  banned               Boolean?     @default(false)
+  banReason            String?
+  banExpires           DateTime?
+  mustResetPassword    Boolean      @default(true) // Force password reset on first login
+  lastLogin            DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  // Who created the account (null: setup scripts). Not shown across workspaces.
+  createdById          String?
+  // Created with an invitation link: no password until the person sets one.
+  invitedAt            DateTime?
+  invitationAcceptedAt DateTime?
 
   sessions        Session[]
   accounts        Account[]
@@ -88,6 +93,11 @@ model User {
   aiLearningJobs  AILearningJob[]       @relation("LearningJobsUser")
   aiSyncJobs      AITaxonomySyncJob[]
   workspaces      Workspace[]           @relation("WorkspaceCreator")
+  createdBy       User?                 @relation("AccountCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAccounts User[]                @relation("AccountCreator")
+  addedMembers    WorkspaceMembership[] @relation("MembershipAdder")
+  outgoingMails   OutgoingMail[]        @relation("MailRecipient")
+  requestedMails  OutgoingMail[]        @relation("MailRequester")
 }
 
 // One row per signed-in browser. Signing a user out everywhere deletes their rows.
@@ -170,6 +180,9 @@ model Workspace {
   aiSyncJobs     AITaxonomySyncJob[]
   aiConnections  AIConnectionVersion[]
   auditLogs      AuditLog[]
+  invitations    WorkspaceInvitation[]
+  memberImports  MemberImport[]
+  outgoingMails  OutgoingMail[]
 }
 
 // A person's role in one workspace. The supervisor tree links memberships of
@@ -183,11 +196,14 @@ model WorkspaceMembership {
   status                 MembershipStatus @default(active)
   supervisorMembershipId String?
   lastSeenAt             DateTime?
+  // Who added the person to this workspace (an admin, or the invitation's sender).
+  addedById              String?
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
 
   workspace   Workspace             @relation(fields: [workspaceId], references: [id])
   user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedBy     User?                 @relation("MembershipAdder", fields: [addedById], references: [id], onDelete: SetNull)
   supervisor  WorkspaceMembership?  @relation("MembershipTree", fields: [workspaceId, supervisorMembershipId], references: [workspaceId, id], onDelete: NoAction, onUpdate: NoAction)
   reports     WorkspaceMembership[] @relation("MembershipTree")
   assignments SentenceAssignment[]
@@ -612,4 +628,120 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@index([actorId])
+}
+
+// Outgoing email (lib/mail). Metadata only: never the body, a link, a token
+// or a password. Global (no row security), like accounts; workspaceId names
+// the workspace a mail was sent from, if any.
+enum MailPurpose {
+  invitation // New account: link to choose a password
+  workspace_invitation // Invitation to join a workspace (any address)
+  password_link // Forgotten password, or sent by an admin
+  password_changed
+  email_changed // Notice to the old address
+  credentials // Generated temporary password; never retried
+}
+
+// sent: the transport accepted it; failed: definite refusal (resending is
+// safe); unknown: timeout, network or server error, or the server stopped
+// while sending (it may have gone out). Never resent automatically.
+enum MailStatus {
+  pending
+  sending
+  sent
+  failed
+  unknown
+}
+
+model OutgoingMail {
+  id            String      @id @default(cuid())
+  purpose       MailPurpose
+  status        MailStatus  @default(pending)
+  userId        String?
+  workspaceId   String?
+  invitationId  String?
+  // Only for notices to an address the account no longer has (email_changed).
+  recipient     String?
+  requestedById String?
+  attempts      Int         @default(0)
+  detail        String? // Safe text only
+  createdAt     DateTime    @default(now())
+  claimedAt     DateTime?
+  sentAt        DateTime?
+
+  user        User?                @relation("MailRecipient", fields: [userId], references: [id], onDelete: SetNull)
+  requestedBy User?                @relation("MailRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  workspace   Workspace?           @relation(fields: [workspaceId], references: [id])
+  invitation  WorkspaceInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([invitationId])
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+}
+
+// An invitation to join a workspace, sent to an email address whether or not
+// an account has it (so inviting reveals nothing). Accepting needs the
+// signed-in account with that address. Control plane like memberships: the
+// invitee has no workspace context until they accept.
+model WorkspaceInvitation {
+  id                     String           @id @default(cuid())
+  workspaceId            String
+  email                  String // Lower case
+  role                   WorkspaceRole
+  supervisorMembershipId String?
+  invitedById            String?
+  // SHA-256 of the secret part of the current link; a resend replaces it.
+  tokenHash              String?
+  expiresAt              DateTime
+  status                 InvitationStatus @default(pending)
+  acceptedById           String?
+  acceptedAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id])
+  mails     OutgoingMail[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, email])
+}
+
+// A committed CSV member import (U4): the key the browser sent with the
+// commit, so a replayed or concurrent commit returns this outcome instead of
+// creating or mailing again. Rows hold no passwords.
+model MemberImport {
+  id          String   @id @default(cuid())
+  workspaceId String
+  importKey   String
+  fileName    String
+  createdById String?
+  rowCount    Int
+  createdAt   DateTime @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id])
+  rows      MemberImportRow[]
+
+  @@unique([workspaceId, importKey])
+  @@unique([workspaceId, id])
+}
+
+model MemberImportRow {
+  id          String  @id @default(cuid())
+  workspaceId String
+  importId    String
+  line        Int
+  username    String
+  userId      String?
+  access      String
+  mailId      String?
+
+  import MemberImport @relation(fields: [workspaceId, importId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([importId])
 }

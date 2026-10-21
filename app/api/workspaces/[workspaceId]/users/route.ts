@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { forbidden, workspaceRoute } from '@/lib/api-auth'
 import { listVisibleUsers, resolveSupervisor } from '@/lib/server/users'
-import { setPassword, USERNAME_PATTERN } from '@/lib/passwords'
+import { generateTemporaryPassword, setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
 import { passwordProblem } from '@/lib/password-policy'
 import { db } from '@/lib/workspace/db'
+import { mailEnabled } from '@/lib/mail/config'
+import { deliverSoon, queueCredentialMail, queueMail, recoverOutbox, sendCredentialMailSoon } from '@/lib/mail/outbox'
 
 // Members of one workspace. The API speaks user ids (supervisorId is the
 // supervisor's user id); memberships are stored per workspace, so one person
@@ -24,11 +26,15 @@ const createSchema = z.object({
   name: z.string().min(1).max(200),
   role: roleSchema,
   supervisorId: z.string().optional().nullable(),
-  tempPassword: z.string().max(256)
+  // How the person gets access: a temporary password the admin hands over
+  // (`password`), an invitation link to choose one (`invite`), or a generated
+  // temporary password sent by mail (`email_password`). The last two need mail.
+  access: z.enum(['password', 'invite', 'email_password']).default('password'),
+  tempPassword: z.string().max(256).optional()
 })
 
-// Adding an account that already exists elsewhere: platform admins only, until
-// invitations exist (docs/plans/user-management.md U7b), so a workspace admin
+// Adding an account that already exists elsewhere: platform admins only.
+// Workspace admins invite an email address instead (../invitations), so they
 // cannot probe which accounts exist or take over someone else's identity.
 const addExistingSchema = z.object({
   existingUser: z.string().min(1).max(254),
@@ -40,6 +46,7 @@ const addExistingSchema = z.object({
 // supervisors themselves and their team.
 export const GET = workspaceRoute(['admin', 'supervisor'], async (req, { user }) => {
   const includeSuspended = user.role === 'admin' && new URL(req.url).searchParams.get('includeSuspended') === 'true'
+  if (user.role === 'admin') await recoverOutbox()
   return NextResponse.json(await listVisibleUsers(user, { includeSuspended }))
 })
 
@@ -70,7 +77,13 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
     if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object')
       return NextResponse.json(supervisorMembershipId, { status: 400 })
     await db().workspaceMembership.create({
-      data: { workspaceId: actor.workspaceId, userId: account.id, role: parsed.data.role, supervisorMembershipId }
+      data: {
+        workspaceId: actor.workspaceId,
+        userId: account.id,
+        role: parsed.data.role,
+        supervisorMembershipId,
+        addedById: actor.id
+      }
     })
     await audit({
       actorId: actor.id,
@@ -86,16 +99,33 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { email, name, role, supervisorId, tempPassword } = parsed.data
+  const { email, name, role, supervisorId, access } = parsed.data
   const displayUsername = parsed.data.username
   const username = displayUsername.toLowerCase()
-  const weak = passwordProblem(tempPassword, { username, email, name })
-  if (weak) return NextResponse.json({ error: `Temporary password: ${weak}`, field: 'tempPassword' }, { status: 400 })
+  if (access !== 'password' && !mailEnabled()) {
+    return NextResponse.json({ error: 'Email is not configured; hand over a temporary password' }, { status: 400 })
+  }
+  // The admin's own password for `password`; generated here for
+  // `email_password`, so nobody but the person ever sees it.
+  let password: string | null = null
+  if (access === 'password') {
+    password = parsed.data.tempPassword ?? ''
+    const weak = passwordProblem(password, { username, email, name })
+    if (weak) return NextResponse.json({ error: `Temporary password: ${weak}`, field: 'tempPassword' }, { status: 400 })
+  } else if (access === 'email_password') {
+    do password = generateTemporaryPassword()
+    while (passwordProblem(password, { username, email, name }))
+  }
 
   const taken = await db().user.findFirst({ where: { OR: [{ username }, { email }] }, select: { username: true } })
   if (taken) {
     return NextResponse.json(
-      { error: taken.username === username ? 'Username already in use' : 'Email already in use' },
+      {
+        error:
+          taken.username === username
+            ? 'Username already in use'
+            : 'Email already in use. If this person already has an account, invite them by email instead.'
+      },
       { status: 400 }
     )
   }
@@ -103,21 +133,56 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
   if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object')
     return NextResponse.json(supervisorMembershipId, { status: 400 })
 
+  // An invited account has no password until the person chooses one through
+  // the link, so it cannot be signed in to before then.
   const created = await db().user.create({
-    data: { username, displayUsername, email, name, mustResetPassword: true },
+    data: {
+      username,
+      displayUsername,
+      email,
+      name,
+      mustResetPassword: access !== 'invite',
+      createdById: actor.id,
+      invitedAt: access === 'invite' ? new Date() : null
+    },
     select: { id: true, username: true, email: true, name: true, mustResetPassword: true, createdAt: true }
   })
-  await setPassword(db(), created.id, tempPassword)
+  if (password) await setPassword(db(), created.id, password)
   await db().workspaceMembership.create({
-    data: { workspaceId: actor.workspaceId, userId: created.id, role, supervisorMembershipId }
+    data: { workspaceId: actor.workspaceId, userId: created.id, role, supervisorMembershipId, addedById: actor.id }
   })
+
+  let mailId: string | null = null
+  if (access === 'invite') {
+    mailId = await queueMail(db(), {
+      purpose: 'invitation',
+      userId: created.id,
+      workspaceId: actor.workspaceId,
+      requestedById: actor.id
+    })
+    deliverSoon([mailId])
+  } else if (access === 'email_password' && password) {
+    mailId = await queueCredentialMail(db(), {
+      userId: created.id,
+      workspaceId: actor.workspaceId,
+      requestedById: actor.id
+    })
+    // Sent after the commit from memory; never stored, never retried.
+    sendCredentialMailSoon([{ mailId, password }])
+  }
 
   await audit({
     actorId: actor.id,
     action: 'user.created',
     entityType: 'user',
     entityId: created.id,
-    payload: { username, role, supervisorId: supervisorId ?? null }
+    payload: { username, role, supervisorId: supervisorId ?? null, access }
   })
-  return NextResponse.json({ user: { ...created, role, supervisorId: supervisorId ?? null } }, { status: 201 })
+  return NextResponse.json(
+    {
+      user: { ...created, role, supervisorId: supervisorId ?? null },
+      mail: mailId ? { id: mailId, status: 'pending' } : null
+    },
+    { status: 201 }
+  )
 })

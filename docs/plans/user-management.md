@@ -100,20 +100,69 @@ U7/U4 behavior, not a statement that email is implemented.
   audit links, show-once password dialog, toasts; e2e journeys for Team and
   Accounts. Mail-dependent parts (email indicator, invitation mode, resend)
   wait for U7.
-- **U3 done** except changing a member's email: `lib/password-policy.ts`
-  (10–256 characters, not common, not built from username/email/name; the
-  forced change must differ) applied to every password-setting path
-  including scripts and Better Auth's own minimum; suspension = removal from
-  a workspace; ban = everywhere; removal can unassign open records (U2).
+- **U3 done**, including changing a member's email (22 October 2026):
+  `lib/password-policy.ts` (10–256 characters, not common, not built from
+  username/email/name; the forced change must differ) applied to every
+  password-setting path including scripts and Better Auth's own minimum;
+  suspension = removal from a workspace; ban = everywhere; removal can unassign
+  open records (U2). Email changes: platform admins on `/api/users/[id]`,
+  workspace admins under the local-account rule on the member API; unique after
+  lower-casing, open links end, a notice goes to the old address,
+  `user.email_changed` without addresses.
 - **U5 done:** "Sign out other devices" (user menu, Better Auth
   `revokeOtherSessions`), "Sign out everywhere" for platform admins on
   `/accounts` (`user.sessions_revoked`).
-- **U6 partly done:** `/w/[id]/admin/audit` reads `action`, `entityType`,
-  `entityId`, `actorId` from the URL; the drawer links to it. Open: mail
-  events (U7), "created by" in the drawer.
-- **Next:** U7a mail transport and outbox, then U7c password links and U7b
-  invitations (Better Auth reset flow) with the temporary-password email
-  path from the maintainer revision, then U4 CSV member import.
+- **U6 done:** `/w/[id]/admin/audit` reads `action`, `entityType`,
+  `entityId`, `actorId` from the URL; the drawer links to it. Mail events
+  (`mail.password_link_requested`, `mail.invitation_requested`, and the outcome
+  `mail.sent` / `mail.failed` / `mail.unknown` of every admin-requested mail;
+  ids and purpose only) and invitation events (`member.invited`,
+  `member.invitation_revoked`, `members.imported`). The drawer shows "Added here
+  … by …" (`WorkspaceMembership.addedById`, local information only) and the
+  account's creation date (`User.createdById` is stored but not shown across
+  workspaces).
+- **U7a done:** `lib/mail/` (config read once, `mailEnabled()`, n8n webhook with
+  sent/failed/unknown, folded subjects, escaped email-safe layout without
+  secrets in the preheader, templates), the `OutgoingMail` outbox (claim with
+  one conditional update, links minted at send time, `sending` past the timeout
+  becomes `unknown`, a timer per instance sends rows a restart left behind),
+  `GET /api/system/mail`, `scripts/mock-mail-webhook.mjs`. n8n only, no SMTP
+  (decision 8). Retention of `OutgoingMail`: documented as a prune in
+  DEPLOYMENT.md "Mail", not automated (audit retention is still open).
+- **U7c done:** `/forgot-password` and `/set-password`, password links in Better
+  Auth's `Verification` table (SHA-256 of a random secret, purpose and the
+  email it was sent to; `lib/account-links.ts`) instead of the HMAC tokens
+  above. Better Auth's own reset endpoints stay disabled: confirming needs our
+  policy, a row lock, the audit entry and the notice. Identical answers with
+  the lookup after the response, a 15-minute cooldown per account across
+  instances (a definite failure frees it), per-IP limits in the database
+  (`lib/rate-limit.ts`), check vs. confirm, "password changed" notice. The
+  endpoints answer 404 without mail; the set-password endpoints stay available
+  for links issued earlier. Admin "Send password link" in the drawer.
+- **U7b / P4 done:** create modes "Email a link to choose a password" (account
+  without a password, `invitedAt`/`invitationAcceptedAt`, badge "invited",
+  resend from the drawer), "Generate and email a temporary password" (claim row
+  before sending, password in memory only, sent after the commit, never
+  retried; a row that never reached `sending` is marked "not sent" by the
+  recovery) and the existing handover. **Workspace invitations**
+  (`WorkspaceInvitation`, `/w/[id]/admin/team` "Invite by email", `/invitation`)
+  for people who have or will have an account: same answer whatever accounts
+  exist, accepted only by the signed-in account with that address, inviter,
+  workspace and role re-checked at acceptance, resend replaces the link,
+  withdraw. Workspace admins only; supervisors get 403.
+- **U4 done:** CSV member import (`lib/member-import.ts`, unit tested;
+  `/users/import` with dry run, commit, `importKey` replay protection persisted
+  in `MemberImport`/`MemberImportRow` without secrets; template; access
+  `invite`, `email_password`, `generate`, `password`; all-or-nothing accounts,
+  per-row mail outcomes polled by the result dialog; generated passwords shown
+  once with copy and a browser-built CSV download). Rows are created with
+  per-row inserts in one transaction after hashing outside it; 500 rows is the
+  cap.
+- **Not done:** an SMTP fallback (decision 8: n8n only), automatic retention of
+  `OutgoingMail`, locked-out badges (moot, see U5), an "Export users" CSV.
+  Verify against the live n8n workflow when staging exists (only the mock and
+  the test stand-in have been used).
+
 **Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
 and outgoing email for accounts (invitations, forgotten passwords, notices).
 **Reference:** [`rowsquared/survey-hub`](https://github.com/rowsquared/survey-hub/tree/dev)

@@ -21,6 +21,10 @@ function member(username: string, over: Partial<TeamMember> = {}): TeamMember {
     lastSeenAt: null,
     createdAt: daysAgo(100),
     updatedAt: daysAgo(100),
+    addedBy: null,
+    accountCreatedAt: daysAgo(100),
+    invitationPending: false,
+    lastMail: null,
     _count: { assignedSentences: 0 },
     ...over
   }
@@ -34,6 +38,11 @@ const members = [
 ]
 
 describe('filterMembers', () => {
+  it('finds members whose invitation is still open', () => {
+    const invited = [...members, member('emil', { invitationPending: true })]
+    expect(filterMembers(invited, { ...NO_FILTERS, status: 'invited' }, NOW).map(m => m.username)).toEqual(['emil'])
+  })
+
   it('shows active members by default and finds by username, name or email', () => {
     expect(filterMembers(members, NO_FILTERS, NOW).map(m => m.username)).toEqual(['carla', 'ben', 'dora'])
     expect(filterMembers(members, { ...NO_FILTERS, search: 'DOR' }, NOW).map(m => m.username)).toEqual(['dora'])

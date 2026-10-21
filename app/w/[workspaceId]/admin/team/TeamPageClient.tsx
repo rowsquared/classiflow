@@ -7,6 +7,8 @@ import PageHeader from '@/components/PageHeader'
 import { ToastContainer, type Toast } from '@/components/Toast'
 import CreateMemberModal from '@/components/team/CreateMemberModal'
 import MemberDrawer from '@/components/team/MemberDrawer'
+import MemberImportModal from '@/components/team/MemberImportModal'
+import PendingInvitations, { type PendingInvitation } from '@/components/team/PendingInvitations'
 import { formatRelativeTime } from '@/lib/utils'
 import {
   filterMembers,
@@ -21,8 +23,9 @@ import {
 import { workspaceApi } from '@/lib/workspace/urls'
 
 export type User = TeamMember
+export type { PendingInvitation }
 
-type Props = { initialUsers: User[] }
+type Props = { initialUsers: User[]; initialInvitations: PendingInvitation[]; mailEnabled: boolean }
 
 const select =
   'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
@@ -49,9 +52,10 @@ const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
 
 /**
  * Members of this workspace: search, filters and sorting in the browser
- * (lib/team-table.ts), a drawer per member, and adding members.
+ * (lib/team-table.ts), a drawer per member, adding and importing members, and
+ * open invitations. With mail on, members can be invited by link.
  */
-export default function TeamPageClient({ initialUsers }: Props) {
+export default function TeamPageClient({ initialUsers, initialInvitations, mailEnabled }: Props) {
   const { data: session } = useSession()
   const workspace = useWorkspaceInfo()
   const [members, setMembers] = useState<User[]>(initialUsers)
@@ -59,6 +63,8 @@ export default function TeamPageClient({ initialUsers }: Props) {
   const [sort, setSort] = useState<Sort>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [invitations, setInvitations] = useState<PendingInvitation[]>(initialInvitations)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const notify = useCallback((type: Toast['type'], message: string) => {
@@ -67,14 +73,19 @@ export default function TeamPageClient({ initialUsers }: Props) {
   const closeToast = useCallback((id: string) => setToasts(t => t.filter(x => x.id !== id)), [])
 
   const reload = useCallback(async () => {
-    const res = await fetch(workspaceApi('/users?includeSuspended=true'))
+    const [res, invited] = await Promise.all([
+      fetch(workspaceApi('/users?includeSuspended=true')),
+      fetch(workspaceApi('/invitations'))
+    ])
     if (res.ok) setMembers((await res.json()).users)
     else notify('error', 'Could not reload the members.')
+    if (invited.ok) setInvitations((await invited.json()).invitations)
   }, [notify])
 
   const changed = async (message: string) => {
     setSelectedId(null)
     setAdding(false)
+    setImporting(false)
     notify('success', message)
     await reload()
   }
@@ -146,6 +157,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
           >
             <option value="active">Active</option>
             <option value="must-reset">Must reset password</option>
+            <option value="invited">Invitation pending</option>
             <option value="removed">Removed</option>
             <option value="">Everyone</option>
           </select>
@@ -175,6 +187,13 @@ export default function TeamPageClient({ initialUsers }: Props) {
           )}
           <button
             type="button"
+            onClick={() => setImporting(true)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Import members
+          </button>
+          <button
+            type="button"
             onClick={() => setAdding(true)}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
           >
@@ -182,9 +201,23 @@ export default function TeamPageClient({ initialUsers }: Props) {
           </button>
         </div>
 
-        <p className="text-sm text-gray-600" aria-live="polite">
-          {shown.length} of {members.length} members
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+          <p aria-live="polite">
+            {shown.length} of {members.length} members
+          </p>
+          <p
+            title={
+              mailEnabled
+                ? 'Members can be invited by email and sent password links'
+                : 'Email is not configured: hand over temporary passwords yourself'
+            }
+          >
+            Email:{' '}
+            <span className={mailEnabled ? 'text-indigo-700 font-medium' : 'text-gray-500 font-medium'}>
+              {mailEnabled ? 'on' : 'off'}
+            </span>
+          </p>
+        </div>
 
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
@@ -223,6 +256,9 @@ export default function TeamPageClient({ initialUsers }: Props) {
                     {m.username}
                     {m.status === 'suspended' && (
                       <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs">removed</span>
+                    )}
+                    {m.invitationPending && m.status === 'active' && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 text-xs">invited</span>
                     )}
                     {m.mustResetPassword && m.status === 'active' && (
                       <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-xs">must reset</span>
@@ -263,15 +299,26 @@ export default function TeamPageClient({ initialUsers }: Props) {
             </tbody>
           </table>
         </div>
+
+        <PendingInvitations
+          invitations={invitations}
+          mailEnabled={mailEnabled}
+          onChanged={changed}
+          onError={message => notify('error', message)}
+        />
       </div>
 
       {adding && (
         <CreateMemberModal
           supervisors={supervisors}
           canAddExisting={workspace?.authority === 'platform'}
+          mailEnabled={mailEnabled}
           onClose={() => setAdding(false)}
           onCreated={changed}
         />
+      )}
+      {importing && (
+        <MemberImportModal mailEnabled={mailEnabled} onClose={() => setImporting(false)} onImported={changed} />
       )}
       {selected && (
         <MemberDrawer
@@ -279,6 +326,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
           member={selected}
           supervisors={supervisors}
           isSelf={selected.id === session?.user?.id}
+          mailEnabled={mailEnabled}
           onClose={() => setSelectedId(null)}
           onChanged={changed}
         />

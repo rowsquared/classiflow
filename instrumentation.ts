@@ -12,6 +12,9 @@ export async function register() {
     // Continue AI jobs left behind by a restart or another instance; see lib/ai-job-monitor.ts.
     const { startJobRecovery } = await import('@/lib/ai-job-monitor')
     startJobRecovery()
+    // Send queued mail left behind by a restart; see lib/mail/outbox.ts.
+    const { startOutboxRecovery } = await import('@/lib/mail/outbox')
+    startOutboxRecovery()
   }
 }
 

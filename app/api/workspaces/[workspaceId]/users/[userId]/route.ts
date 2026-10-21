@@ -1,15 +1,24 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { forbidden, workspaceRoute, type CurrentUser } from '@/lib/api-auth'
-import { getVisibleUser, resolveSupervisor } from '@/lib/server/users'
+import { forbidden, workspaceRoute } from '@/lib/api-auth'
+import { getVisibleUser, mayManageAccount, resolveSupervisor } from '@/lib/server/users'
 import { isLastWorkspaceAdmin, lockWorkspaceAdmins } from '@/lib/user-rules'
 import { revokeSessions, setPassword } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/workspace/db'
 import { passwordProblem } from '@/lib/password-policy'
+import { changeEmail } from '@/lib/server/accounts'
+import { deliverSoon } from '@/lib/mail/outbox'
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  email: z
+    .string()
+    .trim()
+    .email()
+    .max(254)
+    .transform(e => e.toLowerCase())
+    .optional(),
   role: z.enum(['admin', 'supervisor', 'labeller']).optional(),
   supervisorId: z.string().nullable().optional(),
   status: z.enum(['active', 'suspended']).optional(),
@@ -27,30 +36,14 @@ export const GET = workspaceRoute<'userId'>([], async (_req, { user: currentUser
   return NextResponse.json({ user: member })
 })
 
-/**
- * Whether a workspace admin may change this account's global profile or
- * password: platform admins always; otherwise only for an account that
- * belongs to this workspace alone and has never signed in (a new account
- * this workspace created). Anything else would let one workspace's admin take
- * over a person's access to other workspaces.
- */
-async function mayManageAccount(actor: CurrentUser, userId: string): Promise<boolean> {
-  if (actor.authority === 'platform') return true
-  const account = await db().user.findUnique({
-    where: { id: userId },
-    select: { lastLogin: true, role: true, _count: { select: { memberships: true } } }
-  })
-  return !!account && account.role !== 'admin' && account.lastLogin === null && account._count.memberships === 1
-}
-
-// PUT: role, supervisor and status are this workspace's; name and password are
-// the account's (see mayManageAccount).
+// PUT: role, supervisor and status are this workspace's; name, email and
+// password are the account's (see mayManageAccount).
 export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor, params }) => {
   const parsed = updateSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { name, role, supervisorId, status, newPassword } = parsed.data
+  const { name, email, role, supervisorId, status, newPassword } = parsed.data
   const userId = params.userId
 
   await lockWorkspaceAdmins(actor.workspaceId)
@@ -70,9 +63,9 @@ export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor
   if (status === 'suspended' && userId === actor.id) {
     return NextResponse.json({ error: 'You cannot suspend yourself' }, { status: 400 })
   }
-  if ((name !== undefined || newPassword) && !(await mayManageAccount(actor, userId))) {
+  if ((name !== undefined || email !== undefined || newPassword) && !(await mayManageAccount(actor, userId))) {
     return forbidden(
-      'This account is used beyond this workspace; only a platform admin can change its name or password'
+      'This account is used beyond this workspace; only a platform admin can change its name, email or password'
     )
   }
 
@@ -83,6 +76,17 @@ export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor
     })
     const weak = passwordProblem(newPassword, { ...account, name: name ?? account.name })
     if (weak) return NextResponse.json({ error: `New password: ${weak}`, field: 'newPassword' }, { status: 400 })
+  }
+
+  // First of the writes, so a taken address refuses the whole request. Open
+  // password links end (they went to the old address); the old address gets
+  // a notice when mail is on.
+  let emailChanged = false
+  if (email !== undefined) {
+    const result = await changeEmail(db(), { userId, email, actorId: actor.id, workspaceId: actor.workspaceId })
+    if ('error' in result) return NextResponse.json({ error: result.error, field: 'email' }, { status: 400 })
+    emailChanged = result.changed
+    if (result.mailId) deliverSoon([result.mailId])
   }
 
   let supervisorMembershipId: string | null | undefined
@@ -108,6 +112,7 @@ export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor
     })
   }
   if (name !== undefined) await db().user.update({ where: { id: userId }, data: { name } })
+
   // An admin-set password is temporary: the user must change it, and every
   // session signed in with the old password ends.
   if (newPassword) {
@@ -116,6 +121,15 @@ export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor
     await db().user.update({ where: { id: userId }, data: { mustResetPassword: true } })
   }
 
+  if (emailChanged) {
+    await audit({
+      actorId: actor.id,
+      action: 'user.email_changed',
+      entityType: 'user',
+      entityId: userId,
+      payload: { authority: actor.authority }
+    })
+  }
   const fields = Object.entries({ name, role, supervisorId, status })
     .filter(([, v]) => v !== undefined)
     .map(([k]) => k)

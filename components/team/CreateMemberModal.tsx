@@ -12,16 +12,23 @@ type Props = {
   supervisors: TeamMember[]
   /** Platform admins may also add an account that already exists. */
   canAddExisting: boolean
+  mailEnabled: boolean
   onClose: () => void
   onCreated: (message: string) => void
 }
 
+type Access = 'invite' | 'email_password' | 'password'
+
 /**
- * New member: a new account with a temporary password (typed or generated,
- * shown once to copy), or for platform admins an existing account.
+ * New member. A new account gets access by an invitation link to choose a
+ * password, a generated temporary password by email (both need mail), or a
+ * temporary password the admin hands over (typed or generated, shown once to
+ * copy). Anyone, including people with an account already, can be invited by
+ * email to join; platform admins can also add an existing account directly.
  */
-export default function CreateMemberModal({ supervisors, canAddExisting, onClose, onCreated }: Props) {
-  const [mode, setMode] = useState<'new' | 'existing'>('new')
+export default function CreateMemberModal({ supervisors, canAddExisting, mailEnabled, onClose, onCreated }: Props) {
+  const [mode, setMode] = useState<'new' | 'invite' | 'existing'>('new')
+  const [access, setAccess] = useState<Access>(mailEnabled ? 'invite' : 'password')
   const [form, setForm] = useState({
     username: '',
     email: '',
@@ -47,15 +54,18 @@ export default function CreateMemberModal({ supervisors, canAddExisting, onClose
       const body =
         mode === 'existing'
           ? { existingUser: form.existingUser, role: form.role, supervisorId: form.supervisorId || null }
-          : {
-              username: form.username,
-              email: form.email,
-              name: form.name,
-              role: form.role,
-              supervisorId: form.supervisorId || null,
-              tempPassword: form.tempPassword
-            }
-      const res = await fetch(workspaceApi('/users'), {
+          : mode === 'invite'
+            ? { email: form.email, role: form.role, supervisorId: form.supervisorId || null }
+            : {
+                username: form.username,
+                email: form.email,
+                name: form.name,
+                role: form.role,
+                supervisorId: form.supervisorId || null,
+                access,
+                ...(access === 'password' ? { tempPassword: form.tempPassword } : {})
+              }
+      const res = await fetch(workspaceApi(mode === 'invite' ? '/invitations' : '/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -67,6 +77,18 @@ export default function CreateMemberModal({ supervisors, canAddExisting, onClose
       }
       if (mode === 'existing') {
         onCreated(`${form.existingUser} added to this workspace`)
+        return
+      }
+      if (mode === 'invite') {
+        onCreated(`Invitation sent to ${form.email.toLowerCase()}`)
+        return
+      }
+      if (access !== 'password') {
+        onCreated(
+          access === 'invite'
+            ? `${form.username.toLowerCase()} created; an invitation link is on its way`
+            : `${form.username.toLowerCase()} created; sign-in details are on their way by email`
+        )
         return
       }
       // Shown once: the password is not stored anywhere readable.
@@ -128,19 +150,52 @@ export default function CreateMemberModal({ supervisors, canAddExisting, onClose
           </div>
         )}
 
-        {canAddExisting && (
-          <fieldset className="flex gap-4 text-sm text-gray-700">
+        {(canAddExisting || mailEnabled) && (
+          <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-700">
             <legend className="sr-only">Account</legend>
             <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} /> New account
+              <input type="radio" name="member-mode" checked={mode === 'new'} onChange={() => setMode('new')} /> New
+              account
             </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === 'existing'} onChange={() => setMode('existing')} /> Existing account
-            </label>
+            {mailEnabled && (
+              <label className="flex items-center gap-2">
+                <input type="radio" name="member-mode" checked={mode === 'invite'} onChange={() => setMode('invite')} />{' '}
+                Invite by email
+              </label>
+            )}
+            {canAddExisting && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="member-mode"
+                  checked={mode === 'existing'}
+                  onChange={() => setMode('existing')}
+                />{' '}
+                Existing account
+              </label>
+            )}
           </fieldset>
         )}
 
-        {mode === 'existing' ? (
+        {mode === 'invite' ? (
+          <div>
+            <label htmlFor="member-invite-email" className="block text-sm font-medium text-gray-700 mb-1">
+              Email
+            </label>
+            <input
+              id="member-invite-email"
+              type="email"
+              required
+              value={form.email}
+              onChange={e => set('email', e.target.value)}
+              className={input}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              For people who already have a classiflow account (or will get one): they accept the invitation signed in
+              with the account that uses this address.
+            </p>
+          </div>
+        ) : mode === 'existing' ? (
           <div>
             <label htmlFor="member-existing" className="block text-sm font-medium text-gray-700 mb-1">
               Username or email
@@ -193,42 +248,76 @@ export default function CreateMemberModal({ supervisors, canAddExisting, onClose
                 className={input}
               />
             </div>
-            <div>
-              <label htmlFor="member-password" className="block text-sm font-medium text-gray-700 mb-1">
-                Temporary password
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="member-password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={10}
-                  value={form.tempPassword}
-                  onChange={e => set('tempPassword', e.target.value)}
-                  className={input}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(s => !s)}
-                  className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
-                >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    set('tempPassword', generatePassword())
-                    setShowPassword(true)
-                  }}
-                  className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
-                >
-                  Generate
-                </button>
+            {mailEnabled && (
+              <fieldset className="space-y-1 text-sm text-gray-700">
+                <legend className="block text-sm font-medium text-gray-700 mb-1">Access</legend>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="member-access"
+                    checked={access === 'invite'}
+                    onChange={() => setAccess('invite')}
+                  />{' '}
+                  Email a link to choose a password
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="member-access"
+                    checked={access === 'email_password'}
+                    onChange={() => setAccess('email_password')}
+                  />{' '}
+                  Generate and email a temporary password
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="member-access"
+                    checked={access === 'password'}
+                    onChange={() => setAccess('password')}
+                  />{' '}
+                  Set a temporary password and hand it over myself
+                </label>
+              </fieldset>
+            )}
+            {access === 'password' && (
+              <div>
+                <label htmlFor="member-password" className="block text-sm font-medium text-gray-700 mb-1">
+                  Temporary password
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="member-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={10}
+                    value={form.tempPassword}
+                    onChange={e => set('tempPassword', e.target.value)}
+                    className={input}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(s => !s)}
+                    className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      set('tempPassword', generatePassword())
+                      setShowPassword(true)
+                    }}
+                    className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
+                  >
+                    Generate
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  At least 10 characters, not their name; they change it at first sign-in.
+                </p>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                At least 10 characters, not their name; they change it at first sign-in.
-              </p>
-            </div>
+            )}
           </>
         )}
 
@@ -274,7 +363,7 @@ export default function CreateMemberModal({ supervisors, canAddExisting, onClose
             disabled={busy}
             className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
           >
-            {mode === 'existing' ? 'Add' : 'Create'}
+            {mode === 'existing' ? 'Add' : mode === 'invite' ? 'Send invitation' : 'Create'}
           </button>
         </div>
       </form>

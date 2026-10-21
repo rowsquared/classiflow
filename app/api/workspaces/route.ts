@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requirePlatformAdmin, requireSession } from '@/lib/api-auth'
 import { createWorkspace, listAccessibleWorkspaces } from '@/lib/server/workspaces'
-import { audit } from '@/lib/audit'
 
 // The workspace directory (control plane): the workspaces the caller may enter,
 // and creating workspaces (platform admins).
@@ -33,14 +32,7 @@ export async function POST(req: Request) {
     adminUserId: parsed.data.adminUserId ?? actor.id,
     createdById: actor.id
   })
+  // The audit entries are written in the same transaction (lib/server/workspaces.ts).
   if (!workspace) return NextResponse.json({ error: 'Admin user not found' }, { status: 400 })
-  await audit({
-    workspaceId: null,
-    actorId: actor.id,
-    action: 'workspace.created',
-    entityType: 'workspace',
-    entityId: workspace.id,
-    payload: { name: workspace.name, adminUserId: parsed.data.adminUserId ?? actor.id }
-  })
   return NextResponse.json({ workspace }, { status: 201 })
 }

@@ -6,6 +6,7 @@ import Modal from '@/components/Modal'
 import { formatRelativeTime } from '@/lib/utils'
 import { generatePassword, type MemberRole, type TeamMember } from '@/lib/team-table'
 import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
+import { mailPurposeLabel, mailStatusLabel } from '@/components/team/mail-status'
 
 const input =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900'
@@ -14,6 +15,7 @@ type Props = {
   member: TeamMember
   supervisors: TeamMember[]
   isSelf: boolean
+  mailEnabled: boolean
   onClose: () => void
   /** Called after a successful change, with a message for the toast. */
   onChanged: (message: string) => void
@@ -23,25 +25,26 @@ const when = (value: string | null) => (value ? formatRelativeTime(value) : 'Nev
 
 /**
  * One member: profile, role and supervisor in this workspace, the account's
- * temporary password, removal (suspension) and links to their history in the
- * workspace audit log.
+ * name, email and temporary password, password and invitation links by mail,
+ * removal (suspension) and links to their history in the workspace audit log.
  */
-export default function MemberDrawer({ member, supervisors, isSelf, onClose, onChanged }: Props) {
+export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled, onClose, onChanged }: Props) {
   const { href } = useWorkspacePaths()
   const [role, setRole] = useState<MemberRole>(member.role)
   const [supervisorId, setSupervisorId] = useState(member.supervisorId ?? '')
   const [name, setName] = useState(member.name ?? '')
+  const [email, setEmail] = useState(member.email)
   const [newPassword, setNewPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [unassignOpen, setUnassignOpen] = useState(false)
 
-  const call = async (method: 'PUT' | 'DELETE', body: unknown, message: string) => {
+  const call = async (method: 'PUT' | 'DELETE' | 'POST', body: unknown, message: string, path = '') => {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(workspaceApi(`/users/${member.id}`), {
+      const res = await fetch(workspaceApi(`/users/${member.id}${path}`), {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -66,6 +69,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
         supervisorId: supervisorId || null,
         // Account fields: sent only when changed; the server decides who may.
         ...(name !== (member.name ?? '') ? { name } : {}),
+        ...(email.trim().toLowerCase() !== member.email ? { email } : {}),
         ...(newPassword ? { newPassword } : {})
       },
       `${member.username} updated`
@@ -102,6 +106,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
             <dd className="text-gray-900">
               {member.status === 'suspended' ? 'Removed' : 'Active'}
               {member.mustResetPassword ? ' · must reset password' : ''}
+              {member.invitationPending ? ' · invitation not used yet' : ''}
             </dd>
           </div>
           <div>
@@ -120,6 +125,28 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
               {when(member.lastLogin)}
             </dd>
           </div>
+          <div>
+            <dt className="text-gray-500">Added here</dt>
+            <dd className="text-gray-900" title={member.createdAt}>
+              {when(member.createdAt)}
+              {member.addedBy ? ` by ${member.addedBy}` : ''}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Account created</dt>
+            <dd className="text-gray-900" title={member.accountCreatedAt}>
+              {when(member.accountCreatedAt)}
+            </dd>
+          </div>
+          {member.lastMail && (
+            <div className="col-span-2">
+              <dt className="text-gray-500">Last email from this workspace</dt>
+              <dd className="text-gray-900" title={member.lastMail.createdAt}>
+                {mailPurposeLabel(member.lastMail.purpose)}: {mailStatusLabel(member.lastMail.status)},{' '}
+                {when(member.lastMail.createdAt)}
+              </dd>
+            </div>
+          )}
           <div className="col-span-2">
             <dt className="text-gray-500">Supervises</dt>
             <dd className="text-gray-900">
@@ -185,6 +212,19 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
               <input id="drawer-name" required value={name} onChange={e => setName(e.target.value)} className={input} />
             </div>
             <div>
+              <label htmlFor="drawer-email" className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                id="drawer-email"
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
               <label htmlFor="drawer-password" className="block text-sm font-medium text-gray-700 mb-1">
                 New temporary password
               </label>
@@ -207,8 +247,8 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
                 </button>
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Name and password belong to the account. Workspace admins can change them only for accounts used in this
-                workspace alone that have never signed in; otherwise ask a platform admin.
+                Name, email and password belong to the account. Workspace admins can change them only for accounts used
+                in this workspace alone that have never signed in; otherwise ask a platform admin.
               </p>
             </div>
             <button
@@ -219,6 +259,40 @@ export default function MemberDrawer({ member, supervisors, isSelf, onClose, onC
               Save
             </button>
           </form>
+        )}
+
+        {mailEnabled && member.status === 'active' && (
+          <section className="space-y-2 text-sm">
+            <h3 className="font-medium text-gray-900">Email</h3>
+            <div className="flex flex-wrap gap-2">
+              {member.invitationPending ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    call('POST', { purpose: 'invitation' }, `Invitation sent again to ${member.username}`, '/mail')
+                  }
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Resend invitation
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    call('POST', { purpose: 'password_link' }, `Password link sent to ${member.username}`, '/mail')
+                  }
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Send password link
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              A link lets them choose a password themselves; nobody else sees it. Same account rule as above.
+            </p>
+          </section>
         )}
 
         <section className="space-y-2 text-sm">

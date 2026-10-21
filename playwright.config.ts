@@ -4,6 +4,8 @@ import { defineConfig, devices } from '@playwright/test'
 // disposable database. See tests/e2e/README.md.
 const PORT = Number(process.env.E2E_PORT || 3200)
 const baseURL = `http://localhost:${PORT}`
+// The journeys' stand-in for the n8n mail workflow (tests/e2e/mail.spec.ts).
+const MAIL_PORT = PORT + 1
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -31,7 +33,11 @@ export default defineConfig({
       SIGN_IN_RATE_LIMIT: '1000',
       // AI can be configured (tests/e2e/ai-settings.spec.ts); no service runs.
       AI_SOURCE_SLUG: 'ai',
-      AI_CREDENTIALS_KEYS: 'e2e:MlYB0Tmfes0OCnkWHxv/4MwbwWkWUTFZAj7YUvaDDcg='
+      AI_CREDENTIALS_KEYS: 'e2e:MlYB0Tmfes0OCnkWHxv/4MwbwWkWUTFZAj7YUvaDDcg=',
+      // Mail on, sent to the journeys' local webhook.
+      N8N_EMAIL_WEBHOOK_SECRET: 'e2e-only-mail-secret',
+      N8N_EMAIL_WEBHOOK_URL: `http://127.0.0.1:${MAIL_PORT}/webhook/send-email`,
+      APP_BASE_URL: baseURL
     }
   }
 })

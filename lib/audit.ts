@@ -32,6 +32,7 @@ export type AuditAction =
   | 'user.deleted'
   | 'user.password_changed'
   | 'user.sessions_revoked'
+  | 'user.email_changed'
   | 'workspace.created'
   | 'workspace.updated'
   | 'workspace.archived'
@@ -40,6 +41,14 @@ export type AuditAction =
   | 'member.updated'
   | 'member.suspended'
   | 'member.reactivated'
+  | 'member.invited'
+  | 'member.invitation_revoked'
+  | 'members.imported'
+  | 'mail.password_link_requested'
+  | 'mail.invitation_requested'
+  | 'mail.sent'
+  | 'mail.failed'
+  | 'mail.unknown'
   | 'taxonomy.created'
   | 'taxonomy.updated'
   | 'taxonomy.deleted'
@@ -73,16 +82,28 @@ export type AuditEntry = {
   payload?: Prisma.InputJsonValue
 }
 
+type AuditDb = Pick<Prisma.TransactionClient, 'user' | 'auditLog'>
+
+async function writeEntry(client: AuditDb, entry: AuditEntry, workspaceId: string | null) {
+  const actorName = entry.actorId
+    ? ((await client.user.findUnique({ where: { id: entry.actorId }, select: { username: true } }))?.username ?? null)
+    : null
+  const requestId = await currentRequestId()
+  await client.auditLog.create({ data: { ...entry, workspaceId, actorName, requestId } })
+}
+
+/**
+ * Writes a platform event (no workspace) in the caller's own transaction, so
+ * it commits or rolls back with the change. Errors propagate.
+ */
+export async function auditInTransaction(client: AuditDb, entry: AuditEntry & { workspaceId: null }): Promise<void> {
+  await writeEntry(client, entry, null)
+}
+
 export async function audit(entry: AuditEntry): Promise<void> {
   const inTransaction = currentWorkspaceId()
   const workspaceId = entry.workspaceId === undefined ? inTransaction : entry.workspaceId
-  const requestId = await currentRequestId()
-  const write = async (client: Pick<Prisma.TransactionClient, 'user' | 'auditLog'>) => {
-    const actorName = entry.actorId
-      ? ((await client.user.findUnique({ where: { id: entry.actorId }, select: { username: true } }))?.username ?? null)
-      : null
-    await client.auditLog.create({ data: { ...entry, workspaceId, actorName, requestId } })
-  }
+  const write = (client: AuditDb) => writeEntry(client, entry, workspaceId)
 
   if (inTransaction && workspaceId === inTransaction) {
     await write(db())
