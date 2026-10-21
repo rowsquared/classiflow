@@ -138,8 +138,11 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    current workspace and effective role in the sidebar, searchable keyboard
    list, asks before leaving unsaved labels; the query cache is per
    workspace, user and role).
-10. **Still open:** import/lint boundary check against the `prisma`
-   singleton; Taxomind namespace isolation verified live (release gate for
+10. ~~P7 import boundary check~~ done: ESLint `no-restricted-imports` allows
+   `@/lib/prisma` only in the control-plane files listed in
+   `eslint.config.mjs` (accounts, workspaces, memberships, invitations, mail
+   outbox, approved AI services, narrow database functions).
+11. **Still open:** Taxomind namespace isolation verified live (release gate for
    AI: two namespaces with one credential, identical taxonomy keys; until then
    give independent workspaces separate Taxomind credentials or instances).
 

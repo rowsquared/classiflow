@@ -41,12 +41,11 @@ production build, and `npm audit --omit=dev` (0 findings):
   when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (`lib/telemetry.ts`, loaded by
   `instrumentation.ts` only then; checked against the standalone build with a
   local collector), trace IDs on log lines, read-only root filesystem in
-  Compose. Server `console.*` calls were replaced in shared infrastructure and
-  the record, import, comment, assignment and export routes; the AI, users,
-  auth, taxonomy and progress code still uses `console` (owned by parallel
-  work at the time). Not done: passing the request ID to Taxomind (the AI
-  client was being reworked), alerts (need a log/trace backend), memory/CPU
-  limits (need production numbers).
+  Compose. Server code no longer uses `console.*` (scripts and client
+  components still do, on purpose). Not done: passing the request ID to
+  Taxomind (most calls come from background monitors, outside any request;
+  it would need the ID stored on the job), alerts (need a log/trace backend),
+  memory/CPU limits (need production numbers).
 - **M09** Taxomind contract: types generated from Taxomind's OpenAPI document,
   calls through `openapi-fetch`, every response parsed in
   `lib/contracts/taxomind.ts`; the stub service checks requests and replies

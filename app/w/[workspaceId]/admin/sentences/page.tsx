@@ -3,6 +3,7 @@ import { listImports } from '@/lib/server/imports'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import SentenceAdminClient from './SentenceAdminClient'
+import { logError } from '@/lib/logger'
 
 export default async function SentenceAdminPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -12,7 +13,7 @@ export default async function SentenceAdminPage({ params }: { params: Promise<{ 
   try {
     data = await withWorkspace(workspaceId, () => listImports(workspaceId))
   } catch (error) {
-    console.error('Record imports page failed to load:', error)
+    await logError('Record imports page failed to load', error)
     return <LoadError title="Sentences" what="the record imports" />
   }
 

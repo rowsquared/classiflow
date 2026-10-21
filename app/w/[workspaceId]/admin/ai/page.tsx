@@ -4,6 +4,7 @@ import { asJson } from '@/lib/server/json'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import AISettingsClient, { type AISettings } from './AISettingsClient'
+import { logError } from '@/lib/logger'
 
 export default async function AISettingsPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -13,7 +14,7 @@ export default async function AISettingsPage({ params }: { params: Promise<{ wor
   try {
     settings = asJson(await withWorkspace(workspaceId, () => workspaceAISettings()))
   } catch (error) {
-    console.error('AI settings page failed to load:', error)
+    await logError('AI settings page failed to load', error)
     return <LoadError title="AI Settings" what="the AI settings" />
   }
 

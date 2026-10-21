@@ -7,6 +7,7 @@ import { getQueueStats, listQueue } from '@/lib/server/sentences'
 import { listActiveTaxonomies } from '@/lib/server/taxonomies'
 import { getVisibleUser, listVisibleUsers } from '@/lib/server/users'
 import { loadQueueUrlState, queueListParams, queueStatsParams } from '@/lib/queue-url'
+import { logError } from '@/lib/logger'
 
 export default async function QueuePage({
   params,
@@ -36,7 +37,7 @@ export default async function QueuePage({
     )
     data = asJson({ queue, stats: stats.stats, taxonomies: taxonomies.taxonomies, users: users?.users ?? [], self })
   } catch (error) {
-    console.error('Queue page failed to load:', error)
+    await logError('Queue page failed to load', error)
     return <LoadError title="Queue" what="the queue" />
   }
 

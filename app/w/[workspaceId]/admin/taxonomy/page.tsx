@@ -4,6 +4,7 @@ import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import { listTaxonomiesWithStats } from '@/lib/server/taxonomies'
 import TaxonomyAdminClient, { type Taxonomy } from './TaxonomyAdminClient'
+import { logError } from '@/lib/logger'
 
 export default async function TaxonomyAdminPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -13,7 +14,7 @@ export default async function TaxonomyAdminPage({ params }: { params: Promise<{ 
   try {
     data = asJson(await withWorkspace(workspaceId, () => listTaxonomiesWithStats(workspaceId)))
   } catch (error) {
-    console.error('Taxonomy page failed to load:', error)
+    await logError('Taxonomy page failed to load', error)
     return <LoadError title="Taxonomies" what="the taxonomies" />
   }
 

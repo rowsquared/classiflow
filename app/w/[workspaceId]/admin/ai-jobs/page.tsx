@@ -4,6 +4,7 @@ import { asJson } from '@/lib/server/json'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import AIJobsClient, { type AIJob } from './AIJobsClient'
+import { logError } from '@/lib/logger'
 
 export default async function AIJobsPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -15,7 +16,7 @@ export default async function AIJobsPage({ params }: { params: Promise<{ workspa
       await withWorkspace(workspaceId, () => listAIJobs(workspaceId, { statusParams: [], page: 1, limit: 20 }))
     )
   } catch (error) {
-    console.error('AI jobs page failed to load:', error)
+    await logError('AI jobs page failed to load', error)
     return <LoadError title="AI Jobs" what="the AI jobs" />
   }
 
