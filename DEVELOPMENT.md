@@ -24,16 +24,17 @@ and commit `package.json` and `package-lock.json` together.
 ```bash
 cp .env.example .env
 ```
-For local dev, point `DATABASE_URL` at the dev database:
-`postgresql://classiflow:classiflow_password@localhost:5434/classiflow?schema=public`.
-Review `ENV_SETUP.md` for the full list.
+The template's `DATABASE_URL` already points at the dev database (port 5434).
+Set `NEXTAUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`; leave the AI variables
+commented out unless you run Taxomind. Every variable is in `ENV_SETUP.md`.
 
 3. Start the database (Postgres 16 on port 5434, data kept in a Docker volume):
 ```bash
 npm run db:up
 ```
 
-4. Run migrations and create the default admin:
+4. Run migrations and create the default admin (set `DEFAULT_ADMIN_PASSWORD` in
+   `.env` first; both commands read `.env`):
 ```bash
 npm run db:migrate
 npm run db:init-admin

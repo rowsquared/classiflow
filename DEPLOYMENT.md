@@ -5,7 +5,7 @@ This guide covers production deployment for classiflow. The app provides the UI 
 ## Prerequisites
 
 - Docker (and Docker Compose) or a container platform
-- PostgreSQL 12+
+- PostgreSQL 16 (the version CI and the Compose file use; others are untested)
 - A domain with HTTPS (recommended for production)
 - Environment variables (see below)
 
@@ -53,37 +53,17 @@ The default Dockerfile runs `node server.js` only, so you must override the star
 
 ## Environment Variables
 
-Required:
-- DATABASE_URL
-- AUTH_URL
-- AUTH_TRUST_HOST
-- NEXTAUTH_URL
-- NEXTAUTH_SECRET
-- DEFAULT_ADMIN_EMAIL
-- DEFAULT_ADMIN_PASSWORD
-- DEFAULT_ADMIN_NAME
+See [ENV_SETUP.md](ENV_SETUP.md) for every variable. Required in production:
+`DATABASE_URL` (or `POSTGRES_PASSWORD` with Compose), `NEXTAUTH_SECRET`,
+`AUTH_URL`/`NEXTAUTH_URL`, and `DEFAULT_ADMIN_PASSWORD` for the first start.
 
-Optional AI labeling (Taxomind service):
-- AI_LABELING_API_URL
-- AI_LABELING_API_KEY
-- AI_LABELING_BATCH_SIZE
-- AI_LEARNING_BATCH_SIZE
-- AI_LEARNING_MIN_NEW_ANNOTATIONS
-- AI_JOB_POLL_INTERVAL_MS
-- AI_JOB_POLL_TIMEOUT_MS
-- AI_SOURCE_SLUG — scopes taxonomy keys per deployment. Set to the subdomain-domain of your app host (strip `www` and the final TLD, join with `-`). Example: `https://classiflow.app.rowsquared.org` → `classiflow-app-rowsquared`. If empty, the AI API infers it from the request host.
+## Running more than one instance
 
-Docker Compose (Option 1) also requires:
-- POSTGRES_PASSWORD (POSTGRES_USER and POSTGRES_DB default to `classiflow`)
-
-Optional database and release settings:
-- APP_DB_USER, APP_DB_PASSWORD: run the server as a least-privilege role; see [Database roles](#database-roles).
-- SOURCE_COMMIT (build argument): the commit being built, reported by `/api/health`.
-
-Optional:
-- INTERNAL_APP_URL: where server-rendered pages reach the app's own API. Defaults to `http://127.0.0.1:$PORT`; only set it if the server does not listen on loopback.
-
-See `ENV_SETUP.md` for details.
+Several app containers can share one database. AI jobs are safe: each job is
+held by one instance through a database lease and taken over if that instance
+dies (see AGENTS.md "Optional AI integration"). The built-in login throttle is
+per instance, so rate-limit `POST /api/auth/callback/credentials` at the proxy.
+Size the database's `max_connections` for Prisma's pool per instance.
 
 ## Database roles
 

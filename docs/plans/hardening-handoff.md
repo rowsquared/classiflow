@@ -38,10 +38,10 @@ not all of them.
 | W08 metrics | correctness done | performance tuning with measured data |
 | W09 UI | open | queue request races, error vs empty states, accessibility |
 | W10 tests/CI | partly | integration harness exists; browser journeys and more suites still missing |
-| W11 docs | partly | admin docs fixed; canonical doc map, ENV_SETUP/.env.example alignment |
+| W11 docs | done | keep the map in README/AGENTS current |
 | W12 ops | in progress | backup schedule/objectives (maintainer), audit events, upgrade test from a real dump, container limits |
 
-Suggested next order: W11, W09, then W12 audit events.
+Suggested next order: W09, then W12 audit events.
 
 ## How to work here
 

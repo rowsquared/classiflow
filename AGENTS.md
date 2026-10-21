@@ -170,11 +170,9 @@ lockfile together. Do not introduce a different package manager.
    `DEVELOPMENT.md` and `ENV_SETUP.md`. Leave AI unconfigured for human-only work.
 3. `npm run db:up` starts the development PostgreSQL 16 container on host port
    **5434**. Point the host app's database URL there, as shown in `DEVELOPMENT.md`.
-4. `npm run db:migrate` applies committed migrations. Initialize the admin with
-   `npm run db:init-admin` when environment variables are already loaded, or
-   `node --env-file=.env scripts/init-admin.js` to load the file explicitly.
-   The plain Node script does not load `.env` itself. It creates a missing admin
-   and leaves existing accounts/passwords unchanged.
+4. `npm run db:migrate` applies committed migrations; `npm run db:init-admin`
+   (loads `.env` if present) creates a missing admin and leaves existing
+   accounts/passwords unchanged. Plain `node scripts/*.js` does not load `.env`.
 5. `npm run dev` starts Next.js at `http://localhost:3000`.
 
 | Check | Command / scope |
@@ -226,6 +224,10 @@ files for deployment details; these are separate from the local dev stack.
   Inspect maintenance scripts before running them: many update real database
   records or credentials. Keep secrets and generated/imported datasets out of
   commits.
+- Documentation map (one topic, one place): README (product, quick start),
+  ENV_SETUP (every variable), DEVELOPMENT (local setup), DEPLOYMENT (production
+  operations), COOLIFY_DEPLOYMENT (Coolify, deploy triggers, releases),
+  docs/security.md (access matrix). Change a topic in its home and link to it.
 - Keep this guide aligned with architecture/workflow changes. For a focused
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.

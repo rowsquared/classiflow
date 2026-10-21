@@ -3,7 +3,7 @@
     "dev": "next dev",
     "db:up": "docker compose -f docker-compose.dev.yml up -d --wait",
     "db:down": "docker compose -f docker-compose.dev.yml down",
-    "db:init-admin": "node scripts/init-admin.js",
+    "db:init-admin": "node --env-file-if-exists=.env scripts/init-admin.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

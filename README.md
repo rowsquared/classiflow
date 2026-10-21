@@ -34,7 +34,8 @@ git clone https://github.com/rowsquared/classiflow.git
 cd classiflow
 ```
 
-2. Copy the environment template:
+2. Copy the environment template and fill in `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`
+   and `DEFAULT_ADMIN_PASSWORD` (see [ENV_SETUP.md](ENV_SETUP.md)):
 ```bash
 cp .env.example .env
 ```
@@ -51,30 +52,15 @@ For hosted setup or a demo, see https://rowsquared.com/classiflow/.
 
 ## Configuration
 
-Required:
-- DATABASE_URL
-- AUTH_URL
-- AUTH_TRUST_HOST
-- NEXTAUTH_URL
-- NEXTAUTH_SECRET
-- DEFAULT_ADMIN_EMAIL
-- DEFAULT_ADMIN_PASSWORD
-- DEFAULT_ADMIN_NAME
-
-Optional AI labeling (Taxomind service):
-- AI_LABELING_API_URL
-- AI_LABELING_API_KEY
-- AI_LABELING_BATCH_SIZE
-- AI_LEARNING_BATCH_SIZE
-- AI_LEARNING_MIN_NEW_ANNOTATIONS
-- AI_JOB_POLL_INTERVAL_MS
-- AI_JOB_POLL_TIMEOUT_MS
-
-See `ENV_SETUP.md` for full details.
+All variables (required, optional, defaults, which are secret) are in
+[ENV_SETUP.md](ENV_SETUP.md). AI suggestions stay off until `AI_LABELING_API_URL`
+and `AI_LABELING_API_KEY` are set.
 
 ## First Login
 
-The default admin user is created on first run using `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`. Change the password immediately after first login.
+The first admin is created on the first start from `DEFAULT_ADMIN_USERNAME`
+(default `admin`) or `DEFAULT_ADMIN_EMAIL`, and `DEFAULT_ADMIN_PASSWORD`. You must
+choose a new password at first sign-in.
 
 ## FAQs
 
@@ -89,11 +75,18 @@ The default admin user is created on first run using `DEFAULT_ADMIN_EMAIL` and `
 
 ## Documentation
 
-- [Repository review and hardening priorities (21 October 2026)](docs/reviews/2026-10-21-review.md)
-- ENV_SETUP.md
-- DEVELOPMENT.md
-- DEPLOYMENT.md
-- COOLIFY_DEPLOYMENT.md
+Each topic lives in one place:
+
+| Document | Covers |
+| --- | --- |
+| [README.md](README.md) | What classiflow is, quick start |
+| [ENV_SETUP.md](ENV_SETUP.md) | Every environment variable |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Local development setup and commands |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Running in production: start command, database roles, health, backups, admin recovery, reverse proxy |
+| [COOLIFY_DEPLOYMENT.md](COOLIFY_DEPLOYMENT.md) | Coolify-specific setup, deploy triggers and releases |
+| [docs/security.md](docs/security.md) | Who can see and change what (access matrix) |
+| [AGENTS.md](AGENTS.md) | Architecture and conventions for contributors and coding agents |
+| [docs/plans/hardening-handoff.md](docs/plans/hardening-handoff.md) | State of the 2026 hardening work and the [review](docs/reviews/2026-10-21-review.md) behind it |
 
 ## License
 

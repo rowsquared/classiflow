@@ -744,6 +744,28 @@ operators can distinguish bootstrap from recovery and data-preserving from
 destructive commands; links resolve; environment variables match code/Compose;
 an agent can find the relevant security/domain/deployment rule from one index.
 
+**Status (21 Oct 2026): done.** `docs/architecture.md` was not created: AGENTS.md
+already carries the architecture and domain rules, and a second copy would drift.
+
+- [x] Canonical map in README ("Documentation") and AGENTS.md; ENV_SETUP.md is
+      now the one variable reference (required/optional, defaults in code vs
+      Compose, secrecy); README, DEPLOYMENT and DEVELOPMENT link to it instead of
+      repeating lists.
+- [x] `.env.example` matches the code: AI variables commented out (human-only by
+      default), dev `DATABASE_URL`, Compose `POSTGRES_*`, no admin password
+      placeholder. The old `ChangeMe123!` was refused in production mode, so the
+      README quick start could not boot.
+- [x] `npm run db:init-admin` loads `.env` (`--env-file-if-exists`); verified.
+- [x] COOLIFY: destructive local-testing recipe (`down -v`, global prunes)
+      removed; fragile line-number references replaced; npm/username claims
+      were fixed earlier; smoke description and production recommendations
+      updated.
+- [x] PostgreSQL 16 stated as the tested version; multi-instance notes
+      (AI leases, per-instance login throttle, connections) in DEPLOYMENT.md.
+- [x] Admin bootstrap/reset docs (fixed with W02); README's double-annotation
+      claim already points at docs/ideas.md; next.config.ts no longer references
+      `PUBLISHING_CHECKLIST.md`.
+
 ## W12 Deployment, recovery, and observability
 
 **Priority:** P1. **Dependencies:** W02 secrets, W03 artifacts, W04 ingress, W07

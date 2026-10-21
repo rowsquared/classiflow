@@ -322,7 +322,8 @@ To scale the application:
 
 1. Go to your application settings
 2. Adjust **Replicas** count (requires load balancer)
-3. Note: Database connections may need adjustment for multiple instances
+3. Read "Running more than one instance" in [DEPLOYMENT.md](DEPLOYMENT.md) first
+   (login throttle, database connections)
 
 ## Troubleshooting
 
@@ -373,25 +374,25 @@ To scale the application:
 **Issue**: `Bind for 0.0.0.0:5432 failed: port is already allocated`
 - **Cause**: PostgreSQL port mapping conflicts in Coolify
 - **Solution**: Port mappings should be commented out in docker-compose for Coolify
-- **Fix**: Lines 16-17 should be commented (as configured by default)
+- **Fix**: Keep the `ports:` lines of the `postgres` service commented (as configured by default)
 
 **Issue**: `Bind for 0.0.0.0:3000 failed: port is already allocated`
 - **Cause**: App port mapping conflicts - Coolify manages ports externally
 - **Solution**: Port mappings should be commented out in docker-compose for Coolify
-- **Fix**: Lines 34-35 should be commented (as configured by default)
+- **Fix**: Keep the `ports:` lines of the `app` service commented (as configured by default)
 - **Note**: For local testing, these ports MUST be uncommented
 
 **Issue**: Can't access app at localhost:3000 locally
 - **Cause**: Port mapping commented out (Coolify configuration)
-- **Solution**: Uncomment lines 34-35 in docker-compose.yml for local testing
+- **Solution**: Uncomment the `app` service's `ports:` lines in docker-compose.yml for local testing
 
 ## Environment-Specific Notes
 
 ### Production Recommendations
 
-1. Use strong passwords for `NEXTAUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
-2. Change default admin password immediately after first login
-3. Enable database backups
+1. Use long random values for `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
+2. Set `APP_DB_USER`/`APP_DB_PASSWORD` so the server runs with row access only
+3. Enable database backups and run `scripts/restore-drill.sh` on one (DEPLOYMENT.md "Backups")
 4. Configure SSL/TLS (handled by Coolify)
 5. Set up monitoring and alerts
 6. Review and adjust resource limits
@@ -420,25 +421,17 @@ Before deploying to Coolify, test locally:
 The docker-compose files are configured for Coolify deployment by default (ports commented out). For local testing, you MUST uncomment the port mappings:
 
 1. **Edit docker-compose.yml**:
-   - Uncomment lines 34-35 for app port mapping (3000:3000) - **REQUIRED for local access**
-   - Optionally uncomment lines 16-17 for PostgreSQL if you need direct database access
+   - Uncomment the `app` service's `ports:` lines (3000:3000) - **REQUIRED for local access**
+   - Optionally uncomment the `postgres` service's `ports:` lines for direct database access
 
 2. **Run locally**:
 ```bash
-# Copy environment file
+# Copy environment file, then set POSTGRES_PASSWORD, NEXTAUTH_SECRET and
+# DEFAULT_ADMIN_PASSWORD (ENV_SETUP.md)
 cp .env.example .env
 
-# Edit .env with your values
-nano .env
-
-# Clean Docker cache completely (important for Prisma version)
-docker-compose down -v
-docker builder prune -af
-docker system prune -af
-
-# Build and run (with --no-cache to ensure fresh build)
-docker-compose build --no-cache
-docker-compose up
+# Build and run
+docker compose up -d --build
 
 # Access at http://localhost:3000
 ```
@@ -472,7 +465,8 @@ because Coolify does not wait for GitHub Actions.
 `smoke` builds the image from the same `Dockerfile` and `docker-compose.yml`
 Coolify uses, starts the stack on an empty database, and checks that migrations
 applied, the default admin was created, `/api/health` reports a connected
-database and `/login` renders. `checks` runs the typecheck, lint and unit tests
+database and the built commit, the server connects as the least-privilege
+runtime role, and `/login` renders. `checks` runs the typecheck, lint and unit tests
 (`npm run typecheck`, `npm run lint`, `npm test`); the build itself skips type
 and lint errors, so this is where they are caught.
 
