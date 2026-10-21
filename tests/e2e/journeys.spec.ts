@@ -1,0 +1,137 @@
+import { expect, test, type Page, type Route } from '@playwright/test'
+import { parse } from 'csv-parse/sync'
+import { ADMIN, RECORDS } from './global-setup'
+
+// The tests share one seeded database and run in this order: the labelling
+// journey changes a record, which the export journey then reads.
+test.describe.configure({ mode: 'serial' })
+
+async function signIn(page: Page, password = ADMIN.password) {
+  await page.goto('/login')
+  await page.getByLabel(/username or email/i).fill(ADMIN.username)
+  await page.getByLabel(/password/i).fill(password)
+  await page.getByRole('button', { name: /sign in|log in/i }).click()
+}
+
+const rows = (page: Page) => page.locator('tbody tr')
+const isQueueRequest = (url: string) => new URL(url).pathname === '/api/sentences'
+
+test('sign-in refuses a wrong password and admits the right one', async ({ page }) => {
+  await signIn(page, 'not-the-password')
+  await expect(page.getByText('Invalid email or password')).toBeVisible()
+
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await expect(rows(page)).toHaveCount(RECORDS.length)
+})
+
+test.describe('queue', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page)
+    await expect(rows(page)).toHaveCount(RECORDS.length)
+  })
+
+  test('typing a search sends one request, not one per keystroke', async ({ page }) => {
+    const queries: string[] = []
+    page.on('request', req => {
+      if (isQueueRequest(req.url())) queries.push(new URL(req.url()).searchParams.get('q') ?? '')
+    })
+
+    await page.getByRole('textbox', { name: 'Search records' }).pressSequentially('nurse', { delay: 40 })
+
+    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page).first()).toContainText('hospital nurse')
+    expect(queries).toEqual(['nurse'])
+  })
+
+  test('a slow, superseded search cannot overwrite the newer result', async ({ page }) => {
+    // The first search is answered late, after the second one.
+    let delayed = false
+    await page.route(url => isQueueRequest(url.toString()), async (route: Route) => {
+      if (!delayed && new URL(route.request().url()).searchParams.get('q') === 'nurse') {
+        delayed = true
+        await new Promise(r => setTimeout(r, 1500))
+      }
+      await route.continue().catch(() => { /* aborted by the page: expected */ })
+    })
+    const search = page.getByRole('textbox', { name: 'Search records' })
+
+    await search.fill('nurse')
+    await page.waitForTimeout(500) // debounce fires; the nurse request is in flight
+    await search.fill('teacher')
+
+    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page).first()).toContainText('primary school teacher')
+    await page.waitForTimeout(1800) // the late nurse response would land now
+    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page).first()).toContainText('primary school teacher')
+  })
+
+  test('a failed refresh says so and keeps the last results; Retry recovers', async ({ page }) => {
+    const queueUrl = (url: URL) => isQueueRequest(url.toString())
+    await page.route(queueUrl, route => route.fulfill({ status: 500, body: '{}' }))
+
+    await page.getByRole('textbox', { name: 'Search records' }).fill('developer')
+
+    const banner = page.getByRole('alert').filter({ hasText: 'Could not load records' })
+    await expect(banner).toBeVisible()
+    await expect(rows(page)).toHaveCount(RECORDS.length) // not an empty "no records" list
+
+    await page.unroute(queueUrl)
+    await page.getByRole('button', { name: 'Retry' }).click()
+    await expect(banner).toHaveCount(0)
+    await expect(rows(page)).toHaveCount(1)
+  })
+
+  test('the assignment dialog keeps focus inside and closes on Escape', async ({ page }) => {
+    await page.getByRole('checkbox', { name: `Select record: ${RECORDS[0]}` }).check()
+    const open = page.getByRole('button', { name: /Assign \/ Unassign/ })
+    await open.click()
+
+    const dialog = page.getByRole('dialog', { name: 'Manage assignments' })
+    await expect(dialog).toBeVisible()
+    for (let i = 0; i < 15; i++) {
+      await page.keyboard.press('Tab')
+      expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true)
+    }
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(open).toBeFocused()
+  })
+})
+
+test('a record can be labelled with the keyboard and submitted', async ({ page }) => {
+  await signIn(page)
+  await rows(page).filter({ hasText: 'primary school teacher' }).click()
+  await expect(page).toHaveURL(/\/queue\/[^/?]+/)
+  const recordId = new URL(page.url()).pathname.split('/').pop()!
+
+  await page.getByRole('button', { name: /^01\b/ }).focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: /^011\b/ }).focus()
+  await page.keyboard.press('Enter')
+
+  // Enter on a label chooses it; it must not also submit the record.
+  const before = await (await page.request.get(`/api/sentences/${recordId}`)).json()
+  expect(JSON.stringify(before)).toContain('"status":"pending"')
+
+  await page.getByRole('button', { name: /^Submit/ }).click()
+  await expect.poll(async () => JSON.stringify(await (await page.request.get(`/api/sentences/${recordId}`)).json()))
+    .toContain('"status":"submitted"')
+})
+
+test('the export contains the human label with its leading zero', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.goto('/admin/export')
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export CSV' }).click(),
+  ])
+  const csv = (await (await download.createReadStream()).toArray()).join('')
+
+  const records = parse(csv, { columns: true, bom: true }) as Array<Record<string, string>>
+  const teacher = records.find(r => r.field_job_title === 'primary school teacher')
+  expect(teacher).toMatchObject({ ISCO_1: '01', ISCO_2: '011', status: 'submitted' })
+})

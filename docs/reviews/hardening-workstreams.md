@@ -647,6 +647,31 @@ distinguish no results from failed loading; failed submissions remain recoverabl
 critical import/assign/label/comment/export journeys work by keyboard and at
 narrow viewport sizes. Validate through actual browser journeys.
 
+**Status (21 Oct 2026): queue and dialogs done; larger UI items open.**
+
+- [x] Queue requests: each new queue/stats request aborts the previous one and
+      only the latest may set state (`lib/latest-request.ts`, unit-tested).
+      Browser test: a slow superseded search cannot overwrite the newer result
+      (fails with the guard disabled).
+- [x] Search is debounced (300 ms): one request per pause, not per keystroke.
+- [x] A failed queue load shows an alert with Retry and keeps the last results,
+      instead of an empty "no sentences found" list. Browser-tested.
+- [x] The 30 s stats refresh pauses while the tab is hidden and runs on return.
+- [x] Dialogs (`components/Modal.tsx`): `role="dialog"`, accessible name,
+      focus moved in, Tab trapped, Escape closes, focus restored. Used by all
+      nine modals and the bulk-label panel. Browser-tested on the assignment
+      dialog.
+- [x] Labelling keyboard: taxonomy nodes are focusable buttons (Enter/Space,
+      `aria-pressed`); Enter on a focused control no longer also submits the
+      record; shortcuts are ignored inside dialogs. Browser-tested.
+- [x] Names for icon-only buttons, search fields and row checkboxes; toasts
+      announced through a polite live region.
+- [ ] Stats failures still keep stale numbers silently; AI job badge polls on
+      its own interval.
+- [ ] Not yet checked: contrast, narrow viewports, keyboard resizing of
+      panels, failed-save recovery on the labelling page (still `alert()`).
+- [ ] Splitting the 1,000-line labelling and taxonomy admin components.
+
 ## W10 Maintainability, tests, and CI
 
 **Priority:** P1 for regression tests protecting security/data boundaries; P2 for
@@ -687,6 +712,22 @@ does not validate authorization, transactions, or UI behavior.
 pass after; fresh and upgrade migrations are checked; no broad lint suppression
 masks behavior; production releases cannot bypass the chosen checks; abstractions
 remove demonstrated duplication while keeping route behavior explicit.
+
+**Status (21 Oct 2026): browser journeys added; consolidation open.**
+
+- [x] Integration harness against PostgreSQL (access, labelling, import/export,
+      runtime DB role, AI monitor with a stub service): 51 tests, CI `integration`.
+- [x] Browser journeys with Playwright (`tests/e2e`, CI `e2e`, gates
+      `deploy-prod`): sign-in, queue search debounce/race/error, dialog
+      keyboard behaviour, keyboard labelling and submit, export with leading
+      zeros.
+- [x] Lint is zero and blocking; one `any` remains in app code; no
+      `eslint-disable` comments.
+- [ ] Queue and stats build the same filter parameters in two places
+      (`QueuePageClient.tsx`); the route handlers parse them separately too.
+- [ ] `next.config.ts` still skips type and lint errors in `next build`; CI is
+      the gate. Remove the bypass once nobody deploys without CI.
+- [ ] More journeys: imports, taxonomy admin, team management, comments.
 
 ## W11 Documentation and agent navigation
 

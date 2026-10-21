@@ -36,12 +36,12 @@ not all of them.
 | W06 import/export | done | streaming export for large data |
 | W07 AI | done in code | verify against a running Taxomind; idempotent job start (needs Taxomind support) |
 | W08 metrics | correctness done | performance tuning with measured data |
-| W09 UI | open | queue request races, error vs empty states, accessibility |
-| W10 tests/CI | partly | integration harness exists; browser journeys and more suites still missing |
+| W09 UI | mostly done | stats staleness indicator, contrast/narrow viewports, labelling save errors, component size |
+| W10 tests/CI | mostly done | more journeys (imports, admin, comments); shared filter-param builder; build-time check bypass |
 | W11 docs | done | keep the map in README/AGENTS current |
 | W12 ops | in progress | backup schedule/objectives (maintainer), audit events, upgrade test from a real dump, container limits |
 
-Suggested next order: W09, then W12 audit events.
+Suggested next order: W12 audit events, then the smaller open items in each brief.
 
 ## How to work here
 
@@ -68,6 +68,8 @@ Suggested next order: W09, then W12 audit events.
 
 ## Things the maintainer must do outside the code
 
+- Optionally add the new `e2e` CI job as a required check in the `main` ruleset
+  (`deploy-prod` already waits for it).
 - After deploying: check `classiflow_backup."SentenceAnnotationDuplicate20261021"`
   (rows removed by the unique-label migration), then drop the schema.
 - Reverse proxy: forward `Host`, 50 MB body limit, rate-limit

@@ -126,9 +126,51 @@ jobs:
       - name: Integration tests
         run: npm run test:integration
 
+  e2e:
+    # Browser journeys (sign-in, queue search/race/error, dialogs, keyboard
+    # labelling, export) against a production build. See tests/e2e/README.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: classiflow
+          POSTGRES_PASSWORD: classiflow_password
+          POSTGRES_DB: classiflow_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U classiflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql://classiflow:classiflow_password@localhost:5432/classiflow_e2e_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Browser journeys
+        run: npm run test:e2e
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   deploy-prod:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [smoke, checks, integration]
+    needs: [smoke, checks, integration, e2e]
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-prod

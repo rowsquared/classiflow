@@ -8,6 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "1.56.1",
     "@tailwindcss/postcss": "^4.1.14",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "24.8.1",
