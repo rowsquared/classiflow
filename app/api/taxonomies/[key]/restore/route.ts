@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError } from '@/lib/utils'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -7,6 +9,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const { key } = await params
 
@@ -52,7 +57,9 @@ export async function POST(
       taxonomy: restoredTaxonomy
     })
 
-  } catch (error: any) {
+  } catch (caught) {
+
+    const error = caught as CaughtError
     console.error('Restore taxonomy error:', error)
     return NextResponse.json({ 
       ok: false, 

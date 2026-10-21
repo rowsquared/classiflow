@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parse } from 'csv-parse/sync'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError, CsvRow } from '@/lib/utils'
 
 export async function POST(req: NextRequest) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -19,7 +24,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
     const csv = buffer.toString('utf-8')
     
-    let records: any[]
+    let records: CsvRow[]
     try {
       // Parse without casting to preserve leading zeros in id and parent_id
       records = parse(csv, { 
@@ -28,8 +33,9 @@ export async function POST(req: NextRequest) {
         bom: true,
         cast: false, // Don't auto-cast to preserve string format (especially leading zeros)
         skip_records_with_error: false
-      }) as any[]
-    } catch (parseError: any) {
+      }) as CsvRow[]
+    } catch (caught) {
+      const parseError = caught as CaughtError
       return NextResponse.json({ 
         ok: false, 
         error: `CSV parsing error: ${parseError.message}`,
@@ -170,7 +176,8 @@ export async function POST(req: NextRequest) {
       message: `File is valid! Found ${records.length} records.`,
       recordCount: records.length
     })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Validation error:', error)
     return NextResponse.json({ 
       ok: false, 

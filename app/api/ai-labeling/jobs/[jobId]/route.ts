@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { CaughtError } from '@/lib/utils'
 
 export async function GET(
   req: NextRequest,
@@ -26,7 +27,8 @@ export async function GET(
     }
 
     return NextResponse.json({ ok: true, job })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to fetch AI labeling job:', error)
     return NextResponse.json({ error: error?.message || 'Failed to fetch job' }, { status: 500 })
   }

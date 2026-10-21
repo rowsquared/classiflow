@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { parse } from 'csv-parse/sync'
 import { isUnknownNodeCode } from '@/lib/constants'
-
-const searchParamsSchema = z.object({ dryRun: z.coerce.boolean().default(true) })
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError, CsvRow } from '@/lib/utils'
 
 const emptyToNull = (v: unknown) => {
   const s = String(v ?? '').trim()
@@ -21,10 +21,16 @@ const rowSchema = z.object({
   level: z.preprocess(emptyToNull, z.coerce.number().int().min(1).max(5).nullable()).optional().nullable(),
 })
 
+type ParsedRow = z.infer<typeof rowSchema> & { _parentProvided?: boolean }
+type TreeRow = { id: string; parent_id?: string | null }
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   const { key } = await params
   const taxonomy = await prisma.taxonomy.findUnique({ where: { key } })
   if (!taxonomy) {
@@ -41,7 +47,7 @@ export async function POST(
   }
   const csv = await req.text()
   // Use cast: false to preserve leading zeros in id and parent_id columns
-  const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as any[]
+  const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as CsvRow[]
 
   const errors: { row: number; message: string }[] = []
   
@@ -82,7 +88,7 @@ export async function POST(
   const seenIds = new Map<string, number[]>() // Track all row numbers for each id (preserve leading zeros)
   const allIds = new Set<string>() // All id values for parent_id validation
   const seenLabelsPerLevel = new Map<number, Set<string>>()
-  const nodes: Array<z.infer<typeof rowSchema>> = []
+  const nodes: ParsedRow[] = []
 
   records.forEach((raw, idx) => {
     const parentRaw = String(raw?.parent_id ?? '').trim()
@@ -115,13 +121,13 @@ export async function POST(
       allIds.add(row.id) // Add to set for parent_id validation
     }
     
-    const lvl = (row.level as any) ?? inferLevel(row, records)
+    const lvl = row.level ?? inferLevel(row, records)
     if (!seenLabelsPerLevel.has(lvl)) seenLabelsPerLevel.set(lvl, new Set<string>())
     const set = seenLabelsPerLevel.get(lvl)!
     if (set.has(row.label)) errors.push({ row: idx + 2, message: 'duplicate label in file (same level)' })
     set.add(row.label)
     // Attach raw parent presence info for validation stage
-    nodes.push({ ...row, _parentProvided: parentProvided } as any)
+    nodes.push({ ...row, _parentProvided: parentProvided })
   })
 
   // Check for duplicate ids and report all violating rows
@@ -162,12 +168,12 @@ export async function POST(
   const levelProvided = nodes.some(n => n.level != null)
   if (levelProvided) {
     for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i] as any
+      const n = nodes[i]
       const rowNum = i + 2
-      if ((n.level as any) === 1 && n._parentProvided) {
+      if (n.level === 1 && n._parentProvided) {
         errors.push({ row: rowNum, message: 'level 1 must have missing parent_id' })
       }
-      if ((n.level as any)! > (taxonomy.maxDepth ?? 5)) {
+      if ((n.level ?? 0) > (taxonomy.maxDepth ?? 5)) {
         errors.push({ row: rowNum, message: `level exceeds taxonomy.maxDepth` })
       }
     }
@@ -281,31 +287,34 @@ export async function POST(
     if (synonymRows.length) {
       await prisma.taxonomySynonym.createMany({ data: synonymRows, skipDuplicates: true })
     }
-  } catch (e: any) {
+  } catch (caught) {
+    const e = caught as CaughtError
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, dryRun: false, count: nodes.length })
 }
 
-function inferLevel(n: any, all: any[]) {
+// Raw CSV rows can be passed in too, so id is optional here.
+function inferLevel(n: Partial<TreeRow>, all: Partial<TreeRow>[]) {
   let level = 1
-  let cur = n
-  while (cur.parent_id != null) {
+  let cur: Partial<TreeRow> | undefined = n
+  while (cur?.parent_id != null) {
     level += 1
-    cur = all.find(x => x.id === cur.parent_id)
-    if (!cur) break
+    const parentId: string = cur.parent_id
+    cur = all.find(x => x.id === parentId)
   }
   return level
 }
 
-function buildPath(n: any, all: any[]) {
+function buildPath(n: TreeRow, all: TreeRow[]) {
   const parts: string[] = []
-  let cur = n
+  let cur: TreeRow | undefined = n
   while (cur) {
     parts.push(cur.id)
     if (cur.parent_id == null) break
-    cur = all.find(x => x.id === cur.parent_id)
+    const parentId: string = cur.parent_id
+    cur = all.find(x => x.id === parentId)
   }
   return parts.reverse().join('.')
 }

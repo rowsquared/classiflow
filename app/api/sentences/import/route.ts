@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { z } from 'zod'
 import { parse } from 'csv-parse/sync'
-
-const searchParamsSchema = z.object({ 
-  dryRun: z.boolean().default(true) 
-})
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError, CsvRow } from '@/lib/utils'
+import { Prisma } from '@prisma/client'
 
 const BATCH_SIZE = 1000
 const MAX_FIELD_COLUMNS = 5
 const MAX_SUPPORT_COLUMNS = 5
 
 export async function POST(req: NextRequest) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const { searchParams } = new URL(req.url)
     const dryRunParam = searchParams.get('dryRun')
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     const csvText = await file.text()
     
     // Parse CSV
-    let records: any[]
+    let records: CsvRow[]
     try {
       records = parse(csvText, { 
         columns: true, 
@@ -39,7 +40,8 @@ export async function POST(req: NextRequest) {
         bom: true,
         trim: true
       })
-    } catch (e: any) {
+    } catch (caught) {
+      const e = caught as CaughtError
       return NextResponse.json({ 
         error: 'Failed to parse CSV', 
         details: e.message 
@@ -112,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Process records
-    const sentences: any[] = []
+    const sentences: Omit<Prisma.SentenceCreateManyInput, 'importId'>[] = [] // importId is added on insert
     const providedIds = new Set<string>()
     const rowErrors: { row: number; message: string }[] = []
 
@@ -174,7 +176,7 @@ export async function POST(req: NextRequest) {
         support4,
         support5,
         fieldMapping,
-        supportMapping: Object.keys(supportMapping).length > 0 ? supportMapping : null
+        supportMapping: Object.keys(supportMapping).length > 0 ? supportMapping : undefined
       })
     }
 
@@ -212,7 +214,7 @@ export async function POST(req: NextRequest) {
           fieldColumns: fieldColumns.map(c => c.substring(6)),
           supportColumns: supportColumns.map(c => c.substring(8)),
           fieldMapping,
-          supportMapping: Object.keys(supportMapping).length > 0 ? supportMapping : null
+          supportMapping: Object.keys(supportMapping).length > 0 ? supportMapping : undefined
         }
       })
     }
@@ -257,9 +259,6 @@ export async function POST(req: NextRequest) {
             supportMapping: s.supportMapping
           }))
         })
-
-        // Log progress
-        const progress = Math.round(((i + chunk.length) / sentences.length) * 100)
       }
 
       return importId
@@ -275,7 +274,9 @@ export async function POST(req: NextRequest) {
       importId
     })
 
-  } catch (e: any) {
+  } catch (caught) {
+
+    const e = caught as CaughtError
     console.error('Import error:', e)
     return NextResponse.json({ 
       ok: false, 

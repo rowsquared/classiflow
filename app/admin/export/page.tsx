@@ -33,7 +33,7 @@ export default function ExportAdminPage() {
         const error = await res.json().catch(() => ({ error: 'Export failed' }))
         setMessage({ type: 'error', text: error.error || 'Export failed' })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Export failed' })
     } finally {
       setExporting(false)

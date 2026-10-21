@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import PageHeader from '@/components/PageHeader'
 import TaxonomyBrowser, { type Taxonomy, type SelectedLabel } from '@/components/TaxonomyBrowser'
@@ -112,10 +112,10 @@ export default function LabelingPage() {
   // Only treat taxonomies with user-submitted annotations as completed.
   // AI suggestions (source === 'ai') should not mark a taxonomy as completed,
   // otherwise the submit button would appear as "submitted" before a human action.
-  const calculateCompletedTaxonomies = (annotations: any[], taxonomiesList: Taxonomy[]) => {
+  const calculateCompletedTaxonomies = (annotations: Sentence['annotations'], taxonomiesList: Taxonomy[]) => {
     const completed = new Set<string>()
     taxonomiesList.forEach(tax => {
-      const userAnnotations = annotations.filter((ann: any) => {
+      const userAnnotations = annotations.filter((ann) => {
         const annotationTaxKey = ann.taxonomy?.key
         const source = ann.source ?? 'user'
         return annotationTaxKey === tax.key && source !== 'ai'
@@ -135,7 +135,7 @@ export default function LabelingPage() {
         if (!res.ok) throw new Error('Failed to fetch taxonomies')
         const data = await res.json()
         if (data.ok && data.taxonomies.length > 0) {
-          const loadedTaxonomies = data.taxonomies.map((t: any) => ({
+          const loadedTaxonomies = data.taxonomies.map((t: Taxonomy) => ({
             key: t.key,
             maxDepth: t.maxDepth || 5,
             levelNames: t.levelNames
@@ -195,11 +195,12 @@ export default function LabelingPage() {
   }, [sentenceId])
 
   // Initialize selected labels when both sentence and active taxonomy are available
+  const activeTaxonomyKey = activeTaxonomy?.key
   useEffect(() => {
-    if (sentence?.annotations && activeTaxonomy) {
+    if (sentence?.annotations && activeTaxonomyKey) {
       const labels: SelectedLabel[] = sentence.annotations
-        .filter((ann: any) => ann.taxonomy.key === activeTaxonomy.key)
-        .map((ann: any) => ({
+        .filter((ann) => ann.taxonomy.key === activeTaxonomyKey)
+        .map((ann) => ({
           level: ann.level,
           nodeCode: ann.nodeCode,
           taxonomyKey: ann.taxonomy.key,
@@ -223,7 +224,7 @@ export default function LabelingPage() {
         setCurrentTaxonomyLevel(1)
       }
     }
-  }, [sentence, activeTaxonomy?.key])
+  }, [sentence, activeTaxonomyKey])
 
   // Recalculate completed taxonomies whenever sentence annotations or taxonomies change
   useEffect(() => {
@@ -241,7 +242,7 @@ export default function LabelingPage() {
         const data = await res.json()
         setExistingComments(data.comments || [])
         setHasResolvedComments(Boolean(data.hasResolved))
-        const hasUnresolved = (data.comments || []).some((c: any) => !c.resolved)
+        const hasUnresolved = (data.comments || []).some((c: { resolved: boolean }) => !c.resolved)
         setHasComment(hasUnresolved)
       }
     } catch (error) {
@@ -358,8 +359,8 @@ export default function LabelingPage() {
     // Load selected labels for the new taxonomy
     if (sentence && taxonomies[index]) {
       const labels: SelectedLabel[] = sentence.annotations
-        .filter((ann: any) => ann.taxonomy.key === taxonomies[index].key)
-        .map((ann: any) => ({
+        .filter((ann) => ann.taxonomy.key === taxonomies[index].key)
+        .map((ann) => ({
           level: ann.level,
           nodeCode: ann.nodeCode,
           taxonomyKey: ann.taxonomy.key,
@@ -549,9 +550,11 @@ export default function LabelingPage() {
     }
   }
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts. The handler is refreshed after every render so it always
+  // sees current state; the listener itself is registered once.
+  const handleKeyPressRef = useRef<(e: KeyboardEvent) => void>(() => {})
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
+    handleKeyPressRef.current = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       
       switch (e.key.toLowerCase()) {
@@ -575,10 +578,12 @@ export default function LabelingPage() {
           break
       }
     }
-
+  })
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => handleKeyPressRef.current(e)
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [selectedLabels, sentence, showResolvedComments])
+  }, [])
 
   if (loading) {
     return (

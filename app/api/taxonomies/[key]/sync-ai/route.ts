@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { startAIJob, monitorAIJob } from '@/lib/ai-labeling'
 import { AI_SOURCE_SLUG } from '@/lib/constants'
+import type { CaughtError } from '@/lib/utils'
+import { Prisma } from '@prisma/client'
 
 export async function POST(
   req: NextRequest,
@@ -86,7 +88,8 @@ export async function POST(
     let jobId: string
     try {
       jobId = await startAIJob('/taxonomies', payload)
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as CaughtError
       const errorMessage = error?.message || 'Failed to start AI sync job'
       await prisma.taxonomy.update({
         where: { id: taxonomy.id },
@@ -123,7 +126,7 @@ export async function POST(
         return
       }
 
-      const data: Record<string, any> = result.success
+      const data: Prisma.TaxonomyUpdateInput = result.success
         ? {
             lastAISyncStatus: 'completed',
             lastAISyncAt: new Date(),
@@ -141,7 +144,8 @@ export async function POST(
     })
 
     return NextResponse.json({ ok: true, jobId })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to sync taxonomy with AI:', error)
     return NextResponse.json({ error: error?.message || 'Failed to sync taxonomy' }, { status: 500 })
   }

@@ -3,12 +3,16 @@ import { prisma } from '@/lib/prisma'
 import { parse } from 'csv-parse/sync'
 import { Prisma } from '@prisma/client'
 import { isUnknownNodeCode, AI_SOURCE_SLUG } from '@/lib/constants'
-import { startAIJob, monitorAIJob } from '@/lib/ai-labeling'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError, CsvRow } from '@/lib/utils'
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const { key } = await params
     const formData = await req.formData()
@@ -34,7 +38,7 @@ export async function PUT(
     if (levelNamesStr) {
       try {
         levelNames = JSON.parse(levelNamesStr)
-      } catch (e) {
+      } catch {
         return NextResponse.json({ 
           ok: false, 
           error: 'Invalid levelNames JSON' 
@@ -43,7 +47,7 @@ export async function PUT(
     }
 
     // Prepare update data
-    const updateData: any = {}
+    const updateData: Prisma.TaxonomyUpdateInput = {}
     if (description !== null) updateData.description = description || null
     if (levelNames !== undefined) updateData.levelNames = levelNames
 
@@ -56,7 +60,7 @@ export async function PUT(
       const buffer = Buffer.from(await file.arrayBuffer())
       const csv = buffer.toString('utf-8')
       // Use cast: false to preserve leading zeros in id and parent_id columns
-      const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as any[]
+      const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as CsvRow[]
 
       if (records.length === 0) {
         return NextResponse.json({ 
@@ -240,16 +244,23 @@ export async function PUT(
 
         await tx.taxonomyNode.createMany({ data: nodes as unknown as Prisma.TaxonomyNodeCreateManyInput[] })
 
-        // Create synonyms
-        const synonymsToCreate: any[] = []
+        // Create synonyms, linked by node id (the node ids only exist after createMany)
+        const createdNodes = await tx.taxonomyNode.findMany({
+          where: { taxonomyId: existingTaxonomy.id },
+          select: { id: true, code: true }
+        })
+        const nodeIdByCode = new Map(createdNodes.map(n => [n.code, n.id]))
+        const synonymsToCreate: Prisma.TaxonomySynonymCreateManyInput[] = []
         finalRecords.forEach((record) => {
           const synonymsStr = String(record.synonyms || '').trim()
           if (synonymsStr) {
             const synonymsList = synonymsStr.split(',').map(s => s.trim()).filter(s => s)
+            const nodeId = nodeIdByCode.get(String(record.id).trim())
+            if (!nodeId) return
             synonymsList.forEach(synonym => {
               synonymsToCreate.push({
                 taxonomyId: existingTaxonomy.id,
-                nodeCode: String(record.id).trim(),
+                nodeId,
                 synonym
               })
             })
@@ -276,7 +287,9 @@ export async function PUT(
       nodesReplaced: nodesImported
     })
 
-  } catch (error: any) {
+  } catch (caught) {
+
+    const error = caught as CaughtError
     console.error('Update taxonomy error:', error)
     return NextResponse.json({ 
       ok: false, 
@@ -289,6 +302,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const { key } = await params
 
@@ -367,7 +383,7 @@ export async function DELETE(
 
       // Delete external training jobs for this taxonomy
       try {
-        await (tx as any).aIExternalTrainingJob.deleteMany({
+        await tx.aIExternalTrainingJob.deleteMany({
           where: { taxonomyId }
         })
       } catch (error) {
@@ -399,7 +415,9 @@ export async function DELETE(
       }
     })
 
-  } catch (error: any) {
+  } catch (caught) {
+
+    const error = caught as CaughtError
     console.error('Delete taxonomy error:', error)
     return NextResponse.json({ 
       ok: false, 

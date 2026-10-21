@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import type { CaughtError } from '@/lib/utils'
 
 const statusSchema = z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled'])
 
@@ -58,8 +59,8 @@ export async function GET(req: NextRequest) {
           taxonomy: { select: { key: true } },
           createdBy: { select: { id: true, name: true, email: true } }
         }
-      }).catch((error: any) => {
-        console.error('Failed to fetch external training jobs:', error?.message || error)
+      }).catch((error: unknown) => {
+        console.error('Failed to fetch external training jobs:', error instanceof Error ? error.message : error)
         return []
       }),
       // Taxonomy sync jobs (still stored on Taxonomy model)
@@ -140,7 +141,8 @@ export async function GET(req: NextRequest) {
         pages: Math.ceil(total / limit)
       }
     })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to fetch AI jobs:', error)
     return NextResponse.json({ 
       error: error?.message || 'Failed to fetch jobs',

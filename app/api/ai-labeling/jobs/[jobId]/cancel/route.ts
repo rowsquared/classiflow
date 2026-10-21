@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { cancelAIJob } from '@/lib/ai-labeling'
+import type { CaughtError } from '@/lib/utils'
 
 export async function POST(
   req: NextRequest,
@@ -40,7 +41,8 @@ export async function POST(
     })
 
     return NextResponse.json({ ok: true, status: 'cancelled' })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to cancel AI labeling job:', error)
     return NextResponse.json({ error: error?.message || 'Failed to cancel job' }, { status: 500 })
   }

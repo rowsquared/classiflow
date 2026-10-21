@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatRelativeTime, formatDate } from '@/lib/utils'
+import type { CaughtError, CsvRow } from '@/lib/utils'
 
 export type Taxonomy = {
   id: string
@@ -159,7 +160,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         skip_empty_lines: true, 
         bom: true,
         cast: false 
-      }) as any[]
+      }) as CsvRow[]
       
       if (!records || records.length === 0) {
         return null
@@ -226,7 +227,8 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
       const data = await res.json()
       setValidationResult(data)
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as CaughtError
       console.error('Validation error:', error)
       setValidationResult({
         ok: false,
@@ -277,14 +279,14 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         // Format errors array if present
         let errorText = data.error || 'Failed to create taxonomy'
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          const errorList = data.errors.slice(0, 20).map((e: any) => `Row ${e.row}: ${e.message}`).join('\n')
+          const errorList = data.errors.slice(0, 20).map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`).join('\n')
           const moreErrors = data.errors.length > 20 ? `\n... and ${data.errors.length - 20} more errors` : ''
           errorText = `${errorText}\n\n${errorList}${moreErrors}`
         }
         // Show error in modal so user doesn't lose form data
         setModalMessage({ type: 'error', text: errorText })
       }
-    } catch (error) {
+    } catch {
       setModalMessage({ type: 'error', text: 'Network error' })
     } finally {
       setSubmitting(false)
@@ -321,13 +323,13 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         // Format errors array if present
         let errorText = data.error || 'Failed to update taxonomy'
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          const errorList = data.errors.slice(0, 20).map((e: any) => `Row ${e.row}: ${e.message}`).join('\n')
+          const errorList = data.errors.slice(0, 20).map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`).join('\n')
           const moreErrors = data.errors.length > 20 ? `\n... and ${data.errors.length - 20} more errors` : ''
           errorText = `${errorText}\n\n${errorList}${moreErrors}`
         }
         setMessage({ type: 'error', text: errorText })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Network error' })
     } finally {
       setSubmitting(false)
@@ -358,7 +360,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to delete taxonomy' })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Network error' })
     } finally {
       setSubmitting(false)
@@ -517,7 +519,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
             <div className="space-y-6 mb-12">
               {activeTaxonomies.length === 0 ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                  <p className="text-gray-600">No active taxonomies. Click "Add New Taxonomy" to create one.</p>
+                  <p className="text-gray-600">No active taxonomies. Click &quot;Add New Taxonomy&quot; to create one.</p>
                 </div>
               ) : (
                 activeTaxonomies.map(taxonomy => (
@@ -984,7 +986,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
 
             <div className="p-6 space-y-4">
               <p className="text-gray-700">You are about to delete taxonomy:</p>
-              <p className="font-semibold text-gray-900">"{selectedTaxonomy.key}"</p>
+              <p className="font-semibold text-gray-900">&quot;{selectedTaxonomy.key}&quot;</p>
               
               <div className="text-sm text-gray-600 space-y-1">
                 <p>This will:</p>

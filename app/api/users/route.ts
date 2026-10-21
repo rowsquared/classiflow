@@ -14,7 +14,7 @@ const createUserSchema = z.object({
 })
 
 // GET - List all users
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await auth()
     

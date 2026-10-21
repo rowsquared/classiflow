@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build where clause for sentence visibility
-    const sentenceWhere: any = {}
+    const sentenceWhere: Prisma.SentenceWhereInput = {}
     // For non-admins, filter by assignments
     // Note: For supervisors, visibleUserIds includes both their own ID and supervised users
     if (user?.role !== 'admin') {
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
 
     // 3. AI AGREEMENT RATE
     // Get annotations where both AI and user exist for the same sentence/level
-    const annotationWhere: any = {
+    const annotationWhere: Prisma.SentenceAnnotationWhereInput = {
       createdAt: {
         gte: start,
         lte: end

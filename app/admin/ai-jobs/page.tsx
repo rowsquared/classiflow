@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { serverFetchJSON } from '@/lib/server-fetch'
-import AIJobsClient from './AIJobsClient'
+import AIJobsClient, { type AIJob } from './AIJobsClient'
 
 export default async function AIJobsPage() {
   const session = await auth()
@@ -10,7 +10,7 @@ export default async function AIJobsPage() {
   }
 
   const data = await serverFetchJSON<{
-    jobs: any[]
+    jobs: AIJob[]
     pagination: { page: number; limit: number; total: number; pages: number }
   }>('/api/ai-jobs?page=1&limit=20')
 

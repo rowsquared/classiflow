@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { 
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, ReferenceLine 
 } from 'recharts'
 
@@ -102,7 +102,7 @@ export default function ProgressPageClient({
   const initialFetchSkipped = useRef(false)
 
   // Calculate date range based on selected period
-  const getDateRange = () => {
+  const getDateRange = useCallback(() => {
     const end = new Date()
     end.setHours(23, 59, 59, 999)
     let start = new Date()
@@ -135,7 +135,7 @@ export default function ProgressPageClient({
       startDate: start.toISOString(),
       endDate: end.toISOString()
     }
-  }
+  }, [period, customStart, customEnd])
 
   // Load stats
   const loadData = useCallback(async () => {
@@ -171,7 +171,7 @@ export default function ProgressPageClient({
     } finally {
       setLoading(false)
     }
-  }, [customEnd, customStart, period, userRole])
+  }, [getDateRange, userRole])
 
   useEffect(() => {
     if (!initialFetchSkipped.current) {

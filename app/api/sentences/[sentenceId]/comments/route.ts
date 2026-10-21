@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
+  const { session, error } = await requireSession()
+  if (error) return error
+
   try {
     const { sentenceId } = await params
     const { body } = await req.json()
@@ -16,17 +20,6 @@ export async function POST(
       )
     }
 
-    // For now, we need to get a default user since auth isn't implemented yet
-    // Get the first user to use as the author
-    const defaultUser = await prisma.user.findFirst()
-    
-    if (!defaultUser) {
-      return NextResponse.json(
-        { ok: false, error: 'No users found in system' },
-        { status: 500 }
-      )
-    }
-
     // Create the comment
     const comment = await prisma.comment.create({
       data: {
@@ -35,7 +28,7 @@ export async function POST(
           connect: { id: sentenceId }
         },
         author: {
-          connect: { id: defaultUser.id }
+          connect: { id: session.user.id }
         }
       },
       include: {
@@ -62,6 +55,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
+  const { error } = await requireSession()
+  if (error) return error
+
   try {
     const { sentenceId } = await params
     const { searchParams } = new URL(req.url)
@@ -105,6 +101,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
+  const { error } = await requireSession()
+  if (error) return error
+
   try {
     const { sentenceId } = await params
     const { commentId, resolved } = await req.json()
@@ -158,6 +157,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ sentenceId: string }> }
 ) {
+  const { session, error } = await requireSession()
+  if (error) return error
+
   try {
     const { sentenceId } = await params
     const { commentId } = await req.json()
@@ -171,13 +173,20 @@ export async function DELETE(
 
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
-      select: { sentenceId: true }
+      select: { sentenceId: true, authorId: true }
     })
 
     if (!comment || comment.sentenceId !== sentenceId) {
       return NextResponse.json(
         { ok: false, error: 'Comment not found for this sentence' },
         { status: 404 }
+      )
+    }
+
+    if (comment.authorId !== session.user.id && session.user.role !== 'admin') {
+      return NextResponse.json(
+        { ok: false, error: 'Only the author or an admin can delete a comment' },
+        { status: 403 }
       )
     }
 

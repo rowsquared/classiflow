@@ -117,7 +117,8 @@ export async function GET(
     // Fetch AI suggestions for this sentence (always fetch, will be filtered by taxonomy in frontend)
     // Combine user annotations with AI suggestions
     // For each taxonomy, show user annotations if they exist, otherwise show AI suggestions
-    const taxonomyAnnotations = new Map<string, any[]>()
+    // Response objects only: user annotations and AI suggestions have different shapes
+    const taxonomyAnnotations = new Map<string, Array<Record<string, unknown>>>()
     
     // Group user annotations by taxonomy
     annotationsWithLabels.forEach(ann => {

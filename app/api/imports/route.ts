@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError } from '@/lib/utils'
 
 export async function GET() {
+  const { error } = await requireSession()
+  if (error) return error
+
   try {
     const imports = await prisma.sentenceImport.findMany({
       orderBy: { uploadedAt: 'desc' },
@@ -22,7 +27,8 @@ export async function GET() {
         sentenceCount: imp._count.sentences
       }))
     })
-  } catch (e: any) {
+  } catch (caught) {
+    const e = caught as CaughtError
     console.error('Failed to fetch imports:', e)
     return NextResponse.json({ 
       ok: false, 

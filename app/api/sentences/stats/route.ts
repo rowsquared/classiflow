@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { SentenceStatus, type Prisma } from '@prisma/client'
+import { AnnotationSource, SentenceStatus, type Prisma } from '@prisma/client'
+import { parseEnum, type CaughtError } from '@/lib/utils'
 
 export async function GET(req: NextRequest) {
   try {
@@ -61,13 +62,12 @@ export async function GET(req: NextRequest) {
     // Admins see all sentences (no filter)
 
     // Build additional filters from query params
-    const additionalFilters: Prisma.SentenceWhereInput = {}
     const AND: Prisma.SentenceWhereInput[] = []
 
     // Search query
     const q = searchParams.get('q')
     if (q) {
-      const searchFilter: any = {
+      const searchFilter: Prisma.SentenceWhereInput = {
         OR: [
           { field1: { contains: q, mode: 'insensitive' } },
           { field2: { contains: q, mode: 'insensitive' } },
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
     if (dateFrom || dateTo) {
-      const dateFilter: any = {}
+      const dateFilter: Prisma.DateTimeNullableFilter = {}
       if (dateFrom) dateFilter.gte = new Date(dateFrom)
       if (dateTo) {
         const endDate = new Date(dateTo)
@@ -147,25 +147,21 @@ export async function GET(req: NextRequest) {
     const importId = searchParams.get('importId')
 
     if (taxonomyKey || level || code || source) {
-      const annotationFilter: any = {
-        annotations: {
-          some: {}
-        }
-      }
+      const annotationFilter: Prisma.SentenceAnnotationWhereInput = {}
       if (taxonomyKey) {
         const taxonomy = await prisma.taxonomy.findUnique({
           where: { key: taxonomyKey },
           select: { id: true }
         })
         if (taxonomy) {
-          annotationFilter.annotations.some.taxonomyId = taxonomy.id
+          annotationFilter.taxonomyId = taxonomy.id
         }
       }
-      if (level) annotationFilter.annotations.some.level = parseInt(level)
-      if (code) annotationFilter.annotations.some.nodeCode = code
-      if (source) annotationFilter.annotations.some.source = source
+      if (level) annotationFilter.level = parseInt(level)
+      if (code) annotationFilter.nodeCode = code
+      if (source) annotationFilter.source = parseEnum(AnnotationSource, source)
 
-      AND.push(annotationFilter)
+      AND.push({ annotations: { some: annotationFilter } })
     }
     
     if (aiTaxonomyKey || aiLevel || aiCode || aiConfidenceMin || aiConfidenceMax) {
@@ -259,7 +255,7 @@ export async function GET(req: NextRequest) {
       if (supportValue) {
         AND.push({
           [`support${i}`]: { contains: supportValue, mode: 'insensitive' }
-        } as any)
+        } as Prisma.SentenceWhereInput)
       }
     }
 
@@ -289,7 +285,8 @@ export async function GET(req: NextRequest) {
         progress: total > 0 ? Math.round((submitted / total) * 100) : 0
       }
     })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to fetch sentence stats:', error)
     console.error('Error details:', {
       message: error?.message,

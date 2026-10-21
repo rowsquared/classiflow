@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
+import { Prisma, type SentenceAnnotation } from '@prisma/client'
 const annotationSchema = z.object({
   annotations: z.array(z.object({
     level: z.number(),
@@ -64,7 +65,7 @@ export async function POST(
       select: { id: true, key: true }
     })
 
-    let allAnnotations: any[] = []
+    let allAnnotations: SentenceAnnotation[] = []
     let finalStatus: 'pending' | 'submitted' | 'skipped' | 'escalated' = status
 
     await prisma.$transaction(async (tx) => {
@@ -141,7 +142,7 @@ export async function POST(
       }
       
       // Update sentence status and flag
-      const updateData: any = {
+      const updateData: Prisma.SentenceUncheckedUpdateInput = {
         status: finalStatus
       }
       

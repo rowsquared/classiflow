@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import { Prisma } from '@prisma/client'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ key: string }> }) {
+  const { error } = await requireSession()
+  if (error) return error
+
   const { key } = await params
   const { searchParams } = new URL(req.url)
   const parentCodeRaw = searchParams.get('parentCode')
@@ -13,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
   const taxonomy = await prisma.taxonomy.findUnique({ where: { key } })
   if (!taxonomy) return NextResponse.json({ error: 'taxonomy not found' }, { status: 404 })
 
-  const where: any = { taxonomyId: taxonomy.id }
+  const where: Prisma.TaxonomyNodeWhereInput = { taxonomyId: taxonomy.id }
   if (parentCodeRaw !== null) {
     where.parentCode = parentCodeRaw === '' ? null : parentCodeRaw
   }
@@ -33,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
       orderBy: [{ level: 'asc' }, { code: 'asc' }],
       skip: offset,
       take: limit,
-      select: { code: true, label: true, level: true, parentCode: true, isLeaf: true, taxonomyId: true, definition: true, examples: true },
+      select: { code: true, label: true, level: true, parentCode: true, isLeaf: true, definition: true, examples: true },
     }),
     prisma.taxonomyNode.count({ where }),
   ])
@@ -55,7 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
           // Check if has children
           const childCount = await prisma.taxonomyNode.count({
             where: {
-              taxonomyId: item.taxonomyId,
+              taxonomyId: taxonomy.id,
               parentCode: item.code,
             }
           })
@@ -63,9 +68,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
         }
       }
       
-      // Remove taxonomyId from the response
-      const { taxonomyId, ...rest } = item
-      return { ...rest, isLeaf: computedIsLeaf }
+      return { ...item, isLeaf: computedIsLeaf }
     })
   )
 

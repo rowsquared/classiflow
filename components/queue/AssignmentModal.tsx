@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 
 type User = {
@@ -26,14 +26,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   const [error, setError] = useState('')
   const initialised = useRef(false)
 
-  useEffect(() => {
-    if (!initialised.current) {
-      initialised.current = true
-      loadData()
-    }
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       // Fetch users and current assignments in parallel
       const [usersRes, assignRes] = await Promise.all([
@@ -63,7 +56,15 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     } finally {
       setLoading(false)
     }
-  }
+  }, [sentenceIds])
+
+  // Load once on open; sentenceIds is a fresh array on every parent render
+  useEffect(() => {
+    if (!initialised.current) {
+      initialised.current = true
+      loadData()
+    }
+  }, [loadData])
 
   const handleToggleUser = (userId: string) => {
     const newSet = new Set(selectedUserIds)

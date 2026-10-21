@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { AnnotationSource, SentenceStatus, type Prisma } from '@prisma/client'
+import { parseEnum, type CaughtError } from '@/lib/utils'
+
+type AISuggestionView = {
+  id: string
+  level: number
+  nodeCode: string
+  nodeLabel: string | null
+  source: 'ai'
+  taxonomy: { key: string }
+  confidenceScore: number | null
+}
 
 export async function GET(request: Request) {
   try {
@@ -18,7 +29,6 @@ export async function GET(request: Request) {
     const q = searchParams.get('q') || ''
     const statusParam = searchParams.get('status') || ''
     const userId = searchParams.get('userId') || ''
-    const userScope = searchParams.get('userScope') || '' // 'me' for current user
     const assignedToUserId = searchParams.get('assignedToUserId') || ''
     const lastEditorId = searchParams.get('lastEditorId') || ''
     const lastEditedFrom = searchParams.get('lastEditedFrom') || ''
@@ -60,12 +70,14 @@ export async function GET(request: Request) {
     
     // Multiple status filters (comma-separated)
     if (statusParam) {
-      const statuses = statusParam.split(',').map(s => s.trim())
+      const statuses = statusParam.split(',')
+        .map(s => parseEnum(SentenceStatus, s.trim()))
+        .filter((s): s is SentenceStatus => s !== undefined)
       if (statuses.length === 1) {
-        and.push({ status: statuses[0] as any })
-      } else {
+        and.push({ status: statuses[0] })
+      } else if (statuses.length > 1) {
         and.push({
-          OR: statuses.map(s => ({ status: s as any }))
+          OR: statuses.map(s => ({ status: s }))
         })
       }
     }
@@ -151,7 +163,7 @@ export async function GET(request: Request) {
     
     // Date range filter
     if (lastEditedFrom || lastEditedTo) {
-      const dateFilter: any = {}
+      const dateFilter: Prisma.DateTimeNullableFilter = {}
       if (lastEditedFrom) {
         // Start of the day (00:00:00.000)
         const fromDate = new Date(lastEditedFrom)
@@ -169,24 +181,22 @@ export async function GET(request: Request) {
     
     // Taxonomy/annotation filters
     if (taxonomyKey || level || code || source) {
-      const annotationFilter: any = {
-        some: {}
-      }
+      const annotationFilter: Prisma.SentenceAnnotationWhereInput = {}
       
       if (taxonomyKey) {
-        annotationFilter.some.taxonomy = { key: taxonomyKey }
+        annotationFilter.taxonomy = { key: taxonomyKey }
       }
       if (level) {
-        annotationFilter.some.level = parseInt(level, 10)
+        annotationFilter.level = parseInt(level, 10)
       }
       if (code) {
-        annotationFilter.some.nodeCode = code
+        annotationFilter.nodeCode = code
       }
       if (source) {
-        annotationFilter.some.source = source as any
+        annotationFilter.source = parseEnum(AnnotationSource, source)
       }
       
-      and.push({ annotations: annotationFilter })
+      and.push({ annotations: { some: annotationFilter } })
     }
     
     // AI suggestion filters
@@ -285,7 +295,7 @@ export async function GET(request: Request) {
       if (supportValue) {
         and.push({
           [`support${i}`]: { contains: supportValue, mode: 'insensitive' }
-        } as any)
+        } as Prisma.SentenceWhereInput)
       }
     }
     
@@ -391,7 +401,7 @@ export async function GET(request: Request) {
     const sentencesWithoutAnnotations = sentences.filter(s => s.annotations.length === 0)
     const aiSuggestionsPromise = (async () => {
       if (sentencesWithoutAnnotations.length === 0) {
-        return {} as Record<string, any[]>
+        return {} as Record<string, AISuggestionView[]>
       }
       
       const sentenceIds = sentencesWithoutAnnotations.map(s => s.id)
@@ -411,7 +421,7 @@ export async function GET(request: Request) {
       })
       
       if (aiSuggestions.length === 0) {
-        return {} as Record<string, any[]>
+        return {} as Record<string, AISuggestionView[]>
       }
       
       const aiTaxonomyIds = new Set(aiSuggestions.map(s => s.taxonomyId))
@@ -449,7 +459,7 @@ export async function GET(request: Request) {
           confidenceScore: suggestion.confidenceScore
         })
         return acc
-      }, {} as Record<string, any[]>)
+      }, {} as Record<string, AISuggestionView[]>)
     })()
     
     const [annotationNodes, aiSuggestionsBySentence] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
@@ -458,25 +468,21 @@ export async function GET(request: Request) {
       annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label])
     )
     
-    // Attach labels to annotations
-    let sentencesWithLabels = sentences.map(s => ({
-      ...s,
-      annotations: s.annotations.map(a => ({
-        ...a,
-        nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null
-      }))
-    }))
-    
-    // For sentences without submitted annotations, fetch AI suggestions
-    // Merge AI suggestions
-    sentencesWithLabels = sentencesWithLabels.map(s => {
+    // Attach labels to annotations; sentences without annotations show their AI suggestions instead
+    const sentencesWithLabels = sentences.map(s => {
       if (s.annotations.length === 0 && aiSuggestionsBySentence[s.id]) {
         return {
           ...s,
           annotations: aiSuggestionsBySentence[s.id]
         }
       }
-      return s
+      return {
+        ...s,
+        annotations: s.annotations.map(a => ({
+          ...a,
+          nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null
+        }))
+      }
     })
 
     return NextResponse.json({
@@ -488,7 +494,8 @@ export async function GET(request: Request) {
         pages: Math.ceil(total / limit),
       },
     })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Sentences API error:', error)
     console.error('Error details:', {
       message: error?.message,

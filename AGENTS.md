@@ -52,7 +52,7 @@ Browser: React client components
 | Authentication | `lib/auth.config.ts`, `lib/auth.ts`, `middleware.ts`, `types/next-auth.d.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, maintenance utilities in `scripts/` |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`init-admin.js` runs on every start, `reset-admin-password.ts`, `promote-main.mjs`) |
 
 ## Domain model and behavior to preserve
 
@@ -112,10 +112,11 @@ uses JWT sessions. Session/JWT fields include user ID, role, and
 
 `middleware.ts` redirects unauthenticated page requests and enforces the initial
 password reset flow. **It explicitly passes API requests through.** API handlers
-must perform their own session, role, and record-scope checks. Coverage currently
-varies: several taxonomy/import handlers lack explicit auth checks. Do not infer
-protection from an `/admin` UI, middleware, or neighboring endpoint. Follow the
-appropriate `auth()` and authorization pattern when adding or changing APIs.
+must perform their own session and role checks: start every handler with
+`requireSession()` from `lib/api-auth.ts` (any signed-in user) or
+`requireSession('admin')` (listed roles only). Do not infer protection from an
+`/admin` UI, middleware, or neighboring endpoint. Record-level scoping (which
+sentences a labeller may see) is applied in the queue/stats handlers only.
 
 ## Optional AI integration
 
@@ -137,13 +138,9 @@ appropriate `auth()` and authorization pattern when adding or changing APIs.
   and learning jobs when the active-jobs API is polled, with a rate limit.
   Consider process restarts and multiple app instances before changing this.
 - Taxonomy sync uses `Taxonomy.lastAISync*` fields and the older monitor helper.
-  External training uses `AIExternalTrainingJob` and older helpers/queue checks.
-  `lib/ai-job-queue.ts` is not the scheduler for current labeling/learning;
-  `processNextQueuedJob()` is a placeholder.
-- External-training upload writes JSON under `public/training-data/` and returns
-  a URL based on `NEXT_PUBLIC_BASE_URL` (fallback: localhost). That workflow needs
-  writable storage and a URL reachable by Taxomind. Treat generated training
-  data as runtime data, not a source asset to commit.
+- External training (uploading a training CSV) was removed; its UI and API are
+  gone. `AIExternalTrainingJob` stays in the schema only so historical jobs still
+  show in the AI jobs list and taxonomy deletes clean them up.
 
 ## Local development and checks
 
@@ -175,7 +172,7 @@ introduce a different package manager or lockfile incidentally.
 `next.config.ts` skips TypeScript and ESLint errors during production builds.
 A successful build therefore does not establish type/lint correctness. Run
 checks relevant to a code change and distinguish pre-existing failures from
-regressions. `scripts/test-*.ts` are manual diagnostics, not the unit test suite.
+regressions.
 `db:seed` is listed in the manifest but currently has no configured Prisma seed.
 
 Production uses Next's standalone output in a Node 20 Alpine image. The Compose
@@ -211,3 +208,8 @@ files for deployment details; these are separate from the local dev stack.
 - Keep this guide aligned with architecture/workflow changes. For a focused
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.
+
+For hardening and modernization work, start with the
+[repository review](docs/reviews/2026-10-21-review.md), then read only the relevant
+linked investigation brief. These are dated findings and proposed work, not
+implemented behavior or additional standing instructions.

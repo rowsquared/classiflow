@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { parse } from 'csv-parse/sync'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError, CsvRow } from '@/lib/utils'
+import { Prisma } from '@prisma/client'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
-export async function GET(req: NextRequest) {
+export async function GET() {
+  const { error } = await requireSession()
+  if (error) return error
+
   try {
     // No longer filtering by isActive since we're using hard delete
     // Keep the parameter for backward compatibility but ignore it
@@ -51,26 +57,15 @@ export async function GET(req: NextRequest) {
         }))
 
         // Get last external training date
-        let lastExternalTrainingAt: string | null = null
-        try {
-          // Use type assertion since Prisma client might not be fully updated
-          const prismaClient = prisma as any
-          if (prismaClient.aIExternalTrainingJob) {
-            const lastExternalTraining = await prismaClient.aIExternalTrainingJob.findFirst({
-              where: {
-                taxonomyId: taxonomy.id,
-                status: 'completed'
-              },
-              orderBy: { completedAt: 'desc' },
-              select: { completedAt: true }
-            })
-            if (lastExternalTraining?.completedAt) {
-              lastExternalTrainingAt = lastExternalTraining.completedAt.toISOString()
-            }
-          }
-        } catch (error) {
-          // Table might not exist yet, ignore
-        }
+        const lastExternalTraining = await prisma.aIExternalTrainingJob.findFirst({
+          where: {
+            taxonomyId: taxonomy.id,
+            status: 'completed'
+          },
+          orderBy: { completedAt: 'desc' },
+          select: { completedAt: true }
+        })
+        const lastExternalTrainingAt = lastExternalTraining?.completedAt?.toISOString() ?? null
 
         return {
           ...taxonomy,
@@ -101,6 +96,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const formData = await req.formData()
     
@@ -145,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (levelNamesStr) {
       try {
         levelNames = JSON.parse(levelNamesStr)
-      } catch (e) {
+      } catch {
         return NextResponse.json({ 
           ok: false, 
           error: 'Invalid levelNames JSON' 
@@ -157,7 +155,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
     const csv = buffer.toString('utf-8')
     // Use cast: false to preserve leading zeros in id and parent_id columns
-    const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as any[]
+    const records = parse(csv, { columns: true, skip_empty_lines: true, bom: true, cast: false }) as CsvRow[]
 
     if (records.length === 0) {
       return NextResponse.json({ 
@@ -311,19 +309,26 @@ export async function POST(req: NextRequest) {
 
       await tx.taxonomyNode.createMany({ data: nodes })
 
-      // Create synonyms
-      const synonymsToCreate: any[] = []
+      // Create synonyms, linked by node id (the node ids only exist after createMany)
+      const createdNodes = await tx.taxonomyNode.findMany({
+        where: { taxonomyId: taxonomy.id },
+        select: { id: true, code: true }
+      })
+      const nodeIdByCode = new Map(createdNodes.map(n => [n.code, n.id]))
+      const synonymsToCreate: Prisma.TaxonomySynonymCreateManyInput[] = []
       finalRecords.forEach((record) => {
         const synonymsStr = String(record.synonyms || '').trim()
         if (synonymsStr) {
           const synonymsList = synonymsStr.split(',').map(s => s.trim()).filter(s => s)
-            synonymsList.forEach(synonym => {
-              synonymsToCreate.push({
-                taxonomyId: taxonomy.id,
-                nodeCode: String(record.id).trim(),
-                synonym
-              })
+          const nodeId = nodeIdByCode.get(String(record.id).trim())
+          if (!nodeId) return
+          synonymsList.forEach(synonym => {
+            synonymsToCreate.push({
+              taxonomyId: taxonomy.id,
+              nodeId,
+              synonym
             })
+          })
         }
       })
 
@@ -340,7 +345,9 @@ export async function POST(req: NextRequest) {
       importedNodes: finalRecords.length
     })
 
-  } catch (error: any) {
+  } catch (caught) {
+
+    const error = caught as CaughtError
     console.error('Create taxonomy error:', error)
     
     // Extract clean error message

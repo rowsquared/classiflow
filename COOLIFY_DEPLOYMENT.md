@@ -313,9 +313,8 @@ To scale the application:
 ### Build Fails
 
 **Issue**: ESLint errors during build
-- **Solution**: The `next.config.ts` is configured with `eslint.ignoreDuringBuilds: true`
-- **Reason**: Minor ESLint warnings are acceptable and don't affect functionality
-- **Note**: You can still run `pnpm lint` separately to review warnings
+- **Solution**: The `next.config.ts` is configured with `eslint.ignoreDuringBuilds: true`,
+  so lint never breaks a deploy build. Lint is enforced in CI instead (`checks` job).
 
 **Issue**: `npm install` or `pnpm install` fails
 - **Solution**: The Dockerfile now uses `npm ci --legacy-peer-deps` with fallback to `npm install`
@@ -452,10 +451,9 @@ because Coolify does not wait for GitHub Actions.
 `smoke` builds the image from the same `Dockerfile` and `docker-compose.yml`
 Coolify uses, starts the stack on an empty database, and checks that migrations
 applied, the default admin was created, `/api/health` reports a connected
-database and `/login` renders. `checks` runs the typecheck and unit tests
-(`npm run typecheck`, `npm test`); the build itself skips type errors, so this
-is where they are caught. Lint runs in `checks` too but only reports for now,
-because `main` still has lint errors; make it blocking once they are fixed.
+database and `/login` renders. `checks` runs the typecheck, lint and unit tests
+(`npm run typecheck`, `npm run lint`, `npm test`); the build itself skips type
+and lint errors, so this is where they are caught.
 
 Two repository secrets drive the production deploy. Without them the job fails
 loudly rather than skipping, because a release that quietly deploys nothing is

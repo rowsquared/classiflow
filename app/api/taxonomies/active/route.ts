@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError } from '@/lib/utils'
 
 export async function GET() {
+  const { error } = await requireSession()
+  if (error) return error
+
   try {
     const taxonomies = await prisma.taxonomy.findMany({
       where: {},
@@ -16,7 +21,8 @@ export async function GET() {
     })
     
     return NextResponse.json({ ok: true, taxonomies })
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as CaughtError
     console.error('Failed to fetch active taxonomies:', error)
     console.error('Error details:', {
       message: error?.message,

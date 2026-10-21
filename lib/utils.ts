@@ -61,3 +61,13 @@ export function formatDate(date: string | Date | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** Narrow a query-string value to one of an enum's values, or undefined. */
+export function parseEnum<T extends string>(values: Record<string, T>, raw: string | null | undefined): T | undefined {
+  return (Object.values(values) as string[]).includes(raw ?? '') ? (raw as T) : undefined
+}
+
+/** What handlers read from a caught value: Error fields plus Prisma's code/meta. */
+export type CaughtError = { message?: string; code?: string; meta?: unknown; stack?: string }
+
+/** One row from csv-parse with `columns: true` and `cast: false`. */
+export type CsvRow = Record<string, string>

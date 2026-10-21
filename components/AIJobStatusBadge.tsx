@@ -29,7 +29,6 @@ export default function AIJobStatusBadge() {
   const { data: session } = useSession()
   const [jobs, setJobs] = useState<AIJob[]>([])
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [loading, setLoading] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -41,8 +40,6 @@ export default function AIJobStatusBadge() {
 
     const fetchJobs = async () => {
       try {
-        if (isInitialLoad) setLoading(true)
-
         const res = await fetch('/api/ai-jobs/active')
         if (res.ok) {
           const data = await res.json()
@@ -75,7 +72,6 @@ export default function AIJobStatusBadge() {
         }
       } finally {
         if (isInitialLoad) {
-          setLoading(false)
           setIsInitialLoad(false)
         }
       }

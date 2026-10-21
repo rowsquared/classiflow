@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
+import { Prisma } from '@prisma/client'
 
 /**
  * GET /api/progress/timeline?startDate=...&endDate=...&granularity=day
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build where clause for sentence visibility
-    const sentenceWhere: any = {}
+    const sentenceWhere: Prisma.SentenceWhereInput = {}
     // For non-admins, filter by assignments
     // Note: For supervisors, visibleUserIds includes both their own ID and supervised users
     if (user?.role !== 'admin') {

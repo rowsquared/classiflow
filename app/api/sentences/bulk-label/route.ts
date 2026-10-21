@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { z } from 'zod'
 import { isUnknownNodeCode } from '@/lib/constants'
+import type { CaughtError } from '@/lib/utils'
+import { Prisma } from '@prisma/client'
 
 const bulkLabelSchema = z.object({
   sentenceIds: z.array(z.string()).min(1),
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
           // Create new annotations (including -99 for unknown)
           await tx.sentenceAnnotation.createMany({
             data: normalizedAnnotations.map(ann => {
-              const baseData: any = {
+              const baseData: Prisma.SentenceAnnotationCreateManyInput = {
                 sentenceId,
                 taxonomyId: taxonomy.id,
                 level: ann.level,
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest) {
         }
         
         // Update sentence status and flag
-        const updateData: any = {
+        const updateData: Prisma.SentenceUncheckedUpdateInput = {
           status: 'submitted',
           lastEditorId: userId,
           lastEditedAt: new Date()
@@ -169,7 +171,9 @@ export async function POST(req: NextRequest) {
       message: `Successfully labeled ${sentenceIds.length} sentence(s)`
     })
     
-  } catch (error: any) {
+  } catch (caught) {
+    
+    const error = caught as CaughtError
     console.error('Bulk label error:', error)
     return NextResponse.json({ 
       ok: false, 

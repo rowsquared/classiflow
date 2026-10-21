@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatRelativeTime } from '@/lib/utils'
 import { CheckCircle2, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react'
@@ -47,7 +47,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   const [page, setPage] = useState(1)
   const skipInitialFetch = useRef(true)
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -69,7 +69,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, statusFilter, initialPagination])
 
   useEffect(() => {
     if (skipInitialFetch.current) {
@@ -77,7 +77,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
       return
     }
     fetchJobs()
-  }, [page, statusFilter])
+  }, [fetchJobs])
 
   // Poll for active jobs if any are pending/processing
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     }, 5000) // Poll every 5 seconds
 
     return () => clearInterval(interval)
-  }, [jobs])
+  }, [jobs, fetchJobs])
 
   const getStatusIcon = (status: string) => {
     switch (status) {

@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/api-auth'
+import type { CaughtError } from '@/lib/utils'
 
 export async function DELETE(
   req: NextRequest, 
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { error } = await requireSession('admin')
+  if (error) return error
+
   try {
     const { id } = await params
 
@@ -65,7 +70,9 @@ export async function DELETE(
       deletedSentences: importRecord._count.sentences 
     })
 
-  } catch (e: any) {
+  } catch (caught) {
+
+    const e = caught as CaughtError
     console.error('Failed to delete import:', e)
     return NextResponse.json({ 
       ok: false, 

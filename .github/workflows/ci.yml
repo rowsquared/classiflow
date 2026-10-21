@@ -57,10 +57,8 @@ jobs:
         run: docker compose down -v
 
   checks:
-    # Typecheck and unit tests block the deploy: next.config.ts skips type
-    # errors during build, so this is the only place they are caught. Lint
-    # only reports for now (main still has lint errors); drop its
-    # continue-on-error once they are fixed.
+    # Typecheck, lint and unit tests block the deploy: next.config.ts skips type
+    # and lint errors during build, so this is the only place they are caught.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -74,15 +72,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
-      - name: Lint (not blocking yet)
-        id: lint
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
-      - name: Lint summary
-        if: always() && steps.lint.outcome == 'failure'
-        run: |
-          echo "### Lint failed (not blocking yet); see the Lint step log." >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning::Lint failed. Not blocking deploys yet; see the Lint step log."
 
   deploy-prod:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 
 const assignSchema = z.object({
   sentenceIds: z.array(z.string()).min(1),
@@ -179,7 +180,7 @@ export async function DELETE(req: NextRequest) {
 
     // If userIds provided, only unassign from those users
     // Otherwise, unassign from all users
-    const where: any = {
+    const where: Prisma.SentenceAssignmentWhereInput = {
       sentenceId: { in: sentenceIds }
     }
 

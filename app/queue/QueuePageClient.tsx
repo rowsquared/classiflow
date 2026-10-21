@@ -235,7 +235,7 @@ export default function QueuePageClient({
       if (data.ok) {
         setStats(data.stats)
       }
-    } catch (error) {
+    } catch {
       // Network errors during polling are expected (e.g. during deploys)
       // Don't log to avoid console noise
     }
@@ -388,36 +388,7 @@ export default function QueuePageClient({
     await fetchStats()
   }
 
-  // Handle bulk label
-  const handleBulkLabel = async (taxonomyKey: string, annotations: Array<{ level: number; nodeCode: string }>) => {
-    try {
-      const res = await fetch('/api/sentences/bulk-label', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sentenceIds: Array.from(selectedIds),
-          taxonomyKey,
-          annotations
-        })
-      })
 
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to bulk label')
-      }
-
-      // Success - refresh queue and stats
-      await refreshQueue()
-      setSelectedIds(new Set())
-      setBulkLabelOpen(false)
-      
-      // Show success message
-      alert(`Successfully labeled ${selectedIds.size} sentence(s)`)
-    } catch (error: any) {
-      console.error('Bulk label error:', error)
-      throw error
-    }
-  }
 
   // Handle page size change
   const handlePageSizeChange = (newSize: number) => {

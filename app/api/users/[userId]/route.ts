@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
@@ -104,7 +105,7 @@ export async function PUT(
     const { name, role, supervisorId, newPassword } = validation.data
 
     // Build update data
-    const updateData: any = {}
+    const updateData: Prisma.UserUncheckedUpdateInput = {}
     if (name !== undefined) updateData.name = name
     if (role !== undefined) updateData.role = role
     if (supervisorId !== undefined) updateData.supervisorId = supervisorId

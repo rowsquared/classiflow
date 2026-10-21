@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate, formatDateTime, formatFieldName, formatRelativeTime } from '@/lib/utils'
+import { formatDate, formatDateTime, formatFieldName, formatRelativeTime, parseEnum } from '@/lib/utils'
 
 describe('formatFieldName', () => {
 	it('converts snake_case to Title Case', () => {
@@ -25,5 +25,19 @@ describe('formatDate / formatDateTime', () => {
 
 	it('rejects invalid input', () => {
 		expect(formatDateTime('not a date')).toBe('Invalid date')
+	})
+})
+
+describe('parseEnum', () => {
+	const Status = { pending: 'pending', submitted: 'submitted' } as const
+
+	it('accepts a known value', () => {
+		expect(parseEnum(Status, 'submitted')).toBe('submitted')
+	})
+
+	it('rejects unknown, empty and missing values', () => {
+		expect(parseEnum(Status, 'bogus')).toBeUndefined()
+		expect(parseEnum(Status, '')).toBeUndefined()
+		expect(parseEnum(Status, null)).toBeUndefined()
 	})
 })

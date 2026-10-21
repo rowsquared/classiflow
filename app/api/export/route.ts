@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { Prisma, SentenceStatus } from '@prisma/client'
 
 /**
  * GET /api/export?status=...&dateRange=...
@@ -33,10 +34,13 @@ export async function GET(req: NextRequest) {
     const dateRange = searchParams.get('dateRange') || 'all'
 
     // Build where clause
-    const where: any = {}
+    const where: Prisma.SentenceWhereInput = {}
 
     if (statusFilter !== 'all') {
-      where.status = statusFilter
+      if (!(Object.values(SentenceStatus) as string[]).includes(statusFilter)) {
+        return NextResponse.json({ error: `Unknown status "${statusFilter}"` }, { status: 400 })
+      }
+      where.status = statusFilter as SentenceStatus
     }
 
     if (dateRange !== 'all') {

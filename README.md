@@ -89,6 +89,7 @@ The default admin user is created on first run using `DEFAULT_ADMIN_EMAIL` and `
 
 ## Documentation
 
+- [Repository review and hardening priorities (21 October 2026)](docs/reviews/2026-10-21-review.md)
 - ENV_SETUP.md
 - DEVELOPMENT.md
 - DEPLOYMENT.md

@@ -115,7 +115,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
     setError('')
 
     try {
-      const updatePayload: any = {
+      const updatePayload: { name: string; role: User['role']; supervisorId: string | null; newPassword?: string } = {
         name: formData.name,
         role: formData.role,
         supervisorId: formData.supervisorId || null
@@ -344,7 +344,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
                   value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as User['role'] })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 >
                   <option value="labeller">Labeller</option>
@@ -440,7 +440,7 @@ export default function TeamPageClient({ initialUsers }: Props) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
                   value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as User['role'] })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
                 >
                   <option value="labeller">Labeller</option>

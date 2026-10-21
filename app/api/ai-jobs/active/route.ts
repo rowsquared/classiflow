@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { AILabelingJobStatus } from '@prisma/client'
@@ -7,7 +7,7 @@ import { ensureJobsMonitored } from '@/lib/ai-job-monitor'
 // How long recently finished jobs are included in the response
 const RECENT_WINDOW_MS = 30 * 60 * 1000 // 30 minutes
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await auth()
     if (!session?.user || session.user.role !== 'admin') {
