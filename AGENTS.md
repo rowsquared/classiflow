@@ -185,10 +185,9 @@ lockfile together. Do not introduce a different package manager.
 | Production build | `npm run build` (Prisma generation + Next build) |
 | New schema migration | Edit schema, then `npx prisma migrate dev --name <change>` against a development database; commit generated SQL |
 
-`next.config.ts` skips TypeScript and ESLint errors during production builds.
-A successful build therefore does not establish type/lint correctness. Run
-checks relevant to a code change and distinguish pre-existing failures from
-regressions.
+`next build` type-checks but skips ESLint (`next.config.ts`); lint runs in CI.
+Run the checks relevant to a code change and distinguish pre-existing failures
+from regressions.
 `db:seed` is listed in the manifest but currently has no configured Prisma seed.
 
 Production uses Next's standalone output in a Node 24 Alpine image (pinned by
