@@ -3,13 +3,14 @@ import { requireSession } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
 import { cancelAIJob } from '@/lib/ai-labeling'
 import type { CaughtError } from '@/lib/utils'
+import { audit } from '@/lib/audit'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const { error: authError } = await requireSession('admin')
+    const { user: actor, error: authError } = await requireSession('admin')
     if (authError) return authError
 
     const { jobId } = await params
@@ -38,6 +39,7 @@ export async function POST(
       }
     })
 
+    await audit({ actorId: actor.id, action: 'ai.job_cancelled', entityType: 'ai_job.labeling', entityId: jobId, payload: { status: 'cancelled' } })
     return NextResponse.json({ ok: true, status: 'cancelled' })
   } catch (caught) {
     const error = caught as CaughtError

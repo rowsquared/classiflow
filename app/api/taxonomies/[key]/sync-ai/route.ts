@@ -5,13 +5,14 @@ import { startAIJob, monitorAIJob } from '@/lib/ai-labeling'
 import { AI_SOURCE_SLUG } from '@/lib/constants'
 import type { CaughtError } from '@/lib/utils'
 import { Prisma } from '@prisma/client'
+import { audit } from '@/lib/audit'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
   try {
-    const { error: authError } = await requireSession('admin')
+    const { user: actor, error: authError } = await requireSession('admin')
     if (authError) return authError
 
     const { key } = await params
@@ -141,6 +142,10 @@ export async function POST(
       })
     })
 
+    await audit({
+      actorId: actor.id, action: 'taxonomy.ai_sync_started', entityType: 'taxonomy', entityId: taxonomy.id,
+      payload: { key: taxonomy.key, jobId },
+    })
     return NextResponse.json({ ok: true, jobId })
   } catch (caught) {
     const error = caught as CaughtError

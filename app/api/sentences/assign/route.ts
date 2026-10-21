@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { forbidden, requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible, getVisibleUserIds } from '@/lib/access'
+import { audit } from '@/lib/audit'
 
 // Admins assign anything to anyone. Supervisors only touch records they can see
 // and only assign to / unassign from themselves and users below them.
@@ -108,6 +109,10 @@ export async function POST(req: NextRequest) {
     // Existing (sentence, user) pairs are left as they are.
     await prisma.sentenceAssignment.createMany({ data: assignments, skipDuplicates: true })
 
+    await audit({
+      actorId: user.id, action: 'assignments.added', entityType: 'assignment', entityId: sentenceIds[0],
+      payload: { records: sentenceIds.length, userIds },
+    })
     return NextResponse.json({
       ok: true,
       assigned: assignments.length,
@@ -155,6 +160,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     const deleted = await prisma.sentenceAssignment.deleteMany({ where })
+    await audit({
+      actorId: user.id, action: 'assignments.removed', entityType: 'assignment', entityId: sentenceIds[0],
+      payload: { records: sentenceIds.length, userIds: userIds ?? 'all visible', removed: deleted.count },
+    })
 
     return NextResponse.json({
       ok: true,

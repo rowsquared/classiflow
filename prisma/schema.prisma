@@ -337,9 +337,12 @@ model Comment {
   @@index([sentenceId])
 }
 
+// Who did what to which object (lib/audit.ts). actorName keeps the username
+// when the actor is later deleted (actorId is then set to null).
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
+  actorName  String?
   action     String
   entityType String
   entityId   String
@@ -347,4 +350,9 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([actorId])
 }

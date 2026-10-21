@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
+import { audit } from '@/lib/audit'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
@@ -149,6 +150,14 @@ export async function POST(req: NextRequest) {
       return current.length
     }, { timeout: 60_000 })
 
+    await audit({
+      actorId: user.id, action: 'labels.bulk_applied', entityType: 'taxonomy', entityId: taxonomy.id,
+      payload: {
+        taxonomyKey, records: labeled,
+        codes: annotations.map(a => `${a.level}:${a.nodeCode}`),
+        ...(flagged !== undefined ? { flagged } : {}),
+      },
+    })
     return NextResponse.json({
       ok: true,
       labeled,

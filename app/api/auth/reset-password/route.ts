@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSessionAllowingReset } from '@/lib/api-auth'
+import { audit } from '@/lib/audit'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Return success with user email for re-authentication
+    await audit({ actorId: user.id, action: 'user.password_changed', entityType: 'user', entityId: user.id })
     return NextResponse.json({ ok: true, email: user.email })
   } catch (error) {
     console.error('Password reset error:', error)

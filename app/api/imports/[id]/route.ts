@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
+import { audit } from '@/lib/audit'
 
 export async function DELETE(
   req: NextRequest, 
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -65,6 +66,10 @@ export async function DELETE(
       })
     })
 
+    await audit({
+      actorId: actor.id, action: 'import.deleted', entityType: 'import', entityId: id,
+      payload: { fileName: importRecord.fileName, records: importRecord._count.sentences },
+    })
     return NextResponse.json({ 
       ok: true, 
       deletedSentences: importRecord._count.sentences 

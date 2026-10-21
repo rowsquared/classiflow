@@ -28,7 +28,7 @@ not all of them.
 
 | WS | State | Remaining |
 | --- | --- | --- |
-| W01 access | done | audit logging of denials (W12) |
+| W01 access | done | — |
 | W02 sessions | done | MFA/SSO is a product decision |
 | W03 dependencies | mostly done | Next 16 / Prisma 7 upgrades (clear the accepted audit findings); promote tested image (W12); pin action SHAs |
 | W04 HTTP | mostly done | CSP (report-only first); verify live proxy settings |
@@ -39,9 +39,9 @@ not all of them.
 | W09 UI | mostly done | stats staleness indicator, contrast/narrow viewports, labelling save errors, component size |
 | W10 tests/CI | mostly done | more journeys (imports, admin, comments); shared filter-param builder; build-time check bypass |
 | W11 docs | done | keep the map in README/AGENTS current |
-| W12 ops | in progress | backup schedule/objectives (maintainer), audit events, upgrade test from a real dump, container limits |
+| W12 ops | mostly done | backup schedule/objectives (maintainer), upgrade test from a real dump, structured logs/alerts, container limits |
 
-Suggested next order: W12 audit events, then the smaller open items in each brief.
+Suggested next order: the smaller open items in each brief (see the `[ ]` lines).
 
 ## How to work here
 

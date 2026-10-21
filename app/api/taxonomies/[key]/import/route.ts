@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/api-auth'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { MAX_UPLOAD_BYTES } from '@/lib/upload'
+import { audit } from '@/lib/audit'
 
 /**
  * Incremental import: ADDS nodes to an existing taxonomy (body = text/csv).
@@ -15,7 +16,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   const { key } = await params
@@ -69,5 +70,9 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'Import failed; nothing was imported' }, { status: 500 })
   }
 
+  await audit({
+    actorId: actor.id, action: 'taxonomy.imported', entityType: 'taxonomy', entityId: taxonomy.id,
+    payload: { key: taxonomy.key, nodesAdded: nodes.length },
+  })
   return NextResponse.json({ ok: true, dryRun: false, count: nodes.length })
 }

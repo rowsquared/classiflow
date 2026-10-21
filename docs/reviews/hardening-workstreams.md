@@ -98,8 +98,8 @@ with parity tests; consistent coverage of remaining read APIs.
       assignment scope, comment ownership). 13 of them fail on the previous
       route code.
 
-Remaining, deliberately not in W01: audit logging of denials (W12), Origin/CSRF
-policy for custom routes (W04).
+Done since, in other workstreams: denials are audited (`access.denied`, W12)
+and custom routes have an Origin check (W04).
 
 ## W02 Identity and session lifecycle
 
@@ -883,8 +883,18 @@ events record actor, action, target, and time with appropriate access controls.
       alerts: maintainer decisions, then a first drill against a real dump.
 - [ ] Upgrade test from a populated older schema (needs a production-like dump;
       the restore drill plus `start.sh` is the procedure).
-- [ ] Audit events (roles, deletions, imports/exports, assignments, labels) and
-      denial logging (W01); structured logs with correlation IDs; alerts for a
-      failed deploy or stuck AI job.
+- [x] Audit events (`lib/audit.ts`, migration `audit_log_actor_name_indexes`):
+      user create/update (role and supervisor from/to, admin password reset)/
+      delete and own password change; taxonomy create/update/delete/import/
+      restore/AI sync; record imports and import deletion; assignments; bulk
+      labels; exports; AI job start/cancel; refused access by role or record
+      scope (W01). Actor name survives user deletion. Payloads hold ids and
+      counts only. Admin view `/admin/audit` (`GET /api/audit`, admin only,
+      prefix filter, cursor paging). Retention: prune with SQL (DEPLOYMENT.md
+      "Audit log"). `tests/integration/audit.test.ts`.
+- [ ] Individual label saves, comments and flags are not audited by design
+      (their rows carry author and time); revisit if label history is needed.
+- [ ] Structured logs with correlation IDs; alerts for a failed deploy or a
+      stuck AI job.
 - [ ] Resource limits, capability dropping, read-only root filesystem.
 - [ ] Verify live: GitHub rulesets, Coolify auto-deploy settings, ingress (W04).

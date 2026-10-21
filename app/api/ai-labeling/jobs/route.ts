@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { launchJob } from '@/lib/ai-job-monitor'
 import { AI_LABELING_BATCH_SIZE } from '@/lib/constants'
 import { z } from 'zod'
+import { audit } from '@/lib/audit'
 
 const startSchema = z.object({
   taxonomyKey: z.string(),
@@ -96,6 +97,10 @@ export async function POST(req: NextRequest) {
       `(${allSentenceIds.length} sentences in batches of ${AI_LABELING_BATCH_SIZE})`
     )
 
+    await audit({
+      actorId: user.id, action: 'ai.labeling_started', entityType: 'taxonomy', entityId: taxonomy.id,
+      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length },
+    })
     return NextResponse.json({ ok: true, jobs, totalJobs: jobs.length })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to start AI labeling job'

@@ -83,9 +83,11 @@ password. "In scope" = the record is visible under the table above.
 | `/api/progress/stats`, `/timeline` | GET | any; limited to own work (labeller) or team (supervisor) |
 | `/api/progress/team` | GET | admin, supervisor (own team) |
 | `/api/ai-labeling/*`, `/api/ai-jobs/*` | all | admin |
+| `/api/audit` | GET | admin |
 
 ## Known gaps (tracked in the hardening review)
 
-See [the review](reviews/2026-10-21-review.md) for status. Not yet covered here:
-Origin/CSRF checks on custom mutation routes beyond Auth.js's own, security
-headers/CSP, upload size limits at the proxy, and audit logging.
+See [the review](reviews/2026-10-21-review.md) for status. Cross-site mutation
+checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
+also records refused access) are in place. Still depending on the deployment:
+upload size limits, HSTS and login rate limiting at the reverse proxy.

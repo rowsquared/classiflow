@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client'
 import { forbidden, requireSession } from '@/lib/api-auth'
 import { getVisibleUserIds } from '@/lib/access'
 import { isLastAdmin, validateSupervisor } from '@/lib/user-rules'
+import { audit } from '@/lib/audit'
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -84,7 +85,7 @@ export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ userId: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -102,7 +103,7 @@ export async function PUT(
 
     const { name, role, supervisorId, newPassword } = validation.data
 
-    const existing = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    const existing = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, supervisorId: true } })
     if (!existing) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
@@ -146,6 +147,16 @@ export async function PUT(
       }
     })
 
+    await audit({
+      actorId: actor.id, action: 'user.updated', entityType: 'user', entityId: userId,
+      payload: {
+        fields: Object.keys(updateData).filter(k => k !== 'mustResetPassword' && k !== 'sessionVersion'),
+        ...(role !== undefined && role !== existing.role ? { role: { from: existing.role, to: role } } : {}),
+        ...(supervisorId !== undefined && supervisorId !== existing.supervisorId
+          ? { supervisor: { from: existing.supervisorId, to: supervisorId } } : {}),
+        ...(newPassword ? { passwordReset: true } : {}),
+      },
+    })
     return NextResponse.json({ user })
   } catch (error) {
     console.error('Error updating user:', error)
@@ -197,8 +208,13 @@ export async function DELETE(
 
     // Delete user: assignments cascade; their annotations, imports and last-edit
     // markers keep the data but lose the user reference (set null).
-    await prisma.user.delete({
-      where: { id: userId }
+    const deleted = await prisma.user.delete({
+      where: { id: userId },
+      select: { username: true, role: true },
+    })
+    await audit({
+      actorId: currentUser.id, action: 'user.deleted', entityType: 'user', entityId: userId,
+      payload: { username: deleted.username, role: deleted.role },
     })
 
     return NextResponse.json({ ok: true })

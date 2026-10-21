@@ -7,12 +7,13 @@ import type { CaughtError } from '@/lib/utils'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
+import { audit } from '@/lib/audit'
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -122,6 +123,10 @@ export async function PUT(
       data: updateData
     })
 
+    await audit({
+      actorId: actor.id, action: 'taxonomy.updated', entityType: 'taxonomy', entityId: updatedTaxonomy.id,
+      payload: { key: updatedTaxonomy.key, fields: Object.keys(updateData), nodesReplaced: nodesImported },
+    })
     return NextResponse.json({ 
       ok: true, 
       taxonomy: updatedTaxonomy,
@@ -143,7 +148,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -249,6 +254,15 @@ export async function DELETE(
       }
     }
 
+    await audit({
+      actorId: actor.id, action: 'taxonomy.deleted', entityType: 'taxonomy', entityId: taxonomyId,
+      payload: {
+        key: taxonomyKey,
+        nodes: deletionResult.deletedNodes,
+        annotations: deletionResult.deletedAnnotations,
+        aiSuggestions: deletionResult.deletedAISuggestions,
+      },
+    })
     return NextResponse.json({ 
       ok: true, 
       message: 'Taxonomy and all associated data deleted successfully',

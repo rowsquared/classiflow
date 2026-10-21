@@ -5,6 +5,7 @@ import type { CaughtError } from '@/lib/utils'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { readUpload } from '@/lib/upload'
+import { audit } from '@/lib/audit'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -93,7 +94,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -188,6 +189,10 @@ export async function POST(req: NextRequest) {
       return taxonomy
     })
 
+    await audit({
+      actorId: actor.id, action: 'taxonomy.created', entityType: 'taxonomy', entityId: result.id,
+      payload: { key: result.key, nodes: parsedNodes.length },
+    })
     return NextResponse.json({ 
       ok: true, 
       taxonomy: result,

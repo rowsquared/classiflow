@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { forbidden, type CurrentUser } from '@/lib/api-auth'
+import { audit } from '@/lib/audit'
 
 /**
  * Record visibility, shared by every handler that reads or changes records.
@@ -66,5 +67,9 @@ export async function canAccessSentences(user: CurrentUser, sentenceIds: string[
 /** 403 response when any of the records is outside the user's scope, else null. */
 export async function denyUnlessSentencesVisible(user: CurrentUser, sentenceIds: string[]) {
   if (await canAccessSentences(user, sentenceIds)) return null
+  await audit({
+    actorId: user.id, action: 'access.denied', entityType: 'sentence', entityId: sentenceIds[0] ?? '',
+    payload: { reason: 'record scope', role: user.role, records: sentenceIds.length },
+  })
   return forbidden('You do not have access to one or more of these records')
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { Session } from 'next-auth'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { audit } from '@/lib/audit'
 
 export type Role = 'admin' | 'supervisor' | 'labeller'
 
@@ -68,6 +69,10 @@ async function checkSession(roles: Role[], allowPasswordReset: boolean): Promise
   }
   const role = dbUser.role as Role
   if (roles.length > 0 && !roles.includes(role)) {
+    await audit({
+      actorId: dbUser.id, action: 'access.denied', entityType: 'role', entityId: roles.join('|'),
+      payload: { reason: 'role', role },
+    })
     return { error: forbidden() }
   }
 

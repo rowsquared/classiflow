@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { launchLearningJob } from '@/lib/ai-job-monitor'
 import { AI_LEARNING_BATCH_SIZE, AI_LEARNING_MIN_NEW_ANNOTATIONS } from '@/lib/constants'
 import { z } from 'zod'
+import { audit } from '@/lib/audit'
 
 const learnSchema = z.object({
   taxonomyKey: z.string()
@@ -112,6 +113,10 @@ export async function POST(req: NextRequest) {
       `(${allSentenceIds.length} sentences with ${annotations.length} annotations, batches of ${AI_LEARNING_BATCH_SIZE})`
     )
 
+    await audit({
+      actorId: user.id, action: 'ai.learning_started', entityType: 'taxonomy', entityId: taxonomy.id,
+      payload: { key: taxonomy.key, jobs: jobs.length, records: allSentenceIds.length },
+    })
     return NextResponse.json({
       ok: true,
       jobs,

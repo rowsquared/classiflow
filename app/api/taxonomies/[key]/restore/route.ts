@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
+import { audit } from '@/lib/audit'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -9,7 +10,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -52,6 +53,10 @@ export async function POST(
       data: { isActive: true }
     })
 
+    await audit({
+      actorId: actor.id, action: 'taxonomy.restored', entityType: 'taxonomy', entityId: restoredTaxonomy.id,
+      payload: { key: restoredTaxonomy.key },
+    })
     return NextResponse.json({ 
       ok: true, 
       taxonomy: restoredTaxonomy

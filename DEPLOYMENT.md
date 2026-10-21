@@ -125,6 +125,24 @@ docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/rese
 
 The account must change it at next sign-in, and its existing sessions are signed out. Other users are reset by an admin on the Team page.
 
+## Audit log
+
+Admins see an audit trail at **Audit Log** (`/admin/audit`, API `GET /api/audit`):
+user, taxonomy, import, assignment, bulk-label, export and AI-job changes, and
+refused access (`access.denied`, by role or by record scope). Each entry has
+actor (name kept after the user is deleted), action, object and time; details
+hold identifiers and counts, never record text or passwords. Individual label
+saves, comments and flags are not audited: those rows carry their own author
+and timestamps.
+
+Entries are kept until you delete them. Choose a retention period and prune,
+for example monthly:
+
+```bash
+docker compose exec -T postgres psql -U classiflow -d classiflow \
+  -c "DELETE FROM \"AuditLog\" WHERE \"createdAt\" < now() - interval '2 years'"
+```
+
 ## Backups
 
 All state is in PostgreSQL (uploads are parsed into the database; nothing on the

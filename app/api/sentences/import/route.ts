@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/api-auth'
 import { readUpload } from '@/lib/upload'
 import type { CaughtError, CsvRow } from '@/lib/utils'
 import { Prisma } from '@prisma/client'
+import { audit } from '@/lib/audit'
 
 const BATCH_SIZE = 1000
 const MAX_FIELD_COLUMNS = 5
@@ -281,6 +282,10 @@ export async function POST(req: NextRequest) {
       timeout: timeoutMs  // Maximum time the transaction can run
     })
 
+    await audit({
+      actorId: user.id, action: 'records.imported', entityType: 'import', entityId: importId,
+      payload: { fileName, records: sentences.length },
+    })
     return NextResponse.json({ 
       ok: true, 
       dryRun: false, 

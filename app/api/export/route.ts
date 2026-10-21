@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/api-auth'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { Prisma, SentenceStatus } from '@prisma/client'
 import { toCsv, type CsvColumn } from '@/lib/csv'
+import { audit } from '@/lib/audit'
 
 /**
  * GET /api/export?status=...&dateRange=...&formulaSafe=false
@@ -16,7 +17,7 @@ import { toCsv, type CsvColumn } from '@/lib/csv'
 export async function GET(req: NextRequest) {
   try {
     // Only admins can export
-    const { error: authError } = await requireSession('admin')
+    const { user: actor, error: authError } = await requireSession('admin')
     if (authError) return authError
 
     const searchParams = req.nextUrl.searchParams
@@ -296,6 +297,10 @@ export async function GET(req: NextRequest) {
     const columns: CsvColumn[] = headers.map(header => ({ header, text: textHeaders.has(header) }))
     const csv = toCsv(columns, rows, { neutralizeFormulas })
 
+    await audit({
+      actorId: actor.id, action: 'export.downloaded', entityType: 'export', entityId: 'records',
+      payload: { status: statusFilter, dateRange, records: rows.length, formulaSafe: neutralizeFormulas },
+    })
     // Return as downloadable CSV
     return new NextResponse(csv, {
       headers: {

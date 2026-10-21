@@ -5,6 +5,7 @@ import { getVisibleUserIds } from '@/lib/access'
 import { validateSupervisor } from '@/lib/user-rules'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
+import { audit } from '@/lib/audit'
 
 const createUserSchema = z.object({
   username: z.string().min(3).max(100),
@@ -70,7 +71,7 @@ export async function GET() {
 
 // POST - Create new user
 export async function POST(req: NextRequest) {
-  const { error } = await requireSession('admin')
+  const { user: actor, error } = await requireSession('admin')
   if (error) return error
 
   try {
@@ -134,6 +135,10 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    await audit({
+      actorId: actor.id, action: 'user.created', entityType: 'user', entityId: user.id,
+      payload: { username: user.username, role: user.role, supervisorId: user.supervisorId },
+    })
     return NextResponse.json({ user }, { status: 201 })
   } catch (error) {
     console.error('Error creating user:', error)
