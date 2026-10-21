@@ -34,14 +34,14 @@ not all of them.
 | W04 HTTP | mostly done | CSP (report-only first); verify live proxy settings |
 | W05 labelling | done | run `scripts/label-integrity-report.sql` on production; decide repairs |
 | W06 import/export | done | streaming export for large data |
-| W07 AI | in progress | monitor test with a stub HTTP service; durable job ownership; recovery without polling |
+| W07 AI | done in code | verify against a running Taxomind; idempotent job start (needs Taxomind support) |
 | W08 metrics | correctness done | performance tuning with measured data |
 | W09 UI | open | queue request races, error vs empty states, accessibility |
 | W10 tests/CI | partly | integration harness exists; browser journeys and more suites still missing |
 | W11 docs | partly | admin docs fixed; canonical doc map, ENV_SETUP/.env.example alignment |
 | W12 ops | in progress | backup schedule/objectives (maintainer), audit events, upgrade test from a real dump, container limits |
 
-Suggested next order: W07 remainder, W11, W09, then W12 audit events.
+Suggested next order: W11, W09, then W12 audit events.
 
 ## How to work here
 
@@ -68,8 +68,6 @@ Suggested next order: W07 remainder, W11, W09, then W12 audit events.
 
 ## Things the maintainer must do outside the code
 
-- Add the new `integration` CI job as a required check in the `main` ruleset
-  (`deploy-prod` already waits for it).
 - After deploying: check `classiflow_backup."SentenceAnnotationDuplicate20261021"`
   (rows removed by the unique-label migration), then drop the schema.
 - Reverse proxy: forward `Host`, 50 MB body limit, rate-limit

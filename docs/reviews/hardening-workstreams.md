@@ -528,10 +528,26 @@ labeling continues with the AI service absent. No Taxomind source changes needed
       pending/processing) in the same transaction as the stored suggestions, so
       a job cancelled while polling stays cancelled and gets no results.
       Failure is conditional too (`failIfActive`).
-- [ ] Not verified against a running Taxomind (no service available here);
-      no integration test for the monitor yet (needs a stubbed HTTP service).
-- [ ] Durable ownership/lease for multi-instance deployments, recovery of jobs
-      nobody polls, retry/backoff, graceful shutdown: still process-local.
+- [x] Monitor integration test against a stub HTTP service
+      (`tests/integration/ai-job-monitor.test.ts`): payload and bearer token,
+      completion with validated suggestions, service failure, cancel during
+      polling, retry after failed status requests, lease respected, takeover
+      of a dead instance's job without resending it, learning job.
+- [x] Durable ownership: per-job database lease (migration `ai_job_lease`),
+      claimed before start/poll, renewed per poll, cleared with the final
+      status. A lost lease stops the monitor. Lease tests fail on the old code.
+- [x] Recovery without polling: `instrumentation.ts` starts
+      `startJobRecovery()` at server start (every 30 s, only with AI
+      configured). Verified with the built server: a processing job with an
+      expired lease was taken over on startup.
+- [x] Retry/backoff: failed status requests double the poll interval up to
+      5 minutes; the overall poll timeout still applies.
+- [ ] Not verified against a running Taxomind (no service available here).
+- [ ] Starting a job is not idempotent: if an instance dies after Taxomind
+      accepted a job but before `externalJobId` was saved, the takeover sends it
+      again (labeling sends `batchId: job.id`, so Taxomind could deduplicate).
+- [ ] Graceful shutdown does not release leases; they expire within
+      2 × poll interval + 60 s instead.
 
 ## W08 Query performance and metric correctness
 

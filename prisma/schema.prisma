@@ -260,6 +260,9 @@ model AILabelingJob {
   startedAt          DateTime            @default(now())
   completedAt        DateTime?
   errorMessage       String?
+  // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
 
   createdBy User     @relation(fields: [createdById], references: [id])
   taxonomy  Taxonomy @relation(fields: [taxonomyId], references: [id])
@@ -284,6 +287,9 @@ model AILearningJob {
   startedAt          DateTime            @default(now())
   completedAt        DateTime?
   errorMessage       String?
+  // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
 
   createdBy User     @relation("LearningJobsUser", fields: [createdById], references: [id])
   taxonomy  Taxonomy @relation("LearningJobs", fields: [taxonomyId], references: [id])

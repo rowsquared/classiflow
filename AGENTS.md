@@ -143,10 +143,15 @@ writes need the same scope as reads. The access matrix is in
   Monitors persist external IDs, progress, completion/failure, and labeling
   suggestions. Learning uses submitted user annotations and a minimum-new-labels
   threshold.
-- Monitor bookkeeping is a process-local global set, not a durable worker or
-  distributed lock. `ensureJobsMonitored()` recovers pending/processing labeling
-  and learning jobs when the active-jobs API is polled, with a rate limit.
-  Consider process restarts and multiple app instances before changing this.
+- Ownership is a database lease per job (`leaseOwner`, `leaseExpiresAt`),
+  claimed with a conditional update before a job is started or polled and
+  renewed on every poll, so only one instance works on a job. Recovery
+  (`startJobRecovery()` from `instrumentation.ts`, every 30 s, and
+  `ensureJobsMonitored()` from the active-jobs API) takes over jobs whose lease
+  expired: it resumes polling when `externalJobId` is set, otherwise starts the
+  job. Failed status requests back off exponentially (capped at 5 minutes).
+  `tests/integration/ai-job-monitor.test.ts` runs the monitor against a stub
+  service.
 - Taxonomy sync uses `Taxonomy.lastAISync*` fields and the older monitor helper.
 - External training (uploading a training CSV) was removed; its UI and API are
   gone. `AIExternalTrainingJob` stays in the schema only so historical jobs still
