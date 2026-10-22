@@ -87,5 +87,6 @@ reach other workspaces' models.
 - [ ] Remove hand-written `useMemo`/`useCallback` where the React Compiler
       covers them (M01).
 
-Product ideas without a plan are in [ideas.md](../ideas.md) (independent
-double annotation).
+Independent double annotation now has a proposed
+[implementation plan](double-annotation.md); it is not implemented. Other
+product ideas are in [ideas.md](../ideas.md).

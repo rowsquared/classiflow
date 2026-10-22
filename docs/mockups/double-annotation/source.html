@@ -1,0 +1,1381 @@
+<div id="cf-double-preview">
+  <style>
+    #cf-double-preview {
+      color-scheme: light dark;
+      --cf-bg: light-dark(#f6f8f8, #141c1e);
+      --cf-surface: light-dark(#ffffff, #1c2729);
+      --cf-ink: light-dark(#182f34, #e8f0f0);
+      --cf-muted: light-dark(#5a6c70, #acbfc2);
+      --cf-line: light-dark(#dfe7e7, #354447);
+      --cf-soft: light-dark(#edf3f3, #243336);
+      --cf-teal: light-dark(#008080, #62d1c2);
+      --cf-teal-ink: light-dark(#ffffff, #0c3331);
+      --cf-teal-soft: light-dark(#e1f3ef, #173c37);
+      --cf-teal-text: light-dark(#00665e, #9ae6d9);
+      --cf-amber: light-dark(#fff3d9, #42351d);
+      --cf-amber-text: light-dark(#805410, #f5ce88);
+      --cf-rose: light-dark(#fff0ed, #402923);
+      --cf-rose-text: light-dark(#a23b24, #ffb7a5);
+      --cf-blue: light-dark(#eaf0ff, #263349);
+      --cf-blue-text: light-dark(#38588e, #b7ceff);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: var(--cf-ink);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    #cf-double-preview * {
+      box-sizing: border-box;
+    }
+    #cf-double-preview button,
+    #cf-double-preview input,
+    #cf-double-preview select,
+    #cf-double-preview textarea {
+      font: inherit;
+    }
+    #cf-double-preview button {
+      cursor: var(--cursor-interaction, pointer);
+    }
+    #cf-double-preview button:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+    #cf-double-preview [hidden] {
+      display: none !important;
+    }
+    #cf-double-preview h1,
+    #cf-double-preview h2,
+    #cf-double-preview h3,
+    #cf-double-preview p {
+      margin: 0;
+    }
+    #cf-double-preview h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.7px;
+    }
+    #cf-double-preview h2 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    #cf-double-preview h3 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    #cf-double-preview .cf-stagebar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 4px 96px 16px 0;
+    }
+    #cf-double-preview .cf-kicker {
+      color: var(--cf-muted);
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-scenes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    #cf-double-preview .cf-scene {
+      border: 0;
+      padding: 7px 10px;
+      background: transparent;
+      border-radius: 6px;
+      color: var(--cf-muted);
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-scene[aria-pressed='true'] {
+      background: var(--cf-ink);
+      color: var(--cf-surface);
+    }
+    #cf-double-preview .cf-window {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-line);
+      border-radius: 12px;
+      overflow: clip;
+    }
+    #cf-double-preview .cf-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      padding: 17px 22px;
+      border-bottom: 1px solid var(--cf-line);
+    }
+    #cf-double-preview .cf-brand {
+      color: var(--cf-teal);
+      font-weight: 650;
+      font-size: 21px;
+      letter-spacing: -0.8px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    #cf-double-preview .cf-mark {
+      display: grid;
+      grid-template-columns: repeat(2, 6px);
+      gap: 3px;
+    }
+    #cf-double-preview .cf-mark span {
+      width: 6px;
+      height: 6px;
+      border-radius: 2px;
+      background: var(--cf-teal);
+    }
+    #cf-double-preview .cf-mark span:last-child {
+      opacity: 0.45;
+    }
+    #cf-double-preview .cf-workspace {
+      color: var(--cf-muted);
+      font-size: 12px;
+      border-left: 1px solid var(--cf-line);
+      padding-left: 14px;
+      margin-left: 5px;
+      font-weight: 400;
+      letter-spacing: 0;
+    }
+    #cf-double-preview .cf-person {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--cf-teal-soft);
+      color: var(--cf-teal-text);
+      font-weight: 600;
+      flex: none;
+    }
+    #cf-double-preview .cf-frame {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      min-height: 642px;
+      position: relative;
+    }
+    #cf-double-preview .cf-side {
+      border-right: 1px solid var(--cf-line);
+      padding: 19px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    #cf-double-preview .cf-nav {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border: 0;
+      text-align: left;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--cf-muted);
+      padding: 10px 11px;
+      font-size: 13px;
+    }
+    #cf-double-preview .cf-nav[data-active='true'] {
+      color: var(--cf-teal-text);
+      background: var(--cf-teal-soft);
+      font-weight: 500;
+    }
+    #cf-double-preview .cf-navlabel {
+      margin: 24px 11px 5px;
+      color: var(--cf-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    #cf-double-preview i[data-lucide],
+    #cf-double-preview svg {
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
+    #cf-double-preview .cf-sidefoot {
+      margin-top: auto;
+      padding: 26px 11px 0;
+      color: var(--cf-muted);
+      font-size: 11px;
+    }
+    #cf-double-preview .cf-main {
+      min-width: 0;
+      background: var(--cf-bg);
+    }
+    #cf-double-preview .cf-page {
+      padding: 27px 26px 25px;
+    }
+    #cf-double-preview .cf-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 21px;
+      flex-wrap: wrap;
+    }
+    #cf-double-preview .cf-sub {
+      font-size: 12px;
+      color: var(--cf-muted);
+      margin-top: 5px;
+    }
+    #cf-double-preview .cf-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #cf-double-preview .cf-button {
+      background: var(--cf-surface);
+      color: var(--cf-ink);
+      border: 1px solid var(--cf-line);
+      border-radius: 7px;
+      padding: 8px 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    #cf-double-preview .cf-primary {
+      background: var(--cf-teal);
+      color: var(--cf-teal-ink);
+      border-color: var(--cf-teal);
+    }
+    #cf-double-preview .cf-link {
+      border: 0;
+      background: transparent;
+      color: var(--cf-teal-text);
+      font-size: 12px;
+      padding: 3px 0;
+      font-weight: 500;
+    }
+    #cf-double-preview .cf-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--cf-soft);
+      color: var(--cf-muted);
+      white-space: nowrap;
+    }
+    #cf-double-preview .cf-good {
+      background: var(--cf-teal-soft);
+      color: var(--cf-teal-text);
+    }
+    #cf-double-preview .cf-wait {
+      background: var(--cf-amber);
+      color: var(--cf-amber-text);
+    }
+    #cf-double-preview .cf-review {
+      background: var(--cf-rose);
+      color: var(--cf-rose-text);
+    }
+    #cf-double-preview .cf-info {
+      background: var(--cf-blue);
+      color: var(--cf-blue-text);
+    }
+    #cf-double-preview .cf-filterbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 17px;
+    }
+    #cf-double-preview .cf-filter {
+      padding: 7px 10px;
+      border: 1px solid var(--cf-line);
+      background: var(--cf-surface);
+      border-radius: 7px;
+      font-size: 12px;
+      color: var(--cf-muted);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    #cf-double-preview .cf-filter[aria-pressed='true'] {
+      background: var(--cf-teal-soft);
+      border-color: var(--cf-teal);
+      color: var(--cf-teal-text);
+    }
+    #cf-double-preview .cf-count {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    #cf-double-preview .cf-tablewrap {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-line);
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    #cf-double-preview .cf-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-table th {
+      padding: 11px 12px;
+      background: var(--cf-soft);
+      color: var(--cf-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    #cf-double-preview .cf-table td {
+      border-top: 1px solid var(--cf-line);
+      padding: 14px 12px;
+      vertical-align: middle;
+    }
+    #cf-double-preview .cf-table .cf-record {
+      min-width: 130px;
+    }
+    #cf-double-preview .cf-record strong {
+      font-size: 12px;
+      font-weight: 500;
+      display: block;
+    }
+    #cf-double-preview .cf-meta {
+      color: var(--cf-muted);
+      font-size: 11px;
+      margin-top: 3px;
+    }
+    #cf-double-preview .cf-code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      display: inline-block;
+      border-radius: 4px;
+      padding: 2px 6px;
+      background: var(--cf-teal-soft);
+      color: var(--cf-teal-text);
+    }
+    #cf-double-preview .cf-code-label {
+      color: var(--cf-muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    #cf-double-preview .cf-people {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #cf-double-preview .cf-dot {
+      width: 6px;
+      height: 6px;
+      display: inline-block;
+      border-radius: 50%;
+      background: var(--cf-muted);
+      margin-right: 5px;
+    }
+    #cf-double-preview .cf-dot.done {
+      background: var(--cf-teal);
+    }
+    #cf-double-preview .cf-dot.empty {
+      background: transparent;
+      border: 1px dashed var(--cf-muted);
+    }
+    #cf-double-preview input[type='checkbox'],
+    #cf-double-preview input[type='radio'] {
+      accent-color: var(--cf-teal);
+    }
+    #cf-double-preview .cf-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--cf-muted);
+      margin-top: 15px;
+    }
+    #cf-double-preview .cf-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 12px 14px;
+      border-radius: 7px;
+      background: var(--cf-teal-soft);
+      color: var(--cf-teal-text);
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-note.amber {
+      background: var(--cf-amber);
+      color: var(--cf-amber-text);
+    }
+    #cf-double-preview .cf-note.neutral {
+      background: var(--cf-soft);
+      color: var(--cf-muted);
+    }
+    #cf-double-preview .cf-note i {
+      margin-top: 1px;
+    }
+    #cf-double-preview .cf-notetext strong {
+      display: block;
+      font-weight: 500;
+    }
+    #cf-double-preview .cf-panel {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-line);
+      border-radius: 9px;
+      padding: 18px;
+    }
+    #cf-double-preview .cf-split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.4fr);
+      gap: 18px;
+      align-items: start;
+    }
+    #cf-double-preview .cf-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #cf-double-preview .cf-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--cf-muted);
+      margin-bottom: 6px;
+    }
+    #cf-double-preview .cf-field {
+      display: block;
+      width: 100%;
+      border: 1px solid var(--cf-line);
+      border-radius: 6px;
+      background: var(--cf-surface);
+      color: var(--cf-ink);
+      padding: 9px 10px;
+    }
+    #cf-double-preview .cf-recordbody {
+      margin-top: 17px;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    #cf-double-preview .cf-recordbody p {
+      margin-top: 13px;
+    }
+    #cf-double-preview .cf-path {
+      font-family: ui-monospace, Consolas, monospace;
+      color: var(--cf-muted);
+      font-size: 12px;
+      margin-top: 15px;
+    }
+    #cf-double-preview .cf-two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 11px;
+    }
+    #cf-double-preview .cf-answer {
+      text-align: left;
+      padding: 14px;
+      border: 1px solid var(--cf-line);
+      border-radius: 8px;
+      background: var(--cf-surface);
+      color: var(--cf-ink);
+      min-width: 0;
+    }
+    #cf-double-preview .cf-answer[aria-pressed='true'] {
+      border-color: var(--cf-teal);
+      box-shadow: 0 0 0 1px var(--cf-teal);
+      background: var(--cf-teal-soft);
+    }
+    #cf-double-preview .cf-answer .cf-answercode {
+      margin-top: 14px;
+      display: block;
+      font-size: 21px;
+      letter-spacing: -0.4px;
+      font-weight: 500;
+    }
+    #cf-double-preview .cf-answer .cf-answerlabel {
+      display: block;
+      font-size: 12px;
+      min-height: 37px;
+      margin-top: 3px;
+    }
+    #cf-double-preview .cf-answer .cf-use {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+      margin-top: 15px;
+      color: var(--cf-teal-text);
+      font-size: 11px;
+    }
+    #cf-double-preview .cf-final {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 7px;
+      background: var(--cf-soft);
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-separator {
+      border: 0;
+      border-top: 1px solid var(--cf-line);
+      margin: 17px 0;
+    }
+    #cf-double-preview .cf-tabs {
+      display: flex;
+      gap: 16px;
+      border-bottom: 1px solid var(--cf-line);
+      margin: 0 0 16px;
+    }
+    #cf-double-preview .cf-tab {
+      border: 0;
+      background: transparent;
+      color: var(--cf-muted);
+      padding: 9px 0;
+      border-bottom: 2px solid transparent;
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-tab.active {
+      color: var(--cf-teal-text);
+      border-bottom-color: var(--cf-teal);
+    }
+    #cf-double-preview .cf-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--cf-line);
+      border-radius: 7px;
+      background: var(--cf-surface);
+    }
+    #cf-double-preview .cf-option:has(input:checked) {
+      border-color: var(--cf-teal);
+      background: var(--cf-teal-soft);
+    }
+    #cf-double-preview .cf-option input {
+      margin-top: 4px;
+    }
+    #cf-double-preview .cf-option strong {
+      font-size: 12px;
+      font-weight: 500;
+      display: block;
+    }
+    #cf-double-preview .cf-option small {
+      color: var(--cf-muted);
+      font-size: 11px;
+      display: block;
+      margin-top: 3px;
+    }
+    #cf-double-preview .cf-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 28px 16px;
+      background: light-dark(#19333755, #040b0dbb);
+      z-index: 4;
+    }
+    #cf-double-preview .cf-modal {
+      width: 100%;
+      max-width: 510px;
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-line);
+      border-radius: 11px;
+      box-shadow: 0 12px 45px #0002;
+    }
+    #cf-double-preview .cf-modalhead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 19px 21px;
+      border-bottom: 1px solid var(--cf-line);
+    }
+    #cf-double-preview .cf-modalbody {
+      padding: 20px 21px;
+    }
+    #cf-double-preview .cf-modalfoot {
+      border-top: 1px solid var(--cf-line);
+      padding: 14px 21px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    #cf-double-preview .cf-iconbutton {
+      border: 0;
+      background: transparent;
+      color: var(--cf-muted);
+      padding: 3px;
+      display: inline-flex;
+    }
+    #cf-double-preview .cf-previewline {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      background: var(--cf-soft);
+      border-radius: 6px;
+      margin-top: 15px;
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-toast {
+      border-top: 1px solid var(--cf-line);
+      background: var(--cf-teal-soft);
+      color: var(--cf-teal-text);
+      padding: 11px 22px;
+      font-size: 12px;
+    }
+    #cf-double-preview .cf-csv {
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.7;
+      padding: 14px;
+      border-radius: 7px;
+      background: var(--cf-soft);
+      margin: 13px 0 0;
+    }
+    #cf-double-preview .cf-empty {
+      padding: 38px 15px;
+      text-align: center;
+      color: var(--cf-muted);
+      font-size: 13px;
+    }
+    #cf-double-preview .cf-density-compact .cf-table td {
+      padding-top: 9px;
+      padding-bottom: 9px;
+    }
+    @media (max-width: 800px) {
+      #cf-double-preview .cf-frame {
+        grid-template-columns: 58px minmax(0, 1fr);
+      }
+      #cf-double-preview .cf-nav {
+        justify-content: center;
+        padding: 11px 4px;
+      }
+      #cf-double-preview .cf-nav span,
+      #cf-double-preview .cf-navlabel,
+      #cf-double-preview .cf-sidefoot {
+        display: none;
+      }
+      #cf-double-preview .cf-side {
+        padding: 16px 7px;
+      }
+      #cf-double-preview .cf-page {
+        padding: 22px 18px;
+      }
+      #cf-double-preview .cf-split {
+        grid-template-columns: 1fr;
+      }
+      #cf-double-preview .cf-table th,
+      #cf-double-preview .cf-table td {
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+    }
+    @media (max-width: 590px) {
+      #cf-double-preview .cf-stagebar {
+        padding-right: 0;
+      }
+      #cf-double-preview .cf-workspace {
+        display: none;
+      }
+      #cf-double-preview .cf-top {
+        padding: 13px 15px;
+      }
+      #cf-double-preview .cf-frame {
+        display: block;
+      }
+      #cf-double-preview .cf-side {
+        border-right: 0;
+        border-bottom: 1px solid var(--cf-line);
+        flex-direction: row;
+        gap: 5px;
+        padding: 6px 10px;
+      }
+      #cf-double-preview .cf-nav {
+        padding: 9px;
+      }
+      #cf-double-preview .cf-nav.export span {
+        display: inline;
+      }
+      #cf-double-preview .cf-nav.taxonomy {
+        display: none;
+      }
+      #cf-double-preview .cf-table,
+      #cf-double-preview .cf-table tbody {
+        display: block;
+      }
+      #cf-double-preview .cf-table thead {
+        display: none;
+      }
+      #cf-double-preview .cf-table tr {
+        display: grid;
+        grid-template-columns: 25px minmax(0, 1fr) minmax(0, 0.8fr);
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--cf-line);
+        gap: 4px;
+      }
+      #cf-double-preview .cf-table tr:last-child {
+        border: 0;
+      }
+      #cf-double-preview .cf-table td {
+        display: block;
+        border: 0;
+        padding: 3px;
+      }
+      #cf-double-preview .cf-table .cf-cell-people {
+        grid-column: 2;
+      }
+      #cf-double-preview .cf-table .cf-cell-status {
+        grid-column: 3;
+      }
+      #cf-double-preview .cf-table .cf-cell-action {
+        grid-column: 3;
+      }
+      #cf-double-preview .cf-table .cf-record {
+        min-width: 0;
+      }
+      #cf-double-preview .cf-two {
+        grid-template-columns: 1fr;
+      }
+      #cf-double-preview .cf-answer .cf-answerlabel {
+        min-height: 0;
+      }
+      #cf-double-preview .cf-answer .cf-answercode {
+        margin-top: 8px;
+      }
+      #cf-double-preview .cf-overlay {
+        padding: 15px 9px;
+      }
+      #cf-double-preview .cf-frame:has(.cf-overlay:not([hidden])) {
+        min-height: 820px;
+      }
+      #cf-double-preview .cf-modalhead,
+      #cf-double-preview .cf-modalbody {
+        padding: 15px;
+      }
+      #cf-double-preview .cf-button {
+        white-space: normal;
+      }
+      #cf-double-preview .cf-person .cf-subrole {
+        display: none;
+      }
+      #cf-double-preview .cf-exporttable tr {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.3fr);
+      }
+    }
+    @media (pointer: coarse) {
+      #cf-double-preview button,
+      #cf-double-preview input,
+      #cf-double-preview select {
+        min-height: 44px;
+      }
+      #cf-double-preview input[type='checkbox'],
+      #cf-double-preview input[type='radio'] {
+        min-height: 20px;
+        min-width: 20px;
+      }
+    }
+  </style>
+  <div class="cf-stagebar">
+    <span class="cf-kicker">INTERACTIVE CONCEPT</span>
+    <nav class="cf-scenes" aria-label="Mockup screens">
+      <button type="button" class="cf-scene" data-scene="queue" aria-pressed="true">Work queue</button>
+      <button type="button" class="cf-scene" data-scene="assign" aria-pressed="false">Assign labellers</button>
+      <button type="button" class="cf-scene" data-scene="label" aria-pressed="false">Labeller view</button>
+      <button type="button" class="cf-scene" data-scene="review" aria-pressed="false">Review disagreement</button>
+      <button type="button" class="cf-scene" data-scene="export" aria-pressed="false">Export</button>
+    </nav>
+  </div>
+  <div class="cf-window" aria-label="classiflow double annotation concept">
+    <header class="cf-top">
+      <div class="cf-brand">
+        <span class="cf-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span
+        >classiflow<span class="cf-workspace">Labour force survey <span aria-hidden="true">⌄</span></span>
+      </div>
+      <div class="cf-person">
+        <span class="cf-avatar" id="cf-user-avatar">ML</span
+        ><span
+          ><span id="cf-user-name">Maria Lopez</span
+          ><span class="cf-subrole cf-meta" id="cf-user-role" style="display: block">Supervisor</span></span
+        >
+      </div>
+    </header>
+    <div class="cf-frame">
+      <aside class="cf-side" aria-label="Workspace navigation">
+        <button type="button" class="cf-nav" data-scene="queue" data-active="true">
+          <i data-lucide="list-todo" aria-hidden="true"></i><span>Work queue</span>
+        </button>
+        <button type="button" class="cf-nav" data-scene="progress">
+          <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i><span>Progress</span>
+        </button>
+        <button type="button" class="cf-nav taxonomy" data-scene="taxonomy">
+          <i data-lucide="network" aria-hidden="true"></i><span>Taxonomies</span>
+        </button>
+        <div class="cf-navlabel">Administration</div>
+        <button type="button" class="cf-nav export" data-scene="export">
+          <i data-lucide="download" aria-hidden="true"></i><span>Export data</span>
+        </button>
+        <div class="cf-sidefoot">Labour force survey<br />Sample workspace</div>
+      </aside>
+      <main class="cf-main" id="cf-main"></main>
+      <div class="cf-overlay" id="cf-assignment" hidden></div>
+    </div>
+    <div class="cf-toast" id="cf-toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script>
+    ;(() => {
+      const root = document.getElementById('cf-double-preview')
+      const main = root.querySelector('#cf-main')
+      const overlay = root.querySelector('#cf-assignment')
+      const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`
+      const esc = value =>
+        String(value).replace(
+          /[&<>"']/g,
+          c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        )
+      const state = {
+        screen: 'queue',
+        filter: 'all',
+        selected: [],
+        mode: 'later',
+        first: 'Alice Martin',
+        second: 'Bob Chen',
+        decision: '',
+        custom: '2411',
+        ownCode: '5120',
+        generated: false,
+        density: 'comfortable',
+        showContext: true,
+        toast: ''
+      }
+      const records = [
+        {
+          id: '1042',
+          text: 'Prepares annual accounts and tax returns',
+          code: '2411',
+          label: 'Accountants',
+          kind: 'disagreed',
+          alice: true,
+          bob: true
+        },
+        {
+          id: '1043',
+          text: 'Prepares meals in a hotel kitchen',
+          code: '5120',
+          label: 'Cooks',
+          kind: 'waiting',
+          alice: true,
+          bob: false
+        },
+        {
+          id: '1044',
+          text: 'Advises customers in a clothing shop',
+          code: '5223',
+          label: 'Shop sales assistants',
+          kind: 'agreed',
+          alice: true,
+          bob: true
+        },
+        {
+          id: '1045',
+          text: 'Teaches children at a primary school',
+          code: '2341',
+          label: 'Primary school teachers',
+          kind: 'gap',
+          alice: true,
+          bob: false
+        },
+        {
+          id: '1046',
+          text: 'Repairs household electrical appliances',
+          code: '',
+          label: '',
+          kind: 'pending',
+          alice: false,
+          bob: false
+        },
+        {
+          id: '1047',
+          text: 'Drives a taxi and collects fares',
+          code: '8322',
+          label: 'Car, taxi and van drivers',
+          kind: 'single',
+          alice: true,
+          bob: false
+        },
+        {
+          id: '1048',
+          text: 'Examines patients in a local clinic',
+          code: '2211',
+          label: 'Generalist medical practitioners',
+          kind: 'reviewed',
+          alice: true,
+          bob: true
+        }
+      ]
+      records.forEach(r => {
+        r.firstCode = r.code
+        r.firstLabel = r.label
+        r.firstPerson = 'Alice Martin'
+        r.secondPerson = 'Bob Chen'
+        r.secondCode = r.id === '1042' ? '3313' : r.code
+        r.secondLabel = r.id === '1042' ? 'Accounting associate professionals' : r.label
+      })
+      const settings = { density: 'comfortable', supportContext: true }
+      function restore(snapshot) {
+        const saved = snapshot?.privateContent?.classiflowMock
+        if (!saved) return
+        if (['queue', 'label', 'review', 'export'].includes(saved.screen)) state.screen = saved.screen
+        if (['all', 'double', 'waiting', 'review', 'confirmed'].includes(saved.filter)) state.filter = saved.filter
+        if (Array.isArray(saved.records))
+          saved.records.forEach(r => {
+            const target = records.find(x => x.id === r.id)
+            if (
+              target &&
+              ['disagreed', 'waiting', 'gap', 'pending', 'single', 'agreed', 'reviewed', 'accepted'].includes(r.kind)
+            ) {
+              Object.assign(target, {
+                kind: r.kind,
+                code: String(r.code || ''),
+                label: String(r.label || ''),
+                alice: !!r.alice,
+                bob: !!r.bob
+              })
+              for (const key of ['firstCode', 'firstLabel', 'firstPerson', 'secondPerson', 'secondCode', 'secondLabel'])
+                if (typeof r[key] === 'string') target[key] = r[key]
+            }
+          })
+      }
+      function persist() {
+        if (window.openai?.setWidgetState)
+          window.openai
+            .setWidgetState({
+              modelContent: {
+                screen: state.screen,
+                queueFilter: state.filter,
+                reviewDecision: state.decision || null,
+                exportMode: state.exportMode || 'available'
+              },
+              privateContent: { classiflowMock: { screen: state.screen, filter: state.filter, records } }
+            })
+            .catch(() => {})
+      }
+      restore(window.openai?.widgetState)
+      window.addEventListener('openai:set_globals', event => {
+        if (event.detail?.globals?.widgetState) {
+          restore(event.detail.globals.widgetState)
+          render()
+        }
+      })
+      function counts() {
+        return {
+          all: records.length,
+          double: records.filter(r => r.kind !== 'single').length,
+          waiting: records.filter(r => ['waiting', 'gap', 'pending'].includes(r.kind)).length,
+          review: records.filter(r => r.kind === 'disagreed').length,
+          confirmed: records.filter(r => ['agreed', 'reviewed', 'single', 'accepted'].includes(r.kind)).length
+        }
+      }
+      function note(text, type = '') {
+        return `<div class="cf-note ${type}">${icon(type === 'amber' ? 'clock-3' : 'shield-check')}<div class="cf-notetext">${text}</div></div>`
+      }
+      function badge(r) {
+        const map = {
+          disagreed: ['cf-review', '2/2 · Needs review'],
+          waiting: ['cf-wait', '1/2 · Awaiting second'],
+          gap: ['cf-wait', '1/2 · Second needed'],
+          pending: ['', '0/2 · Not started'],
+          agreed: ['cf-good', '2/2 · Agreed'],
+          reviewed: ['cf-good', '2/2 · Resolved'],
+          single: ['', 'Single · Final'],
+          accepted: ['cf-good', 'Single accepted']
+        }
+        const pair = map[r.kind]
+        return `<span class="cf-badge ${pair[0]}">${pair[1]}</span>`
+      }
+      function exportStatus(r) {
+        return {
+          disagreed: 'disagreed',
+          waiting: 'awaiting_second',
+          gap: 'awaiting_second',
+          pending: 'unlabelled',
+          agreed: 'agreed',
+          reviewed: 'reviewed',
+          single: 'single',
+          accepted: 'single_accepted'
+        }[r.kind]
+      }
+      function queueRows() {
+        const rows = records.filter(
+          r =>
+            state.filter === 'all' ||
+            (state.filter === 'double' && r.kind !== 'single') ||
+            (state.filter === 'waiting' && ['waiting', 'gap', 'pending'].includes(r.kind)) ||
+            (state.filter === 'review' && r.kind === 'disagreed') ||
+            (state.filter === 'confirmed' && ['agreed', 'reviewed', 'single', 'accepted'].includes(r.kind))
+        )
+        return rows.length
+          ? rows
+              .map(
+                r =>
+                  `<tr><td><input type="checkbox" aria-label="Select record ${r.id}" data-select="${r.id}" ${state.selected.includes(r.id) ? 'checked' : ''}></td><td class="cf-record"><strong>${r.text}</strong><div class="cf-meta">LFS-${r.id}</div></td><td>${r.code ? `<span class="cf-code">${esc(r.code)}</span><div class="cf-code-label">${['disagreed', 'waiting', 'gap'].includes(r.kind) ? 'Provisional' : 'Final'}</div>` : '<span class="cf-meta">No label yet</span>'}</td><td class="cf-cell-people"><div class="cf-people"><span><span class="cf-dot ${r.alice ? 'done' : ''}"></span>Alice ${r.alice ? '✓' : '· pending'}</span>${r.kind === 'single' ? '' : `<span><span class="cf-dot ${r.kind === 'gap' ? 'empty' : r.bob ? 'done' : ''}"></span>${r.kind === 'gap' ? 'Second unassigned' : `Bob ${r.bob ? '✓' : '· pending'}`}</span>`}</div></td><td class="cf-cell-status">${badge(r)}</td><td class="cf-cell-action"><button type="button" class="cf-link" data-row="${r.id}">${r.kind === 'disagreed' ? 'Review →' : r.kind === 'gap' ? 'Assign →' : r.id === '1043' ? 'Open →' : 'View →'}</button></td></tr>`
+              )
+              .join('')
+          : '<tr><td colspan="6"><div class="cf-empty">No records need review. All disagreements have been resolved.</div></td></tr>'
+      }
+      function queuePage() {
+        const c = counts()
+        return `<div class="cf-page"><div class="cf-heading"><div><h1>Work queue</h1><p class="cf-sub">${c.confirmed} confirmed · ${records.filter(r => r.code).length} with available labels</p></div><div class="cf-actions"><button type="button" class="cf-button" data-act="assign">${icon('users-round')}Assign labellers</button></div></div><div class="cf-filterbar" aria-label="Queue filters">${[
+          ['all', 'All records'],
+          ['double', 'Double annotation'],
+          ['waiting', 'Awaiting annotation'],
+          ['review', 'Needs review'],
+          ['confirmed', 'Confirmed']
+        ]
+          .map(
+            ([v, t]) =>
+              `<button type="button" class="cf-filter" data-filter="${v}" aria-pressed="${state.filter === v}">${v === 'review' ? icon('git-compare-arrows') : ''}${t}<span class="cf-count">${c[v]}</span></button>`
+          )
+          .join(
+            ''
+          )}</div><div class="cf-tablewrap"><table class="cf-table"><thead><tr><th style="width:26px"><input type="checkbox" aria-label="Select all sample records" data-act="select-all" ${state.selected.length === records.length ? 'checked' : ''}></th><th>Record</th><th>Occupation</th><th>Assigned to</th><th>Annotation</th><th></th></tr></thead><tbody>${queueRows()}</tbody></table></div><div class="cf-footer"><span>${state.selected.length ? `${state.selected.length} selected · ` : ''}7 illustrative records · Occupation classification</span><span>Page 1 of 1</span></div><div style="margin-top:19px">${note('<strong>One label is already usable.</strong>Provisional labels stay available for export while the second annotation or review is pending.', 'neutral')}</div></div>`
+      }
+      function assignmentPage() {
+        const isLater = state.mode === 'later'
+        const targets = state.selected.length ? state.selected : [isLater ? '1045' : '1046']
+        return `<section class="cf-modal" role="dialog" aria-modal="true" aria-labelledby="cf-assign-title"><div class="cf-modalhead"><div><h2 id="cf-assign-title">Assign independent annotations</h2><p class="cf-sub">${targets.length} ${targets.length === 1 ? 'record' : 'records'} selected</p></div><button type="button" class="cf-iconbutton" data-act="close" aria-label="Close assignment">${icon('x')}</button></div><div class="cf-modalbody"><div class="cf-tabs"><button type="button" class="cf-tab ${isLater ? 'active' : ''}" data-mode="later">Add second annotation</button><button type="button" class="cf-tab ${!isLater ? 'active' : ''}" data-mode="together">Assign two people</button></div>${isLater ? `<div class="cf-panel" style="padding:13px;margin-bottom:17px"><div class="cf-label">FIRST ANNOTATION · RETAINED</div><div style="display:flex;gap:9px;align-items:center"><span class="cf-avatar">AM</span><div><h3>Alice Martin</h3><div class="cf-meta">Existing labels and authorship are preserved</div></div><span class="cf-badge cf-good" style="margin-left:auto">Submitted</span></div></div>` : `<label class="cf-label" for="cf-first">First labeller</label><select class="cf-field" id="cf-first">${['Alice Martin', 'Bob Chen', 'Priya Shah'].map(n => `<option ${state.first === n ? 'selected' : ''}>${n}</option>`).join('')}</select><div style="height:14px"></div>`}<label class="cf-label" for="cf-second">${isLater ? 'Second labeller' : 'Second labeller · independent'}</label><select class="cf-field" id="cf-second">${['Bob Chen', 'Priya Shah', 'Alice Martin'].map(n => `<option ${state.second === n ? 'selected' : ''}>${n}</option>`).join('')}</select><div class="cf-sub">They will not see the other person's labels or AI suggestions.</div><div class="cf-previewline"><span>${isLater ? 'Keep existing labels' : 'Create independent tasks'}</span><strong style="font-weight:500">${isLater ? 'Provisional result' : 'Two per record'}</strong></div><div style="margin-top:15px">${note(isLater ? 'The existing label remains exportable while you wait for the second annotation.' : 'Either person can finish first. Their answer becomes the provisional result.', 'amber')}</div><p id="cf-assignment-error" role="alert" class="cf-sub" style="color:var(--cf-rose-text)" hidden>Choose two different people.</p></div><div class="cf-modalfoot"><button type="button" class="cf-button" data-act="close">Cancel</button><button type="button" class="cf-button cf-primary" data-act="apply-assignment">${isLater ? 'Add second annotation' : 'Assign both labellers'}</button></div></section>`
+      }
+      function labellerPage() {
+        const r = records[1]
+        const done = r.bob
+        return `<div class="cf-page"><div class="cf-heading"><div><p class="cf-sub" style="margin:0 0 8px">My queue / LFS-1043</p><h1>Label record</h1></div><span class="cf-badge ${done ? 'cf-good' : ''}">${done ? 'Your annotation · Submitted' : 'Your annotation · Pending'}</span></div>${note('<strong>Independent annotation</strong>Other people’s labels and AI suggestions are hidden.')}<div class="cf-split" style="margin-top:18px"><section class="cf-panel"><span class="cf-label">RECORD LFS-1043</span><div class="cf-recordbody"><span class="cf-label">JOB TITLE</span>Hotel cook<p><span class="cf-label">MAIN TASKS</span>Prepares meals, follows recipes and maintains food hygiene in a hotel kitchen.</p></div>${settings.supportContext ? '<hr class="cf-separator"><span class="cf-label">SUPPORTING CONTEXT</span><p class="cf-sub">Industry: Accommodation and food services</p>' : ''}</section><section class="cf-panel"><div class="cf-tabs"><span class="cf-tab active">Occupation</span></div><h3>Choose a classification</h3><p class="cf-sub">Select the code that best matches the work described.</p><div class="cf-stack" style="gap:9px;margin-top:16px">${[
+          ['5120', 'Cooks'],
+          ['5131', 'Waiters'],
+          ['-9', 'Unknown']
+        ]
+          .map(
+            ([c, l]) =>
+              `<label class="cf-option"><input type="radio" name="cf-own-code" value="${c}" ${state.ownCode === c ? 'checked' : ''} ${done ? 'disabled' : ''}><span><strong><span class="cf-code">${c}</span> ${l}</strong></span></label>`
+          )
+          .join(
+            ''
+          )}</div><hr class="cf-separator"><label class="cf-label" for="cf-private-note">Private annotation note <span style="font-weight:400">(optional)</span></label><textarea class="cf-field" id="cf-private-note" rows="2" placeholder="Only you and the reviewer can read this." ${done ? 'disabled' : ''}></textarea><div class="cf-actions" style="justify-content:flex-end;margin-top:15px"><button type="button" class="cf-button cf-primary" data-act="submit-own" ${done ? 'disabled' : ''}>${done ? 'Submitted' : `Submit annotation ${icon('arrow-right')}`}</button></div></section></div></div>`
+      }
+      function reviewedRecord() {
+        return records.find(r => r.id === state.reviewId) || records[0]
+      }
+      function chosenResult() {
+        const r = reviewedRecord()
+        return state.decision === 'alice'
+          ? [r.firstCode, r.firstLabel]
+          : state.decision === 'bob'
+            ? [r.secondCode, r.secondLabel]
+            : state.decision === 'custom'
+              ? [
+                  state.custom,
+                  {
+                    2411: 'Accountants',
+                    3313: 'Accounting associate professionals',
+                    4110: 'General office clerks',
+                    5120: 'Cooks',
+                    5131: 'Waiters',
+                    '-9': 'Unknown'
+                  }[state.custom] || 'Selected classification'
+                ]
+              : null
+      }
+      function reviewPage() {
+        const r = reviewedRecord(),
+          resolved = r.kind === 'reviewed',
+          choice = chosenResult()
+        const path = c =>
+          c.startsWith('-')
+            ? c
+            : c
+                .split('')
+                .map((_, i) => c.slice(0, i + 1))
+                .join(' → ')
+        const differentLevel = r.firstCode[0] !== r.secondCode[0] ? 1 : r.firstCode[1] !== r.secondCode[1] ? 2 : 3
+        const options = [
+          ...new Map([
+            [r.firstCode, r.firstLabel],
+            [r.secondCode, r.secondLabel],
+            ['4110', 'General office clerks']
+          ]).entries()
+        ]
+        return `<div class="cf-page">
+        <div class="cf-heading"><div><p class="cf-sub" style="margin:0 0 8px">Work queue / Needs review / LFS-${r.id}</p><h1>Resolve disagreement</h1></div><span class="cf-badge ${resolved ? 'cf-good' : 'cf-review'}">${resolved ? 'Resolved' : '2/2 · Needs review'}</span></div>
+        <div class="cf-split"><section class="cf-panel"><span class="cf-label">RECORD LFS-${r.id}</span><div class="cf-recordbody"><span class="cf-label">JOB TITLE</span>${r.id === '1042' ? 'Accounts and tax adviser' : 'Hotel cook'}<p><span class="cf-label">MAIN TASKS</span>${r.id === '1042' ? 'Prepares annual accounts and tax returns for small business clients. Reviews financial statements and explains tax obligations.' : 'Prepares meals, follows recipes and maintains food hygiene in a hotel kitchen.'}</p></div>
+        ${settings.supportContext ? `<hr class="cf-separator"><span class="cf-label">SUPPORTING CONTEXT</span><p class="cf-sub">${r.id === '1042' ? 'Employer: Accounting practice<br>Qualification: Professional accountancy' : 'Industry: Accommodation and food services'}</p>` : ''}<hr class="cf-separator"><span class="cf-label">CURRENT EXPORT RESULT</span><span class="cf-code">${esc(r.code)}</span><p class="cf-sub">${resolved ? 'Final · Supervisor reviewed' : 'Provisional · First submitted answer'}</p></section>
+        <div class="cf-stack"><div class="cf-tabs" style="margin-bottom:0"><span class="cf-tab active">Occupation</span></div><div class="cf-note amber" style="padding:10px 12px">${icon('git-compare-arrows')}<span>Different paths · First difference at level ${differentLevel}</span></div>
+        <div class="cf-two">${[
+          ['alice', r.firstPerson, 'AM', r.firstCode, r.firstLabel],
+          ['bob', r.secondPerson, 'BC', r.secondCode, r.secondLabel]
+        ]
+          .map(
+            ([key, n, initial, c, l]) =>
+              `<button type="button" class="cf-answer" data-decision="${key}" aria-pressed="${state.decision === key}"><span style="display:flex;gap:8px;align-items:center"><span class="cf-avatar">${initial}</span><span style="font-size:12px">${esc(n)}</span></span><span class="cf-answercode">${esc(c)}</span><span class="cf-answerlabel">${esc(l)}</span><span class="cf-meta">${esc(path(c))}</span><span class="cf-use"><span>${state.decision === key ? 'Selected as final' : 'Use this answer'}</span>${icon(state.decision === key ? 'circle-check' : 'arrow-right')}</span></button>`
+          )
+          .join('')}</div>
+        <button type="button" class="cf-link" data-decision="custom" aria-pressed="${state.decision === 'custom'}">Choose another classification</button>
+        ${state.decision === 'custom' ? `<label><span class="cf-label">Final classification</span><select class="cf-field" id="cf-custom">${options.map(([c, l]) => `<option value="${esc(c)}" ${state.custom === c ? 'selected' : ''}>${esc(c)} · ${esc(l)}</option>`).join('')}</select></label>` : ''}
+        <div class="cf-final"><span>Final result</span>${choice ? `<span><span class="cf-code">${esc(choice[0])}</span> ${esc(choice[1])}</span>` : '<span style="color:var(--cf-muted)">Choose an answer above</span>'}</div>
+        <label><span class="cf-label">Decision note <span style="font-weight:400">(optional)</span></span><textarea class="cf-field" rows="2" placeholder="Explain the decision for the team."></textarea></label><div class="cf-actions" style="justify-content:space-between"><span class="cf-meta">Both original answers are kept.</span><button type="button" class="cf-button cf-primary" data-act="save-review" ${!choice ? 'disabled' : ''}>Save decision ${icon('check')}</button></div></div></div></div>`
+      }
+      function exportPage() {
+        const mode = state.exportMode || 'available'
+        const rows = records.filter(
+          r => mode === 'available' || ['agreed', 'reviewed', 'single', 'accepted'].includes(r.kind)
+        )
+        return `<div class="cf-page"><div class="cf-heading"><div><h1>Export data</h1><p class="cf-sub">One row per record. Your existing code columns stay the same.</p></div></div><section class="cf-panel"><h2>Which labels should be included?</h2><div class="cf-two" style="margin-top:16px"><label class="cf-option"><input type="radio" name="cf-export-mode" value="available" ${mode === 'available' ? 'checked' : ''}><span><strong>All available labels</strong><small>Include provisional labels while another annotation or review is pending.</small></span></label><label class="cf-option"><input type="radio" name="cf-export-mode" value="confirmed" ${mode === 'confirmed' ? 'checked' : ''}><span><strong>Confirmed records only</strong><small>Single annotations, agreed pairs and reviewed results.</small></span></label></div><div style="margin-top:17px">${note(mode === 'available' ? 'Provisional codes are included. The status column shows which results still need a second annotation or review.' : 'Only confirmed records are included. Records awaiting a second annotation or review are left out.', mode === 'available' ? 'amber' : '')}</div><div class="cf-heading" style="margin:21px 0 10px;align-items:center"><h3>CSV preview <span class="cf-sub">· ${rows.length} records</span></h3><span class="cf-meta">Occupation_4 = available code</span></div><div class="cf-tablewrap"><table class="cf-table cf-exporttable"><thead><tr><th>id</th><th>Occupation_4</th><th>Occupation_annotation_status</th></tr></thead><tbody>${rows.map(r => `<tr><td>LFS-${r.id}</td><td>${r.code ? `<span class="cf-code">${esc(r.code)}</span>` : '—'}</td><td><span class="cf-badge ${['disagreed', 'waiting', 'gap'].includes(r.kind) ? 'cf-wait' : ['agreed', 'reviewed'].includes(r.kind) ? 'cf-good' : ''}">${exportStatus(r)}</span></td></tr>`).join('')}</tbody></table></div><div class="cf-actions" style="justify-content:space-between;margin-top:18px"><span class="cf-meta">CSV · UTF-8 · ${rows.length} records</span><button type="button" class="cf-button cf-primary" data-act="csv">${icon('download')}Export CSV</button></div>${state.generated ? `<pre class="cf-csv" aria-label="Generated sample CSV">${esc('id,Occupation_4,Occupation_annotation_status\n' + rows.map(r => `LFS-${r.id},${r.code},${exportStatus(r)}`).join('\n'))}</pre>` : ''}</section><div class="cf-footer"><span>Need both people's answers?</span><button type="button" class="cf-link" data-act="details">Preview annotation details CSV →</button></div><div id="cf-details"></div></div>`
+      }
+      function showToast(message) {
+        state.toast = message
+        const node = root.querySelector('#cf-toast')
+        node.textContent = message
+        node.hidden = !message
+      }
+      function render() {
+        const screen = state.screen === 'assign' ? 'queue' : state.screen
+        main.innerHTML =
+          screen === 'queue'
+            ? queuePage()
+            : screen === 'label'
+              ? labellerPage()
+              : screen === 'review'
+                ? reviewPage()
+                : exportPage()
+        overlay.hidden = state.screen !== 'assign'
+        overlay.innerHTML = state.screen === 'assign' ? assignmentPage() : ''
+        main.inert = state.screen === 'assign'
+        root
+          .querySelectorAll('.cf-scene')
+          .forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scene === state.screen)))
+        root
+          .querySelectorAll('.cf-nav')
+          .forEach(
+            b =>
+              (b.dataset.active = String(
+                (b.dataset.scene === 'queue' && ['queue', 'assign', 'label', 'review'].includes(state.screen)) ||
+                  (b.dataset.scene === 'export' && state.screen === 'export')
+              ))
+          )
+        const isLabel = state.screen === 'label',
+          isExport = state.screen === 'export'
+        root.querySelector('#cf-user-name').textContent = isLabel ? 'Bob Chen' : isExport ? 'Nora Weber' : 'Maria Lopez'
+        root.querySelector('#cf-user-role').textContent = isLabel
+          ? 'Labeller'
+          : isExport
+            ? 'Workspace admin'
+            : 'Supervisor'
+        root.querySelector('#cf-user-avatar').textContent = isLabel ? 'BC' : isExport ? 'NW' : 'ML'
+        root.classList.toggle('cf-density-compact', settings.density === 'compact')
+        showToast(state.toast)
+        main.querySelectorAll('input[data-select]').forEach(input => {
+          const r = records.find(x => x.id === input.dataset.select)
+          const people = input.closest('tr').querySelector('.cf-people')
+          if (!people) return
+          people.innerHTML = `<span><span class="cf-dot ${r.alice ? 'done' : ''}"></span>${esc(r.firstPerson.split(' ')[0])} ${r.alice ? '✓' : '· pending'}</span>${r.kind === 'single' ? '' : `<span><span class="cf-dot ${r.kind === 'gap' ? 'empty' : r.bob ? 'done' : ''}"></span>${r.kind === 'gap' ? 'Second unassigned' : `${esc(r.secondPerson.split(' ')[0])} ${r.bob ? '✓' : '· pending'}`}</span>`}`
+        })
+        if (globalThis.lucide) lucide.createIcons({ attrs: { width: 16, height: 16 } })
+      }
+      root.addEventListener('click', event => {
+        const button = event.target.closest('button')
+        if (!button) return
+        if (button.dataset.scene) {
+          const next = button.dataset.scene
+          if (['progress', 'taxonomy'].includes(next)) {
+            showToast('This concept focuses on the double annotation workflow.')
+            return
+          }
+          state.screen = next
+          state.toast = ''
+          state.generated = false
+          render()
+          persist()
+          if (next === 'assign') overlay.querySelector('select')?.focus()
+          return
+        }
+        if (button.dataset.filter) {
+          state.filter = button.dataset.filter
+          render()
+          persist()
+          return
+        }
+        if (button.dataset.mode) {
+          state.mode = button.dataset.mode
+          render()
+          return
+        }
+        if (button.dataset.decision) {
+          state.decision = button.dataset.decision
+          if (state.decision === 'custom') state.custom = reviewedRecord().firstCode
+          render()
+          persist()
+          return
+        }
+        if (button.dataset.row) {
+          const id = button.dataset.row
+          const r = records.find(x => x.id === id)
+          if (r.kind === 'disagreed' || id === '1042') {
+            state.screen = 'review'
+            state.reviewId = id
+            state.decision = ''
+          } else if (r.kind === 'gap') {
+            state.selected = [id]
+            state.mode = 'later'
+            state.screen = 'assign'
+          } else if (id === '1043') {
+            state.screen = 'label'
+          } else {
+            showToast(`LFS-${id} · ${r.label || 'Awaiting both annotations'}`)
+            return
+          }
+          state.toast = ''
+          render()
+          persist()
+          return
+        }
+        const action = button.dataset.act
+        if (action === 'assign') {
+          state.screen = 'assign'
+          state.toast = ''
+          render()
+          overlay.querySelector('select')?.focus()
+        }
+        if (action === 'close') {
+          state.screen = 'queue'
+          render()
+        }
+        if (action === 'apply-assignment') {
+          const first = state.mode === 'later' ? 'Alice Martin' : state.first
+          if (first === state.second) {
+            root.querySelector('#cf-assignment-error').hidden = false
+            return
+          }
+          const ids = state.selected.length ? state.selected : [state.mode === 'later' ? '1045' : '1046']
+          const incompatible = ids.filter(id => {
+            const r = records.find(x => x.id === id)
+            return state.mode === 'later' ? r.kind !== 'gap' : r.kind !== 'pending'
+          })
+          if (incompatible.length) {
+            const err = root.querySelector('#cf-assignment-error')
+            err.textContent =
+              'This sample action supports records marked “Second needed” for adding a second person, or “Not started” for assigning both. Adjust your selection.'
+            err.hidden = false
+            return
+          }
+          ids.forEach(id => {
+            const r = records.find(x => x.id === id)
+            r.firstPerson = first
+            r.secondPerson = state.second
+            if (r.kind === 'gap') r.kind = 'waiting'
+          })
+          state.screen = 'queue'
+          state.selected = []
+          state.toast =
+            state.mode === 'later'
+              ? `${state.second} assigned independently. Existing labels remain available provisionally.`
+              : `${first} and ${state.second} assigned independently.`
+          render()
+          persist()
+        }
+        if (action === 'submit-own') {
+          const r = records[1]
+          r.bob = true
+          r.secondCode = state.ownCode
+          r.secondLabel = state.ownCode === '5120' ? 'Cooks' : state.ownCode === '5131' ? 'Waiters' : 'Unknown'
+          r.kind = state.ownCode === r.code ? 'agreed' : 'disagreed'
+          state.toast = 'Your annotation has been submitted. The reviewer can now compare the independent answers.'
+          render()
+          persist()
+        }
+        if (action === 'save-review') {
+          const r = reviewedRecord(),
+            choice = chosenResult()
+          if (!choice) return
+          r.code = choice[0]
+          r.label = choice[1]
+          r.kind = 'reviewed'
+          state.toast = 'Decision saved. The final label is confirmed; both original submissions are preserved.'
+          render()
+          persist()
+        }
+        if (action === 'csv') {
+          state.generated = true
+          state.toast = 'Sample CSV generated. Provisional and confirmed states are included exactly as shown.'
+          render()
+          persist()
+        }
+        if (action === 'details') {
+          root.querySelector('#cf-details').innerHTML =
+            `<pre class="cf-csv" aria-label="Annotation details sample">record_id,annotator,code,original_comparison\nLFS-1042,Alice Martin,2411,disagreed\nLFS-1042,Bob Chen,3313,disagreed</pre>`
+        }
+      })
+      root.addEventListener('change', event => {
+        const el = event.target
+        if (el.dataset.select) {
+          state.selected = el.checked
+            ? [...new Set([...state.selected, el.dataset.select])]
+            : state.selected.filter(x => x !== el.dataset.select)
+          render()
+          return
+        }
+        if (el.dataset.act === 'select-all') {
+          state.selected = el.checked ? records.map(r => r.id) : []
+          render()
+          return
+        }
+        if (el.id === 'cf-first') {
+          state.first = el.value
+          root.querySelector('#cf-assignment-error').hidden = true
+        }
+        if (el.id === 'cf-second') {
+          state.second = el.value
+          root.querySelector('#cf-assignment-error').hidden = true
+        }
+        if (el.id === 'cf-custom') {
+          state.custom = el.value
+          render()
+          persist()
+        }
+        if (el.name === 'cf-own-code') {
+          state.ownCode = el.value
+          persist()
+        }
+        if (el.name === 'cf-export-mode') {
+          state.exportMode = el.value
+          state.generated = false
+          state.toast = ''
+          render()
+          persist()
+        }
+      })
+      root.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && state.screen === 'assign') {
+          state.screen = 'queue'
+          render()
+        }
+      })
+      render()
+      if (globalThis.Tweak) {
+        const tweaks = new Tweak({ container: root.querySelector('.cf-window'), onChange: render })
+        tweaks.addSelect(settings, 'density', {
+          label: 'Queue spacing',
+          options: [
+            { label: 'Comfortable', value: 'comfortable' },
+            { label: 'Compact', value: 'compact' }
+          ]
+        })
+        tweaks.addToggle(settings, 'supportContext', { label: 'Show supporting context' })
+      }
+    })()
+  </script>
+</div>
