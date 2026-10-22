@@ -39,7 +39,11 @@ export const auth = betterAuth({
     storage: 'database',
     customRules: {
       '/sign-in/email': SIGN_IN_LIMIT,
-      '/sign-in/username': SIGN_IN_LIMIT
+      '/sign-in/username': SIGN_IN_LIMIT,
+      // Reading one's own session is not limited: a counter only resets after
+      // a quiet window, so steady traffic from one address (an office behind
+      // one IP) would eventually be refused and the app would lose its session.
+      '/get-session': false
     }
   },
   databaseHooks: {
