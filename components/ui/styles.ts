@@ -5,13 +5,14 @@
  * strings; pass layout classes (width, margins) as `extra`.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
+export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md'
 
 const buttonBase =
   'inline-flex items-center justify-center gap-2 rounded-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
 
 const buttonVariants: Record<ButtonVariant, string> = {
+  accent: 'border border-indigo-300 bg-indigo-50 text-indigo-800 hover:border-indigo-600 hover:bg-indigo-100',
   primary: 'border border-indigo-600 bg-indigo-600 text-white hover:border-indigo-800 hover:bg-indigo-800',
   secondary: 'border border-gray-400 bg-white text-gray-900 hover:border-gray-900 hover:bg-gray-50',
   danger: 'border border-red-600 bg-red-600 text-white hover:border-red-800 hover:bg-red-800',

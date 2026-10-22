@@ -212,7 +212,7 @@ export default function FilterPanel({
                 >
                   <path d="M3 3h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 3v-9a1 1 0 0 1 1-1z" />
                 </svg>
-                Has comments
+                Has comments (including resolved)
               </span>
             </label>
           </div>

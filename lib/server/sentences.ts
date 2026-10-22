@@ -1,3 +1,4 @@
+import { commentSummaries } from '@/lib/server/comment-summaries'
 import 'server-only'
 import { db } from '@/lib/workspace/db'
 import type { CurrentUser } from '@/lib/api-auth'
@@ -316,16 +317,6 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
             }
           }
         },
-        comments: {
-          select: {
-            id: true,
-            body: true,
-            createdAt: true,
-            author: {
-              select: { name: true }
-            }
-          }
-        },
         lastEditor: {
           select: {
             name: true,
@@ -431,12 +422,17 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     )
   })()
 
-  const [annotationNodes, aiSuggestionsBySentence] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
+  const [annotationNodes, aiSuggestionsBySentence, summaries] = await Promise.all([
+    annotationNodesPromise,
+    aiSuggestionsPromise,
+    commentSummaries(sentences.map(s => s.id))
+  ])
 
   const nodeLabels = new Map(annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
 
   // Attach labels to annotations; sentences without annotations show their AI suggestions instead
-  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
+  const sentencesWithLabels = sentences.map(({ assignments, ...record }) => {
+    const s = { ...record, commentSummary: summaries.get(record.id) ?? { total: 0, unresolved: 0 } }
     // The API reports assignees as users, not memberships.
     const assignees = assignments.map(a => ({ user: a.membership.user }))
     if (s.annotations.length === 0 && aiSuggestionsBySentence[s.id]) {

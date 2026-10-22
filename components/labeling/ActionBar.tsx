@@ -1,15 +1,13 @@
 'use client'
 
-import { ChevronsRight, CircleHelp, Flag, MessageSquare } from 'lucide-react'
+import { ChevronsRight, CircleHelp, Flag } from 'lucide-react'
 
 type ActionBarProps = {
-  hasComment: boolean
   flagged: boolean
   skipped: boolean
   canSubmit: boolean
   /** The active taxonomy or the whole record is already submitted. */
   submitted: boolean
-  onComment: () => void
   onFlag: () => void
   onUnknown: () => void
   onSkip: () => void
@@ -18,7 +16,6 @@ type ActionBarProps = {
 
 const actionButtonBaseClass = 'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors'
 const primaryActionClasses = 'bg-indigo-600 text-white hover:bg-indigo-700'
-const commentActiveClasses = 'bg-[#A7ACD9] text-[#1f2238] hover:bg-[#9ea3cf]'
 const flagActiveClasses = 'bg-[#F56476] text-[#3b0a12] hover:bg-[#e8576a]'
 const skipActiveClasses = 'bg-[#E8E24A] text-[#4a4510] hover:bg-[#d8d145]'
 const disabledSubmitClasses = 'bg-indigo-600/40 text-white/85 cursor-not-allowed'
@@ -28,14 +25,12 @@ const shortcutClasses = {
   light: 'text-xs px-1.5 py-0.5 rounded border border-black/5 bg-white/50 text-current'
 }
 
-/** The labelling actions with their keyboard shortcuts (C, F, U, S, Enter). */
+/** The labelling actions with their keyboard shortcuts (F, U, S, Enter). */
 export default function ActionBar({
-  hasComment,
   flagged,
   skipped,
   canSubmit,
   submitted,
-  onComment,
   onFlag,
   onUnknown,
   onSkip,
@@ -45,16 +40,6 @@ export default function ActionBar({
     <div className="mt-auto">
       <div className="sticky bottom-0 border-t border-gray-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={onComment}
-            className={`${actionButtonBaseClass} ${hasComment ? commentActiveClasses : primaryActionClasses}`}
-            title="Add comment (C)"
-            aria-keyshortcuts="C"
-          >
-            <MessageSquare className="w-4 h-4" aria-hidden="true" />
-            <span className="text-sm font-medium">Comment</span>
-            <span className={`${hasComment ? shortcutClasses.light : shortcutClasses.dark}`}>C</span>
-          </button>
           <button
             onClick={onFlag}
             className={`${actionButtonBaseClass} ${flagged ? flagActiveClasses : primaryActionClasses}`}

@@ -63,7 +63,9 @@ export async function proxy(request: NextRequest) {
   const isPublicPage = PUBLIC_PAGES.has(pathname)
 
   if (!user?.id && !isLoginPage && !isPublicPage) {
-    return withId(NextResponse.redirect(new URL('/login', request.url)))
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
+    return withId(NextResponse.redirect(loginUrl))
   }
   if (user?.id && isLoginPage) {
     return withId(NextResponse.redirect(new URL('/', request.url)))

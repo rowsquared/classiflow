@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
@@ -82,14 +83,16 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const [isNavigatingBack, setIsNavigatingBack] = useState(false)
 
   // Comments
-  const [showCommentDialog, setShowCommentDialog] = useState(false)
-  const [commentsRequested, setCommentsRequested] = useState(false)
+  const [commentsView, setCommentsView] = useQueryState(
+    'comments',
+    parseAsStringLiteral(['open']).withOptions({ history: 'push', scroll: false })
+  )
+  const commentsOpen = commentsView === 'open'
   const [showResolvedComments, setShowResolvedComments] = useState(false)
-  const commentsQuery = useComments(sentenceId, showResolvedComments, commentsRequested)
+  const commentsQuery = useComments(sentenceId, showResolvedComments, commentsOpen)
   const comments = commentsQuery.data?.comments ?? []
-  const hasComment = commentsQuery.data
-    ? comments.some(c => !c.resolved)
-    : Boolean(sentence && ((sentence._count?.comments ?? 0) > 0 || (sentence.comments?.length ?? 0) > 0))
+  const commentSummary = (commentsOpen ? commentsQuery.data?.commentSummary : null) ??
+    sentence?.commentSummary ?? { total: 0, unresolved: 0 }
 
   // Failures are shown as toasts (kept for 10 s) instead of blocking dialogs.
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -132,12 +135,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     })
 
   const openComments = () => {
-    setCommentsRequested(true)
-    // Opening the dialog always shows the current comments.
-    if (commentsRequested) {
-      queryClient.invalidateQueries({ queryKey: [...recordKey, 'comments'] })
-    }
-    setShowCommentDialog(true)
+    // Re-enabling the query refreshes on every opening, including browser history.
+    if (commentsOpen) void commentsQuery.refetch()
+    void setCommentsView('open')
   }
 
   const commentRequest = async (method: 'POST' | 'PATCH' | 'DELETE', body: unknown, failure: string) => {
@@ -151,7 +151,11 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         showError(failure)
         return false
       }
-      await queryClient.invalidateQueries({ queryKey: [...recordKey, 'comments'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [...recordKey, 'comments'] }),
+        queryClient.invalidateQueries({ queryKey: recordKey, exact: true }),
+        invalidateQueue()
+      ])
       return true
     } catch (error) {
       console.error(failure, error)
@@ -280,14 +284,16 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.target instanceof HTMLElement) {
         // Shortcuts are for the labeling screen, not for an open dialog.
-        if (e.target.closest('[role="dialog"]')) return
+        if (e.target.closest('[data-record-comments], [role="dialog"]')) return
         // Enter on a focused control activates that control, not Submit.
         if (e.key === 'Enter' && e.target.closest('button, a, select, [role="button"]')) return
       }
 
       switch (e.key.toLowerCase()) {
         case 'c':
+          e.preventDefault()
           openComments()
+          document.getElementById('new-comment')?.focus()
           break
         case 'f':
           handleFlag()
@@ -349,7 +355,45 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       <ToastContainer toasts={toasts} onClose={removeToast} />
       <PageHeader title="Labeling" actions={backButton} />
       <div className="h-[calc(100vh-66px)] bg-gray-50 flex overflow-hidden">
-        <RecordPanel record={sentence} navigation={navigation} onPrevious={handlePrevious} onNext={handleNext} />
+        <RecordPanel
+          record={sentence}
+          navigation={navigation}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          workspaceId={workspaceId}
+          commentsOpen={commentsOpen}
+          commentSummary={commentSummary}
+          onComments={() => {
+            if (commentsOpen) void setCommentsView(null)
+            else openComments()
+          }}
+          discussion={
+            <CommentsDialog
+              open={commentsOpen}
+              workspaceId={workspaceId}
+              sentenceId={sentenceId}
+              loading={commentsQuery.isPending}
+              error={commentsQuery.isError}
+              onRetry={() => {
+                void commentsQuery.refetch()
+              }}
+              comments={comments}
+              showResolved={showResolvedComments}
+              hasResolved={Boolean(commentsQuery.data?.hasResolved)}
+              onToggleShowResolved={() => setShowResolvedComments(!showResolvedComments)}
+              onResolve={(commentId, resolved) =>
+                commentRequest('PATCH', { commentId, resolved }, 'Failed to update comment. Please try again.')
+              }
+              onDelete={commentId =>
+                commentRequest('DELETE', { commentId }, 'Failed to delete comment. Please try again.')
+              }
+              onAdd={body => commentRequest('POST', { body }, 'Failed to save comment. Please try again.')}
+              onClose={() => {
+                void setCommentsView(null)
+              }}
+            />
+          }
+        />
 
         {/* Right Panel - Taxonomy */}
         <div className="flex-1 bg-white relative flex flex-col overflow-hidden">
@@ -405,12 +449,10 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           )}
 
           <ActionBar
-            hasComment={hasComment}
             flagged={sentence.flagged}
             skipped={sentence.status === 'skipped'}
             canSubmit={canSubmit}
             submitted={isActiveTaxonomyCompleted || sentence.status === 'submitted'}
-            onComment={openComments}
             onFlag={handleFlag}
             onUnknown={handleUnknown}
             onSkip={handleSkip}
@@ -418,21 +460,6 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           />
         </div>
       </div>
-
-      {showCommentDialog && (
-        <CommentsDialog
-          comments={comments}
-          showResolved={showResolvedComments}
-          hasResolved={Boolean(commentsQuery.data?.hasResolved)}
-          onToggleShowResolved={() => setShowResolvedComments(!showResolvedComments)}
-          onResolve={(commentId, resolved) =>
-            commentRequest('PATCH', { commentId, resolved }, 'Failed to update comment. Please try again.')
-          }
-          onDelete={commentId => commentRequest('DELETE', { commentId }, 'Failed to delete comment. Please try again.')}
-          onAdd={body => commentRequest('POST', { body }, 'Failed to save comment. Please try again.')}
-          onClose={() => setShowCommentDialog(false)}
-        />
-      )}
     </>
   )
 }

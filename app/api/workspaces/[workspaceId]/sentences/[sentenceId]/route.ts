@@ -1,3 +1,4 @@
+import { commentSummaries } from '@/lib/server/comment-summaries'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
@@ -76,7 +77,11 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
       orderBy: [{ taxonomyId: 'asc' }, { level: 'asc' }]
     })
 
-    const [annotationNodes, aiSuggestions] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
+    const [annotationNodes, aiSuggestions, summaries] = await Promise.all([
+      annotationNodesPromise,
+      aiSuggestionsPromise,
+      commentSummaries([sentenceId])
+    ])
 
     const nodeLookup = new Map<string, { label: string; definition: string | null; isLeaf: boolean | null }>()
     annotationNodes.forEach(node => {
@@ -189,6 +194,7 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
     // Replace annotations with enriched version
     const enrichedSentence = {
       ...sentence,
+      commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
       assignments: sentence.assignments.map(a => ({ userId: a.membership.userId })),
       annotations: finalAnnotations
     }
