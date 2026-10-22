@@ -34,7 +34,6 @@ const DAY = 86_400_000
 const MINUTE = 60_000
 const UNKNOWN = ['-9', '-99', '-999', '-9999', '-99999'] // lib/constants.ts, by level
 // Africa/Nairobi (UTC+3): the working day 08:00-17:00 local is 05:00-14:00 UTC.
-const TIME_ZONE = 'Africa/Nairobi'
 const WORKDAY_START_UTC = 5 * 60
 const WORKDAY_MINUTES = 9 * 60
 
@@ -375,7 +374,6 @@ async function seed(tx: Tx, passwordHash: string | null, reset: boolean) {
       name: 'Labour Force Survey 2026 (demo)',
       description:
         'Demo data: occupations coded to ISCO-08 and industries to ISIC Rev.4. Seeded by scripts/seed-demo.ts.',
-      reportingTimezone: TIME_ZONE,
       activityTrackedSince: new Date(daysAgo(60)),
       createdById: grace,
       createdAt: new Date(daysAgo(47))

@@ -8,7 +8,7 @@ import { getProgressOverview, ReportScopeError } from '@/lib/server/progress'
  *
  * Workload now (total, complete, remaining by status) and distinct records
  * labeled in the period, for the caller's scope narrowed by person/team.
- * Dates are inclusive days in the workspace's reporting time zone.
+ * Dates are inclusive UTC days.
  */
 export const GET = workspaceRoute([], async (req, { user }) => {
   const query = parseQuery(reportFilterQuery, new URL(req.url).searchParams)

@@ -23,24 +23,6 @@ export const DEFAULT_RANGE_DAYS = 7
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
 
-export function isValidTimeZone(timeZone: string): boolean {
-  if (!timeZone) return false
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone })
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** The zone to use: the workspace's, else the deployment default, else UTC. Invalid names fall through. */
-export function resolveTimeZone(...candidates: Array<string | null | undefined>): string {
-  for (const candidate of candidates) {
-    if (candidate && isValidTimeZone(candidate)) return candidate
-  }
-  return 'UTC'
-}
-
 /** A calendar date as a UTC midnight Date (only its Y-M-D matter), or null when malformed or nonexistent. */
 export function parseCalendarDate(value: string): Date | null {
   const match = DATE.exec(value)

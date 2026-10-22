@@ -19,7 +19,7 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
       (needed for any AI; `AI_LABELING_API_KEY` is no longer read, each
       workspace enters its own token), `AI_SOURCE_SLUG` (different from
       production), `N8N_EMAIL_WEBHOOK_SECRET` and `APP_BASE_URL` (mail is off
-      without them), optional `REPORTING_TIMEZONE`, `LOG_LEVEL`,
+      without them), optional `LOG_LEVEL`,
       `OTEL_EXPORTER_OTLP_ENDPOINT`, `MAIL_RETENTION_DAYS`.
 - [ ] **Read-only container:** check that Coolify honours `read_only: true` and
       the tmpfs mounts (DEPLOYMENT.md "Container hardening").
@@ -66,7 +66,7 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
 - **Defaults confirmed:** mail through n8n only (no SMTP); password links
   hashed in Better Auth's `Verification` table; 3 AI jobs per workspace and 10
   overall; approved AI services open to every workspace unless restricted
-  ("Access"); reporting time zone per workspace, deployment default UTC.
+      ("Access"); progress reports use UTC calendar days.
 
 ## 3. AI on staging
 

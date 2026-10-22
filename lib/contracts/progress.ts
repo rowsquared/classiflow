@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { MAX_RANGE_DAYS } from '@/lib/reporting-dates'
+import type { CompletionProjection } from '@/lib/progress-projection'
 
 // Query parameters of /api/workspaces/[id]/progress/*, shared by the handlers and the page.
 
@@ -14,7 +15,7 @@ export function parseQuery<S extends z.ZodType>(
 
 // ---------------------------------------------------------------------------
 // Progress reports (overview, timeline, people): /api/workspaces/[id]/progress/*
-// Dates are inclusive calendar days in the workspace's reporting time zone
+// Dates are inclusive UTC calendar days
 // (lib/reporting-dates.ts); personId and teamId are user ids (teamId: the
 // supervisor whose subtree to report on).
 // ---------------------------------------------------------------------------
@@ -97,6 +98,7 @@ export type ReportMeta = {
 }
 
 export type ProgressOverview = ReportMeta & {
+  projection: CompletionProjection
   workload: {
     total: number
     complete: number

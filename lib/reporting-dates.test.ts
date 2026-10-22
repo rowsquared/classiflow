@@ -5,7 +5,6 @@ import {
   MAX_RANGE_DAYS,
   normalizeRange,
   parseCalendarDate,
-  resolveTimeZone,
   startOfLocalDay,
   todayIn
 } from './reporting-dates'
@@ -18,14 +17,6 @@ describe('parseCalendarDate', () => {
     expect(parseCalendarDate('2026-02-30')).toBeNull()
     expect(parseCalendarDate('2026-2-3')).toBeNull()
     expect(parseCalendarDate('yesterday')).toBeNull()
-  })
-})
-
-describe('resolveTimeZone', () => {
-  it('takes the first valid zone and falls back to UTC', () => {
-    expect(resolveTimeZone(null, 'Europe/Berlin')).toBe('Europe/Berlin')
-    expect(resolveTimeZone('Not/AZone', undefined)).toBe('UTC')
-    expect(resolveTimeZone('Africa/Nairobi', 'Europe/Berlin')).toBe('Africa/Nairobi')
   })
 })
 

@@ -38,7 +38,6 @@ import * as overviewRoute from '@/app/api/workspaces/[workspaceId]/progress/over
 import * as activityRoute from '@/app/api/workspaces/[workspaceId]/progress/activity/route'
 import * as peopleRoute from '@/app/api/workspaces/[workspaceId]/progress/people/route'
 import * as membersRoute from '@/app/api/workspaces/[workspaceId]/progress/members/route'
-import * as workspaceRoute from '@/app/api/workspaces/[workspaceId]/route'
 
 // Team tree in the main workspace:
 //   admin
@@ -199,6 +198,12 @@ describe('overview', () => {
     expect(body.workload).toMatchObject({ total: 6, complete: 3, remaining: 3, pending: 3, skipped: 0 })
     // r4 was labeled by two people: one record.
     expect(body.activity.labeledRecords).toBe(3)
+    expect(body.projection).toMatchObject({
+      completedInPeriod: 3,
+      importedInPeriod: 6,
+      status: 'no-net-progress',
+      date: null
+    })
     expect(body.timeZone).toBe('UTC')
     expect(body.activityCoverageStart).toEqual(expect.any(String))
   })
@@ -288,23 +293,8 @@ describe('overview', () => {
   })
 })
 
-describe('reporting time zone', () => {
-  it('workspace admins set it; it must be a real zone; reports use it', async () => {
-    const put = (body: unknown) => workspaceRoute.PUT(request('/x', { method: 'PUT', body }), params())
-    signInAs(sup)
-    expect((await put({ reportingTimezone: 'Europe/Berlin' })).status).toBe(403)
-    signInAs(admin)
-    expect((await put({ reportingTimezone: 'Mars/Olympus' })).status).toBe(400)
-    expect((await put({ reportingTimezone: 'Asia/Kolkata' })).status).toBe(200)
-    expect((await overview()).body.timeZone).toBe('Asia/Kolkata')
-    expect((await put({ reportingTimezone: null })).status).toBe(200)
-    expect((await overview()).body.timeZone).toBe('UTC')
-  })
-})
-
 describe('activity timeline', () => {
-  it('buckets distinct records per local day and Monday week, gaps filled', async () => {
-    await prisma.workspace.update({ where: { id: wsId() }, data: { reportingTimezone: 'Europe/Berlin' } })
+  it('buckets distinct records per UTC day and Monday week, gaps filled', async () => {
     const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { workspaceId: wsId() } })
     const event = (sentence: Sentence, actor: User, at: string) => ({
       workspaceId: wsId(),
@@ -316,11 +306,11 @@ describe('activity timeline', () => {
     })
     await prisma.labelingActivity.createMany({
       data: [
-        event(r1, l1, '2026-10-23T21:30:00Z'), // Fri 23 Oct 23:30 Berlin
-        event(r1, l1, '2026-10-24T22:30:00Z'), // Sun 25 Oct 00:30 Berlin (CEST)
-        event(r1, l1, '2026-10-25T10:00:00Z'), // Sun 25 Oct, same record again
-        event(r4, l2, '2026-10-25T22:30:00Z'), // Sun 25 Oct 23:30 Berlin (CET)
-        event(r3, l2, '2026-10-26T00:30:00Z'), // Mon 26 Oct 01:30 Berlin
+        event(r1, l1, '2026-10-23T21:30:00Z'),
+        event(r1, l1, '2026-10-24T22:30:00Z'),
+        event(r1, l1, '2026-10-25T10:00:00Z'), // Same record on another day
+        event(r4, l2, '2026-10-25T22:30:00Z'),
+        event(r3, l2, '2026-10-26T00:30:00Z'),
         event(r2, l1, '2026-11-02T12:00:00Z') // outside the range
       ]
     })
@@ -330,11 +320,11 @@ describe('activity timeline', () => {
       params()
     )
     const day = await daily.json()
-    expect(day.timeZone).toBe('Europe/Berlin')
+    expect(day.timeZone).toBe('UTC')
     expect(day.buckets.map((b: { key: string; labeledRecords: number }) => [b.key, b.labeledRecords])).toEqual([
       ['2026-10-22', 0],
       ['2026-10-23', 1],
-      ['2026-10-24', 0],
+      ['2026-10-24', 1],
       ['2026-10-25', 2],
       ['2026-10-26', 1],
       ['2026-10-27', 0]

@@ -170,8 +170,6 @@ model Workspace {
   createdById                 String?
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
-  // IANA zone for progress reporting days and weeks; null: REPORTING_TIMEZONE (default UTC).
-  reportingTimezone           String?
   // Labeling activity (LabelingActivity) is recorded from this moment on;
   // earlier work has no history. Existing workspaces: when the table was added.
   activityTrackedSince        DateTime        @default(now())

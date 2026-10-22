@@ -31,7 +31,6 @@ import ActivityChart from './ActivityChart'
 import PeopleTable from './PeopleTable'
 import ProgressFilters from './ProgressFilters'
 import { memberName, personInTeam, useSelectedMember } from './MemberPicker'
-import TimeZoneDialog from './TimeZoneDialog'
 import { formatDay, formatRange, formatTime, localDate } from './format'
 import { buttonClass } from '@/components/ui/styles'
 
@@ -43,7 +42,7 @@ export type InitialReports = {
   people: ProgressPeople | null
 }
 
-type Viewer = { id: string; role: 'admin' | 'supervisor' | 'labeller'; canEditTimeZone: boolean }
+type Viewer = { id: string; role: 'admin' | 'supervisor' | 'labeller' }
 
 const NUMERIC_SORTS: PeopleSort[] = ['assigned', 'complete', 'remaining', 'labeled', 'lastSeen']
 
@@ -116,7 +115,6 @@ export default function ProgressDashboard({
   // Announced when a filter change clears another (screen readers).
   const [announcement, setAnnouncement] = useState('')
   const [now] = useState(() => Date.now())
-  const [timeZoneOpen, setTimeZoneOpen] = useState(false)
 
   const selectedPerson = useSelectedMember(url.personId, selected)
   const selectedTeam = useSelectedMember(url.teamId, selected)
@@ -142,23 +140,6 @@ export default function ProgressDashboard({
   }
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.progress(workspaceId) })
-
-  const saveTimeZone = async (reportingTimezone: string | null) => {
-    const res = await fetch(`/api/workspaces/${workspaceId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reportingTimezone })
-    })
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as {
-        error?: string
-        details?: Array<{ message?: string }>
-      } | null
-      return body?.details?.[0]?.message ?? body?.error ?? 'Could not save the time zone'
-    }
-    await refresh()
-    return null
-  }
 
   const meta = overviewQuery.data ?? activityQuery.data ?? peopleQuery.data ?? null
   const updatedAt = Math.max(overviewQuery.dataUpdatedAt, activityQuery.dataUpdatedAt, peopleQuery.dataUpdatedAt)
@@ -213,23 +194,6 @@ export default function ProgressDashboard({
               {scopeLabel ? ` · ${scopeLabel}` : staff ? ' · everyone you can see' : ' · your own work'}
             </span>
           )}
-          {meta && (
-            <span>
-              Days in {meta.timeZone}
-              {viewer.canEditTimeZone && (
-                <>
-                  {' · '}
-                  <button
-                    type="button"
-                    onClick={() => setTimeZoneOpen(true)}
-                    className="rounded text-indigo-700 underline hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                  >
-                    Change time zone
-                  </button>
-                </>
-              )}
-            </span>
-          )}
         </div>
 
         {meta && coverage && coverage > meta.startDate && (
@@ -247,7 +211,7 @@ export default function ProgressDashboard({
         <Section
           id="overview"
           title="Workload now and activity"
-          description="The first three cards are the records in scope as they are now; “Labeled in period” counts distinct records with a saved human label in the selected dates. AI suggestions alone never count."
+          description="Current workload and activity in the selected dates. The projection uses complete records with human label activity minus imports per day in that period, applied to the remaining records now. A relabeled record may make the estimate optimistic. AI suggestions do not count."
           loading={!overviewQuery.data}
           updating={overviewQuery.isPlaceholderData}
           error={errorText(overviewQuery.error, 'the overview')}
@@ -339,9 +303,6 @@ export default function ProgressDashboard({
           </Section>
         )}
       </div>
-      {timeZoneOpen && meta && (
-        <TimeZoneDialog current={meta.timeZone} onSave={saveTimeZone} onClose={() => setTimeZoneOpen(false)} />
-      )}
     </>
   )
 }

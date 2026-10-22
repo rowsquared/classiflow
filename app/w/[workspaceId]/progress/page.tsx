@@ -86,11 +86,5 @@ export default async function ProgressPage({
     people: data.people as InitialReports['people']
   }
 
-  return (
-    <ProgressDashboard
-      initial={initial}
-      selected={data.selected}
-      viewer={{ id: user.id, role: user.role, canEditTimeZone: user.role === 'admin' && !user.archived }}
-    />
-  )
+  return <ProgressDashboard initial={initial} selected={data.selected} viewer={{ id: user.id, role: user.role }} />
 }

@@ -107,7 +107,6 @@ every workspace the same Taxomind access. Enter tokens per workspace instead.
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
-| `REPORTING_TIMEZONE` | no | `UTC` | no | IANA time zone (e.g. `Europe/Berlin`) whose calendar days and Monday weeks the progress reports use, for workspaces that set none of their own (`PUT /api/workspaces/[id]` `reportingTimezone`). An invalid name falls back to UTC |
 
 ## Runtime and build
 

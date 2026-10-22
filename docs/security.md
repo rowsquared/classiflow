@@ -187,7 +187,7 @@ admin) with a valid session who does not have to reset their password.
 | `/api/workspaces` | GET | signed in; lists only workspaces the caller may enter |
 | `/api/workspaces` | POST | platform admin (creates the workspace and its first admin) |
 | `/api/workspaces/[workspaceId]` | GET | member |
-| `/api/workspaces/[workspaceId]` | PUT (rename, reporting time zone, archive, reopen) | workspace admin |
+| `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
 | `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, PUT (which workspaces may use it), DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |

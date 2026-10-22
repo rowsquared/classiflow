@@ -4,22 +4,13 @@ import { notFound, requireWorkspace } from '@/lib/api-auth'
 import { setWorkspaceStatus, updateWorkspace } from '@/lib/server/workspaces'
 import { prisma } from '@/lib/prisma'
 import { audit } from '@/lib/audit'
-import { isValidTimeZone } from '@/lib/reporting-dates'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  status: z.enum(['active', 'archived']).optional(),
-  // IANA zone for progress reporting days; null: the deployment default (REPORTING_TIMEZONE).
-  reportingTimezone: z
-    .string()
-    .trim()
-    .max(100)
-    .refine(isValidTimeZone, 'reportingTimezone must be an IANA time zone, e.g. Europe/Berlin')
-    .nullable()
-    .optional()
+  status: z.enum(['active', 'archived']).optional()
 })
 
 // GET: the workspace and the caller's effective role in it.
@@ -35,8 +26,7 @@ export async function GET(_req: Request, { params }: Params) {
       description: true,
       status: true,
       archivedAt: true,
-      createdAt: true,
-      reportingTimezone: true
+      createdAt: true
     }
   })
   if (!workspace) return notFound('Workspace not found')
@@ -53,12 +43,12 @@ export async function PUT(req: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { name, description, status, reportingTimezone } = parsed.data
-  if (name !== undefined || description !== undefined || reportingTimezone !== undefined) {
+  const { name, description, status } = parsed.data
+  if (name !== undefined || description !== undefined) {
     if (actor.archived && status !== 'active') {
       return NextResponse.json({ error: 'This workspace is archived and read-only' }, { status: 409 })
     }
-    await updateWorkspace(workspaceId, { name, description, reportingTimezone })
+    await updateWorkspace(workspaceId, { name, description })
     await audit({
       workspaceId,
       actorId: actor.id,
@@ -68,8 +58,7 @@ export async function PUT(req: Request, { params }: Params) {
       payload: {
         fields: Object.keys({
           ...(name !== undefined && { name }),
-          ...(description !== undefined && { description }),
-          ...(reportingTimezone !== undefined && { reportingTimezone })
+          ...(description !== undefined && { description })
         })
       }
     })
