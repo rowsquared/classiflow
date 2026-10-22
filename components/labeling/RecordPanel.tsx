@@ -54,7 +54,7 @@ export default function RecordPanel({
           aria-controls={commentsOpen ? 'record-comments' : undefined}
           aria-keyshortcuts="C"
           title="Open comments (C)"
-          className={buttonClass(commentSummary.unresolved > 0 ? 'accent' : 'secondary', 'sm')}
+          className={buttonClass(commentSummary.unresolved > 0 ? 'primary' : 'secondary', 'sm')}
         >
           <MessageSquare className="w-4 h-4" aria-hidden="true" />
           Comments{commentSummary.total > 0 ? ` · ${commentSummary.unresolved}` : ''}

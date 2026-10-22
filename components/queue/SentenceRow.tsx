@@ -3,11 +3,10 @@ import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { storeNavigationList } from '@/lib/labeling-navigation'
 import { useRouter } from 'next/navigation'
-import { CopyRecordLink } from '@/components/CopyRecordLink'
 import { recordPath } from '@/lib/record-links'
 import { useWorkspaceId } from '@/lib/workspace/urls'
 import { MessageSquare } from 'lucide-react'
-import { badgeClass, buttonClass } from '@/components/ui/styles'
+import { badgeClass } from '@/components/ui/styles'
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -229,6 +228,31 @@ export default function SentenceRow({
         <div className="flex items-stretch gap-2">
           {/* Icons at the beginning */}
           <div className="flex flex-col gap-1 self-stretch justify-center items-center flex-shrink-0 min-w-[20px]">
+            {summary.total > 0 && (
+              <button
+                type="button"
+                className={`relative inline-flex items-center justify-center w-5 h-5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 ${summary.unresolved > 0 ? 'text-indigo-700 hover:text-indigo-900' : 'text-gray-500 hover:text-gray-700'}`}
+                aria-label={`Comments: ${summary.unresolved} unresolved; ${summary.total - summary.unresolved} resolved`}
+                title={`${summary.unresolved} unresolved; ${summary.total - summary.unresolved} resolved comments`}
+                onClick={e => {
+                  e.stopPropagation()
+                  const params = new URLSearchParams({ comments: 'open' })
+                  if (sentenceIds.length) params.set('list', storeNavigationList(sentenceIds, currentIndex))
+                  router.push(`${recordPath(workspaceId, sentence.id)}?${params}`)
+                }}
+              >
+                <MessageSquare
+                  className={`w-4 h-4 ${summary.unresolved > 0 ? 'fill-indigo-100' : ''}`}
+                  aria-hidden="true"
+                />
+                {summary.unresolved > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-indigo-600 ring-1 ring-white"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            )}
             {sentence.flagged && (
               <span className="text-[#F56476] cursor-help" title="Flagged">
                 <svg className="w-4 h-4" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -258,28 +282,6 @@ export default function SentenceRow({
             </div>
           </div>
         </div>
-      </td>
-
-      <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-        <button
-          type="button"
-          className={buttonClass(summary.unresolved > 0 ? 'accent' : 'secondary', 'sm')}
-          title={`${summary.unresolved} unresolved; ${summary.total - summary.unresolved} resolved comments`}
-          onClick={() => {
-            const params = new URLSearchParams({ comments: 'open' })
-            if (sentenceIds.length) params.set('list', storeNavigationList(sentenceIds, currentIndex))
-            router.push(`${recordPath(workspaceId, sentence.id)}?${params}`)
-          }}
-        >
-          <MessageSquare className="w-4 h-4" aria-hidden="true" />
-          Comments{summary.total > 0 ? ` · ${summary.unresolved}` : ''}
-        </button>
-        {summary.total > summary.unresolved && (
-          <span className="block mt-1 text-xs text-gray-600">{summary.total - summary.unresolved} resolved</span>
-        )}
-      </td>
-      <td className="px-2 py-3" onClick={e => e.stopPropagation()}>
-        <CopyRecordLink workspaceId={workspaceId} sentenceId={sentence.id} compact />
       </td>
 
       {/* Labels */}

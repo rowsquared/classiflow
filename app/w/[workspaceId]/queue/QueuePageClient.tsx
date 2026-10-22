@@ -450,10 +450,6 @@ export default function QueuePageClient({
                       <th className={`pl-0 pr-4 py-3 text-left text-sm font-medium text-gray-700 ${contentWidthClass}`}>
                         <span className="block pl-7">Content</span>
                       </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Comments</th>
-                      <th className="px-2 py-3 text-left text-sm font-medium text-gray-700">
-                        <span className="sr-only">Record link</span>
-                      </th>
                       <th className={`px-4 py-3 text-left text-sm font-medium text-gray-700 ${labelWidthClass}`}>
                         Labels
                       </th>
