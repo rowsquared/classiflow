@@ -49,7 +49,9 @@ sh scripts/start.sh
 ```
 
 It applies migrations, optionally sets up the runtime database role (see
-[Database roles](#database-roles)), creates the first admin and starts the server.
+[Database roles](#database-roles)), creates the first admin, seeds the demo
+workspace when `DEMO_SEED` is set (staging only, ENV_SETUP.md "Demo data") and
+starts the server.
 The default Dockerfile runs `node server.js` only, so you must override the start command in your platform (Kubernetes, ECS, Fly.io, etc.).
 
 ## Environment Variables

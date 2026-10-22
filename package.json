@@ -4,6 +4,7 @@
     "db:up": "docker compose -f docker-compose.dev.yml up -d --wait",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "db:init-admin": "node --env-file-if-exists=.env --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/init-admin.ts",
+    "db:seed-demo": "node --env-file-if-exists=.env --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed-demo.ts",
     "typecheck": "node node_modules/typescript-native/bin/tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

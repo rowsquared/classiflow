@@ -61,6 +61,10 @@ services:
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
       DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Admin User}
 
+      # Demo workspace for staging (ENV_SETUP.md "Demo data"); never in production.
+      DEMO_SEED: ${DEMO_SEED:-}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+
       # Email (optional; off without the secret). ENV_SETUP.md "Email".
       N8N_EMAIL_WEBHOOK_SECRET: ${N8N_EMAIL_WEBHOOK_SECRET:-}
       N8N_EMAIL_WEBHOOK_URL: ${N8N_EMAIL_WEBHOOK_URL:-https://n8n.rowsquared.com/webhook/send-email}

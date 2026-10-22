@@ -47,6 +47,10 @@ npm run dev
 
 Open http://localhost:3000 and sign in with `DEFAULT_ADMIN_USERNAME` (or `DEFAULT_ADMIN_EMAIL`) and `DEFAULT_ADMIN_PASSWORD` from `.env`.
 
+For data to click through, `npm run db:seed-demo` adds a demo workspace with
+3,000 coded survey records and a team (`DEMO_PASSWORD` in `.env` lets you sign
+in as its members; ENV_SETUP.md "Demo data").
+
 ## Everyday commands
 
 | Command | What it does |

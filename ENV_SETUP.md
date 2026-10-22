@@ -38,6 +38,25 @@ changing them later does nothing. To recover access see DEPLOYMENT.md "Admin Use
 | `DEFAULT_ADMIN_EMAIL` | no | `admin@classiflow.local` (`admin@example.com` in Compose) | no | Sign-in email |
 | `DEFAULT_ADMIN_NAME` | no | `System Administrator` (`Admin User` in Compose) | no | Display name |
 
+## Demo data (optional)
+
+For staging and demos: `scripts/start.sh` runs `scripts/seed-demo.ts` after the
+admin bootstrap. It creates one workspace, "Labour Force Survey 2026 (demo)"
+(`demo-lfs`): 3,000 survey answers about jobs, the ISCO-08 and ISIC Rev.4
+taxonomies, a team of two supervisors and eight labellers, six weeks of
+labelling history, comments, flags and AI suggestions. Platform admins become
+its admins. It touches no other workspace or account, and a failed seed does
+not stop the server. Do not set it in production.
+
+| Variable | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `DEMO_SEED` | no | off | no | `true` seeds the demo workspace when it does not exist; `reset` deletes and rebuilds it on every start, which also moves its history up to the current date |
+| `DEMO_PASSWORD` | no | none | yes | Password of the demo accounts (`demo.grace` workspace admin, `demo.amina` and `demo.lukas` supervisors, `demo.sofia`, `demo.daniel`, … labellers). Without it they cannot sign in. Set on creation and on `reset` |
+
+Locally: `npm run db:seed-demo` (add `-- --reset` to rebuild). `node
+scripts/seed-demo.ts --csv <dir>` writes the same taxonomies and records as
+CSV files for the import screens.
+
 ## Email (optional)
 
 Mail goes through the rowsquared "E-MAIL API" n8n workflow, which owns the SMTP

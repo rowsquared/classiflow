@@ -103,7 +103,7 @@ Browser: React client components
 | Authentication | `lib/auth.ts` (Better Auth server), `lib/auth-client.ts` (browser), `lib/api-auth.ts`, `lib/passwords.ts`, `proxy.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
 | Shared presentation | `styles/globals.css`, `components/`, `lib/utils.ts`, assets in `public/` |
-| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.ts`, `init-admin.ts`, server; `reset-admin-password.ts` for admin recovery; `restore-drill.sh` + `restore-check.ts` for backups; `promote-main.mjs`); logs `lib/logger.ts`, request IDs `lib/request-id.ts` (set in `proxy.ts`), traces `lib/telemetry.ts` (loaded by `instrumentation.ts` only with an OTLP endpoint) |
+| Operations | `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`, `.github/workflows/`, `scripts/` (`start.sh` is the Compose start command: migrations, optional least-privilege DB role via `db-runtime-role.ts`, `init-admin.ts`, optional demo workspace via `seed-demo.ts` (`DEMO_SEED`, fixtures in `scripts/demo/`), server; `reset-admin-password.ts` for admin recovery; `restore-drill.sh` + `restore-check.ts` for backups; `promote-main.mjs`); logs `lib/logger.ts`, request IDs `lib/request-id.ts` (set in `proxy.ts`), traces `lib/telemetry.ts` (loaded by `instrumentation.ts` only with an OTLP endpoint) |
 
 ## Domain model and behavior to preserve
 
