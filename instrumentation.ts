@@ -15,6 +15,9 @@ export async function register() {
     // Send queued mail left behind by a restart; see lib/mail/outbox.ts.
     const { startOutboxRecovery } = await import('@/lib/mail/outbox')
     startOutboxRecovery()
+    // Delete audit entries past AUDIT_RETENTION_DAYS; see lib/audit.ts.
+    const { startAuditRetention } = await import('@/lib/audit')
+    startAuditRetention()
   }
 }
 

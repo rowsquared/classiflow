@@ -127,6 +127,7 @@ tokens, cookies and record text are redacted if passed by mistake.
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `LOG_LEVEL` | no | `info` (`silent` in the test suites) | no | `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent` |
+| `AUDIT_RETENTION_DAYS` | no | `730` | no | Days audit log entries are kept; each instance deletes older ones every six hours. `0` keeps them forever |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | empty (tracing off) | no | OTLP/HTTP collector base URL, e.g. `http://otel-collector:4318`. When set, `instrumentation.ts` loads the OpenTelemetry SDK (`lib/telemetry.ts`) and Next.js traces requests, route handlers, page renders and server-side `fetch` calls (including the AI service); log lines then carry `traceId`/`spanId`. Unset, the SDK is never loaded |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | no | empty | no | Full traces URL instead of the base URL (`…/v1/traces`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | empty | yes, if it holds a token | Headers for the collector, e.g. `authorization=Bearer …` |

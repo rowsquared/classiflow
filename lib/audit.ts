@@ -1,7 +1,7 @@
 import type { Prisma } from '@/lib/generated/prisma/client'
 import { prisma } from '@/lib/prisma'
 import { currentWorkspaceId, db, withWorkspace } from '@/lib/workspace/db'
-import { logError } from '@/lib/logger'
+import { logError, logger } from '@/lib/logger'
 import { currentRequestId } from '@/lib/request-id'
 
 /**
@@ -125,4 +125,49 @@ export async function audit(entry: AuditEntry): Promise<void> {
       entityId: entry.entityId
     })
   }
+}
+
+// ---------------------------------------------------------------------------
+// Retention
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 24 * 60 * 60_000
+const PRUNE_INTERVAL_MS = 6 * 60 * 60_000
+
+/** Days audit entries are kept (AUDIT_RETENTION_DAYS, default 730); null: forever (`0`). */
+export function auditRetentionDays(raw = process.env.AUDIT_RETENTION_DAYS): number | null {
+  const value = raw?.trim()
+  if (value === '0') return null
+  const days = Number(value)
+  return value && Number.isInteger(days) && days > 0 ? days : 730
+}
+
+/**
+ * Deletes audit entries older than the retention period, in every workspace
+ * and the platform's, through the database function app_prune_audit_log (row
+ * security keeps the runtime role to one workspace otherwise). Returns how
+ * many were deleted.
+ */
+export async function pruneAuditLog(now = Date.now(), days = auditRetentionDays()): Promise<number> {
+  if (days === null) return 0
+  const before = new Date(now - days * DAY_MS).toISOString()
+  const [row] = await prisma.$queryRaw<Array<{ deleted: number }>>`
+    SELECT app_prune_audit_log(${before}::timestamp) AS deleted`
+  return row?.deleted ?? 0
+}
+
+let retentionTimer: NodeJS.Timeout | null = null
+
+/** Prunes once shortly after start, then every six hours (instrumentation.ts). Instances may overlap safely. */
+export function startAuditRetention() {
+  if (retentionTimer || auditRetentionDays() === null) return
+  const run = () =>
+    pruneAuditLog()
+      .then(deleted => {
+        if (deleted > 0) logger.info({ deleted }, 'Pruned old audit log entries')
+      })
+      .catch(error => logger.error({ err: error }, 'Audit log pruning failed'))
+  setTimeout(run, 60_000).unref?.()
+  retentionTimer = setInterval(run, PRUNE_INTERVAL_MS)
+  retentionTimer.unref?.()
 }

@@ -91,6 +91,8 @@ services:
       # Logs and traces (ENV_SETUP.md "Logs and traces"); tracing is off
       # unless an OTLP endpoint is set.
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Audit entries older than this are deleted (0 keeps them).
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-730}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-classiflow}

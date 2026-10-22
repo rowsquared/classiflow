@@ -10,7 +10,8 @@ import {
   params,
   request,
   resetDatabase,
-  signInAs
+  signInAs,
+  wsId
 } from './helpers'
 
 import * as usersRoute from '@/app/api/workspaces/[workspaceId]/users/route'
@@ -160,5 +161,35 @@ describe('audit trail', () => {
 
     signInAs(await createUser('supervisor'))
     expect((await auditRoute.GET(request('/api/audit'), params())).status).toBe(403)
+  })
+})
+
+describe('retention', () => {
+  it('prunes entries older than the period in every workspace and the platform, as the runtime role', async () => {
+    const { pruneAuditLog } = await import('@/lib/audit')
+    const first = wsId()
+    const other = (await createWorkspace()).id
+    const old = new Date(Date.now() - 40 * 24 * 60 * 60_000)
+    const entry = (workspaceId: string | null, createdAt: Date) =>
+      prisma.auditLog.create({
+        data: { workspaceId, action: 'export.downloaded', entityType: 'workspace', entityId: 'x', createdAt }
+      })
+    const kept = [await entry(first, new Date()), await entry(other, new Date()), await entry(null, new Date())]
+    await entry(first, old)
+    await entry(other, old)
+    await entry(null, old)
+
+    expect(await pruneAuditLog(Date.now(), 30)).toBe(3)
+    const left = await prisma.auditLog.findMany({ select: { id: true } })
+    expect(left.map(r => r.id).sort()).toEqual(kept.map(r => r.id).sort())
+    expect(await pruneAuditLog(Date.now(), null)).toBe(0)
+  })
+
+  it('keeps entries for 730 days unless AUDIT_RETENTION_DAYS says otherwise; 0 keeps them', async () => {
+    const { auditRetentionDays } = await import('@/lib/audit')
+    expect(auditRetentionDays(undefined)).toBe(730)
+    expect(auditRetentionDays('365')).toBe(365)
+    expect(auditRetentionDays('0')).toBeNull()
+    expect(auditRetentionDays('soon')).toBe(730)
   })
 })

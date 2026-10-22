@@ -213,13 +213,10 @@ hold identifiers and counts, never record text or passwords. Individual label
 saves, comments and flags are not audited: those rows carry their own author
 and timestamps.
 
-Entries are kept until you delete them. Choose a retention period and prune,
-for example monthly:
-
-```bash
-docker compose exec -T postgres psql -U classiflow -d classiflow \
-  -c "DELETE FROM \"AuditLog\" WHERE \"createdAt\" < now() - interval '2 years'"
-```
+Entries are kept for `AUDIT_RETENTION_DAYS` (default 730, two years): each
+instance deletes older ones every six hours through the database function
+`app_prune_audit_log`, which the runtime role may run (row security keeps it to
+one workspace otherwise). Set `0` to keep entries forever.
 
 ## Backups
 

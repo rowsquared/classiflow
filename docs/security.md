@@ -108,9 +108,12 @@ Isolation is enforced three times:
    and write; without it, workspace tables are empty and unwritable. Covered
    by `tests/integration/db-runtime-role.test.ts`.
 
-Two narrow database functions run as the schema owner, outside row security,
-and are granted to the runtime role alone: `app_recoverable_ai_jobs()` returns
-the ids and workspaces of AI jobs to recover, and `app_search_sentences()`
+A few narrow database functions run as the schema owner, outside row
+security, and are granted to the runtime role alone: `app_recoverable_ai_jobs()`
+returns the ids and workspaces of AI jobs to recover, `app_admit_ai_jobs()` and
+`app_release_ai_leases()` change only AI job status and lease columns,
+`app_prune_audit_log()` deletes only audit entries older than a given time
+(retention), and `app_search_sentences()`
 (queue text search through the trigram indexes, which row security would
 otherwise keep from the runtime role) returns ids of records **of the current
 transaction's workspace only**, nothing outside a workspace transaction. The

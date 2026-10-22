@@ -38,26 +38,35 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
       teal primary buttons, Team page "Export CSV", AI settings "Job settings",
       AI service "Access" on the Workspaces page.
 
-## 2. Decisions for the maintainer
+## 2. Decisions (taken 22 October 2026) and what they still need
 
-- [ ] **Backups** (W12): tolerated data loss and recovery time; then off-host
-      encrypted dumps on a schedule, retention, an alert on failure, and
-      `scripts/restore-drill.sh` on a real dump, including restoring the AI
-      token key (`AI_CREDENTIALS_KEYS`, DEPLOYMENT.md "AI credentials").
-- [ ] **Audit log retention** period (pruning is SQL, DEPLOYMENT.md "Audit
-      log"). Mail outbox rows are pruned automatically (90 days by default).
-- [ ] **Required check:** add the `e2e` CI job to the `main` ruleset
-      (`deploy-prod` already waits for it).
-- [ ] **Container memory/CPU limits**, sized from staging/production usage.
-- [ ] **Alerts:** choose a log/trace backend (logs are JSON on stdout, traces
-      go to `OTEL_EXPORTER_OTLP_ENDPOINT`); then alert on 5xx rates, failed AI
-      jobs and failed mail.
-- [ ] **Admin MFA/SSO** (W02): Better Auth offers 2FA, passkeys and OIDC/SAML.
-- [ ] **Defaults chosen overnight**, change them if you disagree: n8n only (no
-      SMTP); password links hashed in Better Auth's `Verification` table; 3 AI
-      jobs per workspace and 10 overall; approved AI services open to every
-      workspace unless restricted; reporting time zone per workspace,
-      deployment default UTC; mail outbox kept 90 days.
+- **Backups** (W12): nightly custom-format dumps, kept 30 days off the
+  server, encrypted; tolerated loss up to one day of work. Still to do: set up
+  the schedule (Coolify's scheduled database backups to S3, or `pg_dump` from
+  DEPLOYMENT.md "Backups") with an alert when it fails, keep a copy of
+  `AI_CREDENTIALS_KEYS` apart from the dumps, and run
+  `scripts/restore-drill.sh` on a real dump once on staging, then quarterly.
+  - [ ] Backup schedule and off-server storage
+  - [ ] Restore drill on staging
+- **Audit log retention:** two years. Done in code: each instance deletes
+  older entries every six hours (`AUDIT_RETENTION_DAYS`, default 730; `0`
+  keeps them). Mail outbox rows: 90 days (`MAIL_RETENTION_DAYS`).
+- **Required check:**
+  - [ ] Add the `e2e` CI job to the `main` ruleset (GitHub › Settings › Rules;
+        `deploy-prod` already waits for it). Before the first production
+        release.
+- **Later, not needed for staging:**
+  - [ ] Container memory/CPU limits, sized from staging usage (Coolify or the
+        placeholders in `docker-compose.yml`).
+  - [ ] Alerts: choose a log/trace backend (logs are JSON on stdout, traces
+        go to `OTEL_EXPORTER_OTLP_ENDPOINT`); then alert on 5xx rates, failed
+        AI jobs and failed mail.
+  - [ ] Admin MFA/SSO (W02): Better Auth offers 2FA, passkeys and OIDC/SAML;
+        needs its own plan.
+- **Defaults confirmed:** mail through n8n only (no SMTP); password links
+  hashed in Better Auth's `Verification` table; 3 AI jobs per workspace and 10
+  overall; approved AI services open to every workspace unless restricted
+  ("Access"); reporting time zone per workspace, deployment default UTC.
 
 ## 3. AI on staging
 
