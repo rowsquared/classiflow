@@ -25,6 +25,7 @@ import { useActiveTaxonomies, useComments, useRecord, type LabelingRecord } from
 import RecordPanel from './RecordPanel'
 import ActionBar from './ActionBar'
 import CommentsDialog from './CommentsDialog'
+import DoublePanel, { type DoubleCommand } from './DoublePanel'
 import { buttonClass } from '@/components/ui/styles'
 
 // Tab colours per taxonomy index (match TaxonomyBrowser's chips).
@@ -233,17 +234,44 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     }
   }
 
-  const canSubmit = canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
+  // Double annotation: what this person may change for the active taxonomy.
+  const double = sentence?.double ?? null
+  const activeOutcome =
+    double?.mode === 'manager' ? double.outcomes.find(o => o.taxonomyKey === activeTaxonomy?.key) : undefined
+  const locked =
+    double?.mode === 'hidden' ||
+    (double?.mode === 'task' && Boolean(activeTaxonomy && double.answered.includes(activeTaxonomy.key))) ||
+    (double?.mode === 'manager' &&
+      (!double.canReview ||
+        !activeOutcome ||
+        activeOutcome.state === 'waiting' ||
+        activeOutcome.state === 'accepted_single'))
+  const canSubmit = !locked && canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
 
-  const handleSubmit = async () => {
+  const handleDoubleCommand = async (body: DoubleCommand) => {
+    try {
+      await fetchJson(api(`/sentences/${sentenceId}/double-annotation`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      await Promise.all([queryClient.invalidateQueries({ queryKey: recordKey, exact: true }), invalidateQueue()])
+      return true
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'The change failed')
+      return false
+    }
+  }
+
+  const handleSubmit = async (chosen: SelectedLabel[] = selectedLabels) => {
     if (saving) return
-    if (!canSubmit || !activeTaxonomy) {
+    if (locked || !activeTaxonomy || !canSubmitLabels(chosen, activeTaxonomy.maxDepth)) {
       showError('Please select a complete path or mark as unknown')
       return
     }
 
     try {
-      const annotations = selectedLabels.map(l => ({
+      const annotations = chosen.map(l => ({
         level: l.level,
         nodeCode: l.nodeCode, // level-specific unknown codes included
         taxonomyKey: activeTaxonomy.key
@@ -312,7 +340,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           handleSkip()
           break
         case 'enter':
-          if (canSubmit) handleSubmit()
+          if (canSubmit) void handleSubmit()
           break
       }
     }
@@ -451,13 +479,34 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             </div>
           )}
 
+          {double && activeTaxonomy && (
+            <DoublePanel
+              view={double}
+              taxonomyKey={activeTaxonomy.key}
+              busy={saving}
+              onUseAnswer={labels =>
+                void handleSubmit(
+                  labels.map(l => ({
+                    level: l.level,
+                    nodeCode: l.nodeCode,
+                    taxonomyKey: activeTaxonomy.key,
+                    label: l.nodeLabel ?? undefined,
+                    // A submitted answer is a validated complete path: its deepest level ends it.
+                    isLeaf: l.level === Math.max(...labels.map(x => x.level))
+                  }))
+                )
+              }
+              onCommand={handleDoubleCommand}
+            />
+          )}
+
           {activeTaxonomy && (
             <div
               className={`${taxonomies.length > 1 ? 'border-t border-gray-200 bg-white -mt-px' : ''} flex-1 overflow-y-auto`}
             >
               <TaxonomyBrowser
                 key={activeTaxonomy.key}
-                disabled={saving}
+                disabled={saving || locked}
                 taxonomy={activeTaxonomy}
                 selectedLabels={selectedLabels}
                 onLabelsChange={setSelectedLabels}
@@ -477,7 +526,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             onFlag={handleFlag}
             onUnknown={handleUnknown}
             onSkip={handleSkip}
-            onSubmit={handleSubmit}
+            onSubmit={() => void handleSubmit()}
           />
         </div>
       </div>

@@ -22,7 +22,15 @@ export function operationIdOrNew(operationId: string | undefined): string {
 
 export async function recordLabelingActivity(
   tx: Prisma.TransactionClient,
-  event: { workspaceId: string; sentenceIds: string[]; taxonomyId: string; actorId: string; operationId: string }
+  event: {
+    workspaceId: string
+    sentenceIds: string[]
+    taxonomyId: string
+    actorId: string
+    operationId: string
+    /** review: a decision on a double-annotation disagreement (lib/server/double-annotation.ts). */
+    kind?: 'label' | 'review'
+  }
 ): Promise<void> {
   if (event.sentenceIds.length === 0) return
   await tx.labelingActivity.createMany({
@@ -31,7 +39,8 @@ export async function recordLabelingActivity(
       sentenceId,
       taxonomyId: event.taxonomyId,
       actorId: event.actorId,
-      operationId: event.operationId
+      operationId: event.operationId,
+      kind: event.kind ?? 'label'
     })),
     // Replay of the same operation: the (workspace, operation, record) rows exist.
     skipDuplicates: true

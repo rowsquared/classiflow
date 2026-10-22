@@ -325,7 +325,11 @@ describe('record import and export', () => {
       'flagged',
       'last_editor',
       'last_edited',
-      'comments'
+      'comments',
+      'annotation_mode',
+      'annotation_status',
+      'alpha_annotation_status',
+      'zeta_annotation_status'
     ])
     expect(rows).toHaveLength(2500)
     const importIds = new Map([

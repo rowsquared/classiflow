@@ -779,6 +779,149 @@ async function seed(tx: Tx, passwordHash: string | null, reset: boolean) {
   }
   for (const part of chunks(suggestions)) await tx.sentenceAISuggestion.createMany({ data: part })
 
+  // Double annotation (lib/server/double-annotation.ts): 35 submitted records
+  // of Amina's team get a second labeller from the same team, so demo.amina
+  // sees every state: 12 waiting, 8 needing review (ISCO differs), 10 agreed
+  // and 5 resolved by her. The first labeller's labels are the baseline answer.
+  const byRecord = new Map<string, Annotation[]>()
+  for (const a of annotationRows)
+    (byRecord.get(a.sentenceId) ?? byRecord.set(a.sentenceId, []).get(a.sentenceId)!).push(a)
+  const teamIds = new Map(q3Team.map(l => [uid(l.key), l]))
+  const candidates = records.filter(r => {
+    const rows = byRecord.get(sentenceId(r)) ?? []
+    const authors = new Set(rows.map(a => a.createdById))
+    return (
+      sentenceState.get(r)?.status === 'submitted' &&
+      new Set(rows.map(a => a.taxonomyId)).size === 2 &&
+      authors.size === 1 &&
+      teamIds.has([...authors][0]!)
+    )
+  })
+  const plan = [
+    ...Array<'waiting'>(12).fill('waiting'),
+    ...Array<'disagreed'>(8).fill('disagreed'),
+    ...Array<'agreed'>(10).fill('agreed'),
+    ...Array<'reviewed'>(5).fill('reviewed')
+  ]
+  let doubles = 0
+  for (const [i, state] of plan.entries()) {
+    const r = candidates[i * 3] // spread over the queue
+    if (!r) break
+    const id = sentenceId(r)
+    const rows = byRecord.get(id)!
+    const author = teamIds.get(rows[0]!.createdById!)!
+    const other = q3Team.filter(l => l.key !== author.key)[i % (q3Team.length - 1)]!
+    const startedAt = new Date(daysAgo(10 - (i % 7)))
+    const answeredAt = new Date(startedAt.getTime() + between(1, 48) * 3_600_000)
+    const roundId = `demo_dr_${i}`
+    const done = state !== 'waiting'
+    await tx.doubleRound.create({
+      data: {
+        id: roundId,
+        workspaceId: WORKSPACE_ID,
+        sentenceId: id,
+        status: state === 'agreed' || state === 'reviewed' ? 'completed' : 'active',
+        createdById: uid('amina'),
+        createdAt: startedAt,
+        closedAt: state === 'agreed' || state === 'reviewed' ? answeredAt : null
+      }
+    })
+    await tx.doubleTask.createMany({
+      data: [
+        {
+          id: `${roundId}_1`,
+          workspaceId: WORKSPACE_ID,
+          roundId,
+          sentenceId: id,
+          position: 1,
+          assigneeId: uid(author.key),
+          status: 'submitted',
+          fromBaseline: true,
+          createdAt: startedAt,
+          submittedAt: startedAt
+        },
+        {
+          id: `${roundId}_2`,
+          workspaceId: WORKSPACE_ID,
+          roundId,
+          sentenceId: id,
+          position: 2,
+          assigneeId: uid(other.key),
+          status: done ? 'submitted' : 'pending',
+          createdAt: startedAt,
+          submittedAt: done ? answeredAt : null
+        }
+      ]
+    })
+    const answer = (taskId: string, at: Date, isco: string[] | null) =>
+      rows.map(a => ({
+        workspaceId: WORKSPACE_ID,
+        taskId,
+        taxonomyId: a.taxonomyId,
+        level: a.level,
+        nodeCode: isco && a.taxonomyId === 'demo_t_isco' ? isco[a.level - 1]! : a.nodeCode,
+        createdAt: at
+      }))
+    const iscoLeaf = rows.filter(a => a.taxonomyId === 'demo_t_isco').sort((a, b) => b.level - a.level)[0]!.nodeCode
+    const differs = state === 'disagreed' || state === 'reviewed'
+    await tx.doubleTaskLabel.createMany({
+      data: [
+        ...answer(`${roundId}_1`, startedAt, null),
+        ...(done ? answer(`${roundId}_2`, answeredAt, differs ? iscoPath(iscoSibling(iscoLeaf)) : null) : [])
+      ]
+    })
+    await tx.doubleOutcome.createMany({
+      data: ['demo_t_isco', 'demo_t_isic'].map(taxonomyId => {
+        const disputed = differs && taxonomyId === 'demo_t_isco'
+        return {
+          workspaceId: WORKSPACE_ID,
+          roundId,
+          sentenceId: id,
+          taxonomyId,
+          sourceTaskId: `${roundId}_1`,
+          state: !done
+            ? ('waiting' as const)
+            : disputed
+              ? state === 'reviewed'
+                ? ('reviewed' as const)
+                : ('disagreed' as const)
+              : ('agreed' as const),
+          matched: done ? !disputed : null,
+          comparedAt: done ? answeredAt : null,
+          reviewedById: disputed && state === 'reviewed' ? uid('amina') : null,
+          reviewedAt: disputed && state === 'reviewed' ? new Date(answeredAt.getTime() + 3_600_000) : null
+        }
+      })
+    })
+    await tx.sentenceAssignment.createMany({
+      data: [
+        {
+          workspaceId: WORKSPACE_ID,
+          sentenceId: id,
+          membershipId: memberId(other.key),
+          assignedAt: startedAt,
+          assignedBy: uid('amina')
+        }
+      ],
+      skipDuplicates: true
+    })
+    if (state === 'waiting' || state === 'disagreed')
+      await tx.sentence.update({ where: { id }, data: { status: 'pending' } })
+    if (done) {
+      await tx.labelingActivity.createMany({
+        data: ['demo_t_isco', 'demo_t_isic'].map(taxonomyId => ({
+          workspaceId: WORKSPACE_ID,
+          sentenceId: id,
+          taxonomyId,
+          actorId: uid(other.key),
+          operationId: `demo-double-${i}-${taxonomyId}`,
+          createdAt: answeredAt
+        }))
+      })
+    }
+    doubles++
+  }
+
   await tx.taxonomy.update({ where: { id: 'demo_t_isco' }, data: { newAnnotationsSinceLastLearning: labelled.ISCO08 } })
   await tx.taxonomy.update({ where: { id: 'demo_t_isic' }, data: { newAnnotationsSinceLastLearning: labelled.ISIC4 } })
 
@@ -789,6 +932,7 @@ async function seed(tx: Tx, passwordHash: string | null, reset: boolean) {
     activity: activity.length,
     comments: comments.length,
     suggestions: suggestions.length,
+    doubleAnnotation: doubles,
     members: admins.length + PEOPLE.length
   }
 }

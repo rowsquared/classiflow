@@ -15,6 +15,16 @@ import {
 // `status` the filter panel's statuses, which only apply on the "All" tab.
 
 export const QUEUE_TABS = ['all', 'pending', 'submitted', 'skipped'] as const
+
+/** Managers' double-annotation filter (queueWhere `double`). */
+export const DOUBLE_FILTERS = ['any', 'review', 'waiting', 'gap', 'done'] as const
+export const DOUBLE_FILTER_LABELS: Record<(typeof DOUBLE_FILTERS)[number], string> = {
+  any: 'Any double annotation',
+  review: 'Needs review',
+  waiting: 'Waiting for labels',
+  gap: 'Needs another person',
+  done: 'Confirmed'
+}
 export type QueueTab = (typeof QUEUE_TABS)[number]
 
 export const queueFilterParsers = {
@@ -36,7 +46,8 @@ export const queueFilterParsers = {
   hasComments: parseAsBoolean,
   hasSubmittedLabels: parseAsBoolean,
   hasAISuggestions: parseAsBoolean,
-  importId: parseAsString
+  importId: parseAsString,
+  double: parseAsStringLiteral(DOUBLE_FILTERS)
 }
 
 export const queueParsers = {
@@ -72,7 +83,8 @@ export const EMPTY_QUEUE_FILTERS: QueueFilterValues = {
   hasComments: null,
   hasSubmittedLabels: null,
   hasAISuggestions: null,
-  importId: null
+  importId: null,
+  double: null
 }
 
 /** Only the filter-panel values of a queue state. */
@@ -99,6 +111,7 @@ export function countActiveFilters(f: QueueFilterValues): number {
     f.hasSubmittedLabels !== null,
     f.hasAISuggestions !== null,
     Boolean(f.importId),
+    Boolean(f.double),
     f.status.length > 0
   ].filter(Boolean).length
 }
@@ -129,6 +142,7 @@ function appendFilters(params: URLSearchParams, f: QueueFilterValues) {
     if (value !== null) params.set(key, String(value))
   }
   if (f.importId) params.set('importId', f.importId)
+  if (f.double) params.set('double', f.double)
 }
 
 /**

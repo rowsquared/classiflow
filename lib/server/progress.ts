@@ -13,6 +13,7 @@ import type {
   ProgressPeople,
   ProgressPerson,
   ProgressTimeline,
+  DoubleProgress,
   ReportFilter,
   ReportMeta
 } from '@/lib/contracts/progress'
@@ -26,7 +27,9 @@ import { bucketsFor, normalizeRange, type Granularity, type ReportingRange } fro
 // (LabelingActivity) by the selected actors, in records the viewer may see.
 // Every report runs a fixed number of queries, whatever the team size: one for
 // the workspace's settings, at most three to resolve the scope, one (people:
-// at most two) for the figures.
+// at most two; overview: two with double annotation) for the figures.
+// Activity counts labelling only (kind 'label'): double-annotation review
+// decisions are reported in the overview's double section.
 // ---------------------------------------------------------------------------
 
 /** A person or team selector the viewer may not use (or that does not exist here). */
@@ -132,6 +135,7 @@ function assignedTo(memberships: string[] | null, sentenceId: Prisma.Sql) {
 function activityWhere(workspaceId: string, { range, scope }: ReportContext) {
   return Prisma.sql`
     e."workspaceId" = ${workspaceId}
+    AND e.kind = 'label'
     AND e."createdAt" >= ${range.from} AND e."createdAt" < ${range.to}
     ${scope.actors === null ? Prisma.empty : Prisma.sql`AND e."actorId" = ANY(${scope.actors}::text[])`}
     ${assignedTo(scope.visible, Prisma.sql`e."sentenceId"`)}`
@@ -173,11 +177,13 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
       FROM "Sentence" s
      WHERE s."workspaceId" = ${user.workspaceId} ${assignedTo(context.scope.workload, Prisma.sql`s.id`)}`
   const { labeledRecords, completedInPeriod, importedInPeriod, ...counts } = row!
+  const double = user.role === 'labeller' ? null : await doubleProgress(user.workspaceId, context)
   return {
     data: {
       ...context.meta,
       workload: { ...counts, remaining: counts.total - counts.complete },
       activity: { labeledRecords },
+      double,
       projection: projectCompletion({
         remaining: counts.total - counts.complete,
         completedInPeriod,
@@ -189,6 +195,43 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
       })
     }
   }
+}
+
+/** Double annotation figures for the overview, in one query (workload scope). */
+async function doubleProgress(workspaceId: string, context: ReportContext): Promise<DoubleProgress> {
+  const inScope = assignedTo(context.scope.workload, Prisma.sql`r."sentenceId"`)
+  const [row] = await db().$queryRaw<
+    Array<Omit<DoubleProgress, 'agreement'> & { agreement: DoubleProgress['agreement'] | null }>
+  >`
+    SELECT
+      (SELECT count(*)::int FROM "DoubleRound" r
+        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}) AS "inProgress",
+      (SELECT count(*)::int FROM "DoubleRound" r
+        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}
+          AND EXISTS (SELECT 1 FROM "DoubleOutcome" o WHERE o."roundId" = r.id AND o.state = 'disagreed')) AS "needsReview",
+      (SELECT count(*)::int FROM "DoubleRound" r
+        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}
+          AND EXISTS (SELECT 1 FROM "DoubleTask" t WHERE t."roundId" = r.id
+                       AND (t.status = 'skipped' OR (t.status = 'pending' AND t."assigneeId" IS NULL)))) AS "needsPerson",
+      (SELECT count(DISTINCT r."sentenceId")::int FROM "DoubleRound" r
+        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'completed' ${inScope}
+          AND NOT EXISTS (SELECT 1 FROM "DoubleRound" open WHERE open."sentenceId" = r."sentenceId" AND open.status = 'active')) AS confirmed,
+      (SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
+        WHERE e."workspaceId" = ${workspaceId} AND e.kind = 'review'
+          AND e."createdAt" >= ${context.range.from} AND e."createdAt" < ${context.range.to}
+          ${assignedTo(context.scope.workload, Prisma.sql`e."sentenceId"`)}) AS "reviewedInPeriod",
+      (SELECT json_agg(a ORDER BY a."taxonomyKey") FROM (
+         SELECT tx.key AS "taxonomyKey",
+                count(*) FILTER (WHERE o.matched)::int AS agreed,
+                count(*)::int AS compared
+           FROM "DoubleOutcome" o
+           JOIN "DoubleRound" r ON r.id = o."roundId"
+           JOIN "Taxonomy" tx ON tx.id = o."taxonomyId"
+          WHERE o."workspaceId" = ${workspaceId} AND o.matched IS NOT NULL AND r.status <> 'cancelled'
+            AND o."comparedAt" >= ${context.range.from} AND o."comparedAt" < ${context.range.to}
+            ${inScope}
+          GROUP BY tx.key) a) AS agreement`
+  return { ...row!, agreement: row!.agreement ?? [] }
 }
 
 /** Distinct records labeled per day or Monday week, every bucket of the range present. */

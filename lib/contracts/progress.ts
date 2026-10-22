@@ -110,6 +110,26 @@ export type ProgressOverview = ReportMeta & {
     flagged: number
   }
   activity: { labeledRecords: number }
+  /**
+   * Double annotation in the workload scope; null for labellers (who must
+   * not learn how others answered). Counts overlap, they are not a split.
+   */
+  double: DoubleProgress | null
+}
+
+export type DoubleProgress = {
+  /** Records with an active round. */
+  inProgress: number
+  /** ... of which at least one taxonomy disagrees. */
+  needsReview: number
+  /** ... of which a part was skipped or lost its person. */
+  needsPerson: number
+  /** Records whose round is complete (agreed, reviewed or single label accepted). */
+  confirmed: number
+  /** Distinct records with a review decision in the period. */
+  reviewedInPeriod: number
+  /** Original comparisons in the period, per taxonomy: matching pairs of all compared pairs. */
+  agreement: Array<{ taxonomyKey: string; agreed: number; compared: number }>
 }
 
 export type ProgressTimeline = ReportMeta & {

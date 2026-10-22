@@ -132,7 +132,7 @@ export default function TaxonomyBrowser({
         chipDelete: 'text-[#008080] hover:text-[#005050] hover:bg-[#c9efea]',
         selectedBg: 'bg-[#e6fbf8]',
         code: 'text-[#008080]',
-        codeSelected: 'text-[#008080]',
+        codeSelected: 'text-[#006666]',
         hoverBg: 'hover:bg-[#edfdfa]',
         indicator: 'text-[#008080]',
         indicatorSelected: 'text-[#008080]'
@@ -168,7 +168,7 @@ export default function TaxonomyBrowser({
         chipDelete: 'text-rose-600 hover:text-rose-900 hover:bg-rose-200',
         selectedBg: 'bg-rose-50',
         code: 'text-rose-600',
-        codeSelected: 'text-rose-600',
+        codeSelected: 'text-rose-700',
         hoverBg: 'hover:bg-rose-50',
         indicator: 'text-rose-600',
         indicatorSelected: 'text-rose-600'
@@ -179,8 +179,8 @@ export default function TaxonomyBrowser({
         chipLevel: 'bg-orange-200 text-orange-700',
         chipDelete: 'text-orange-600 hover:text-orange-900 hover:bg-orange-200',
         selectedBg: 'bg-orange-50',
-        code: 'text-orange-600',
-        codeSelected: 'text-orange-600',
+        code: 'text-orange-700',
+        codeSelected: 'text-orange-700',
         hoverBg: 'hover:bg-orange-50',
         indicator: 'text-orange-600',
         indicatorSelected: 'text-orange-600'
@@ -351,7 +351,7 @@ export default function TaxonomyBrowser({
                         type="button"
                         onClick={() => handleChipClick(label)}
                         className={`text-xs px-2 py-0.5 rounded ${colors.chipLevel}`}
-                        aria-label={`Browse level ${label.level} for ${label.nodeCode}`}
+                        aria-label={`L${label.level}: browse level ${label.level} for ${label.nodeCode}`}
                       >
                         L{label.level}
                       </button>

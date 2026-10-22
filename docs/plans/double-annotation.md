@@ -1,6 +1,8 @@
 # Independent double annotation: implementation plan
 
-**Status:** proposed; no application implementation started.
+**Status:** v1 implemented on branch `feature/double-annotation` (not merged
+to `staging`); open items in the section 0 checklist. Section 0 is the simplified v1 contract and the
+handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
 
@@ -11,6 +13,95 @@ in progress when this plan was drafted.
 **Interactive mockup:** open the [standalone preview](../mockups/double-annotation/index.html).
 Its [editable source and usage notes](../mockups/double-annotation/README.md)
 are stored alongside it. All interactions use illustrative data.
+
+## 0. v1 implementation (handover)
+
+### Simplified contract
+
+The goal is a workflow supervisors can run without training: pick two
+people, watch one badge, decide disagreements on the record screen.
+
+- **Model** (`prisma/schema.prisma`, migration `20261023100000_double_annotation`):
+  `DoubleRound` (one active per record) → two `DoubleTask`s (position 1/2,
+  two different people, partial unique indexes) → `DoubleTaskLabel` (each
+  person's path, immutable by trigger) and `DoubleOutcome` per required
+  taxonomy (`waiting | agreed | disagreed | reviewed | accepted_single`,
+  frozen `matched`/`comparedAt`, `sourceTaskId` = first answer).
+  `SentenceAnnotation` stays the current result (first answer while waiting
+  or disagreeing). `Sentence.status` is `submitted` only when every required
+  taxonomy is confirmed. `LabelingActivity.kind` is `label | review`.
+- **Rules:** `lib/double-annotation.ts` (pure), workflow in
+  `lib/server/double-annotation.ts`, queue row summary in
+  `lib/server/double-queue.ts`. Required taxonomies = active taxonomies when
+  the round starts (pinned via the outcome rows).
+- **Starting** (`POST /sentences/double-annotation`, preview with
+  `dryRun`, commit with the previewed counts as `expect`, 409 if changed):
+  per record `fresh` (both people label; old partial/legacy labels stay as a
+  fallback result), `labelled` (complete labels by one known author become
+  answer 1; the other chosen person adds answer 2), `already` (left alone),
+  `needs_first` (left out: unlabelled but only one person chosen). The
+  preview reports all four counts, so nothing is skipped silently.
+- **Labelling:** a participant's save writes their own answer; answers are
+  final (409 on change). Blind views: own labels only, no AI suggestions, no
+  other people's comments, own part's status in queue tabs, label/AI filters
+  skip such records. Skip only skips their part.
+- **Review:** a non-participant admin, or a supervisor whose team contains
+  both labellers, saves a path on the record screen = decision (`reviewed`,
+  original comparison kept). Allowed once both answers exist.
+- **Manager commands** (`POST /sentences/[id]/double-annotation`):
+  `accept_single` (reason; refused while disagreeing or with an empty
+  taxonomy), `stop` (back to ordinary work, history kept), `reassign`
+  (only a part with no answers yet).
+- **Bulk:** bulk label/skip refuse selections containing active rounds (409);
+  flags and comments still work.
+- **Export:** existing columns unchanged; appended `annotation_mode`,
+  `annotation_status` (`unlabelled | partial | provisional | needs_review |
+  confirmed`), `{key}_annotation_status` (`unlabelled | single | provisional |
+  disagreed | agreed | reviewed | accepted_single`). `labels=confirmed` keeps
+  confirmed records only; `format=details` streams one row per record,
+  round, person and taxonomy. Header collisions → 409.
+- **Learning:** unchanged code path: it selects `submitted` records, which
+  for double annotation now means confirmed. The learning counter grows only
+  when a path becomes confirmed.
+
+**Deliberately deferred** (keep out of v1 to stay simple): reopening a
+submitted answer (reviewer decides instead), repeat rounds, exposure
+tracking, command receipts table (record lock + final answers make replays
+safe), immutable learning snapshots/reservations, taxonomy-change
+revalidation of open rounds, private notes visible to reviewers (blind
+viewers simply see only their own comments), kappa.
+
+### Checklist
+
+- [x] Schema, migration (RLS, partial unique indexes, immutability trigger), `WORKSPACE_MODELS`
+- [x] Pure rules (`lib/double-annotation.ts`)
+- [x] Workflow service: start/plan, answer, compare, review, accept single, stop, reassign
+- [x] Single save route routes through the workflow; bulk refuses double records
+- [x] Blind reads: record GET, comments, queue rows/tabs/filters; manager `double` view on record GET
+- [x] Queue `double` filter (`any | review | waiting | gap | done`) and `needsReview` stat
+- [x] Export status columns, confirmed-only, details CSV
+- [x] Integration tests `tests/integration/double-annotation.test.ts` (5 journeys) + export header test updated
+- [x] UI: assignment dialog mode "Two independent labels" with preview counts (`components/queue/DoubleAnnotationPanel.tsx`)
+- [x] UI: queue badge per row (`DoubleBadge`), `double` filter in URL and filter panel, "Needs review · N" shortcut
+- [x] UI: record screen panel (`components/labeling/DoublePanel.tsx`): both answers, first difference marked, use an answer, choose another, accept single, stop
+- [x] UI: hand over an unstarted part from the record screen ("Hand over a part…")
+- [x] UI: labeller notice "Independent labelling" + locked submitted taxonomies
+- [x] UI: export page selector (all / confirmed) + details download
+- [x] Progress dashboard: "Double annotation" section (in progress, needs review, needs another person, confirmed, reviewed in period, agreement per taxonomy with agreed/compared); activity counts labelling only (`LabelingActivity.kind`)
+- [x] Unit tests for `lib/double-annotation.ts`
+- [x] e2e journey (`tests/e2e/double-annotation.spec.ts`) with axe on the dialog's new mode and the review panel; fixed two TaxonomyBrowser findings it exposed (selected-code contrast, chip name)
+- [x] Browser check, supervisor side (local demo data): dialog preview and start, queue filter and badges, record panel while waiting
+- [x] Labeller side (blind view, independence notice) and a real disagreement review: covered by the e2e journey
+
+**Local test setup used:** throwaway PostgreSQL 16 cluster on port 5499
+(`classiflow_dev` seeded with `scripts/seed-demo.ts`, `classiflow_test` for
+integration tests), dev server via the git-ignored `.claude/launch.json`
+entry `classiflow-double-local` on port 3003.
+- [x] Docs: AGENTS.md, docs/security.md (double-annotation table, access matrix), README, docs/ideas.md
+- [x] lint, format, production build, full integration suite (204 tests)
+- [ ] Benchmark the queue `double` filters and personal status tabs at scale (runtime role)
+- [ ] Full e2e suite run (only the new spec and `accessibility.spec.ts` were run)
+- [ ] Product follow-ups (section 0 "deliberately deferred"), if wanted
 
 ## 1. Product contract
 

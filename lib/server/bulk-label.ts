@@ -32,6 +32,11 @@ const bulkLabelSchema = z.object({
 })
 
 class MissingRecordError extends Error {}
+class DoubleRecordsError extends Error {
+  constructor(readonly count: number) {
+    super('records in double annotation')
+  }
+}
 
 /**
  * Applies one label path (for one taxonomy) and/or a flag/comment to many
@@ -39,6 +44,10 @@ class MissingRecordError extends Error {}
  * validated, each record's status is recomputed (submitted only when every
  * active taxonomy has human labels), and a flag/comment-only request leaves
  * statuses alone. All-or-nothing.
+ *
+ * Records in double annotation take labels and skips only one at a time
+ * (each person's own answer, or a reviewer's decision): a bulk label or skip
+ * that includes one is refused as a whole. Flags and comments still apply.
  */
 export async function applyBulkLabels(user: CurrentUser, input: unknown) {
   try {
@@ -114,6 +123,10 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       })
       if (current.length !== sentenceIds.length) {
         throw new MissingRecordError()
+      }
+      if (wroteLabels || requested === 'skipped') {
+        const inDouble = await tx.doubleRound.count({ where: { sentenceId: { in: sentenceIds }, status: 'active' } })
+        if (inDouble > 0) throw new DoubleRecordsError(inDouble)
       }
 
       if (wroteLabels) {
@@ -213,6 +226,15 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       message: `Successfully labeled ${labeled} sentence(s)`
     })
   } catch (error) {
+    if (error instanceof DoubleRecordsError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `${error.count} of the selected records are in double annotation. Label them one at a time, or leave them out of the selection.`
+        },
+        { status: 409 }
+      )
+    }
     if (error instanceof MissingRecordError) {
       return NextResponse.json({ ok: false, error: 'One or more records do not exist' }, { status: 404 })
     }

@@ -15,6 +15,10 @@ interface QueueToolbarProps {
   statsStale?: boolean
   onToggleFilters: () => void
   activeFilterCount: number
+  /** Managers: records in double annotation with a disagreement, and the shortcut to them. */
+  needsReview?: number
+  needsReviewActive?: boolean
+  onToggleNeedsReview?: () => void
 }
 
 export default function QueueToolbar({
@@ -23,7 +27,10 @@ export default function QueueToolbar({
   stats,
   statsStale = false,
   onToggleFilters,
-  activeFilterCount
+  activeFilterCount,
+  needsReview = 0,
+  needsReviewActive = false,
+  onToggleNeedsReview
 }: QueueToolbarProps) {
   return (
     <div className="bg-white border-b border-gray-200 p-4">
@@ -78,6 +85,21 @@ export default function QueueToolbar({
             </span>
           )}
         </div>
+
+        {onToggleNeedsReview && (needsReview > 0 || needsReviewActive) && (
+          <button
+            type="button"
+            onClick={onToggleNeedsReview}
+            aria-pressed={needsReviewActive}
+            className={`ml-auto px-3 py-1.5 text-sm font-medium border focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              needsReviewActive
+                ? 'bg-indigo-600 border-indigo-600 text-white'
+                : 'bg-[#F7F3B3] border-[#d6cf6b] text-[#4d470b] hover:bg-[#efe98f]'
+            }`}
+          >
+            Needs review · {needsReview.toLocaleString()}
+          </button>
+        )}
       </div>
     </div>
   )

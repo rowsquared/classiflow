@@ -99,6 +99,8 @@ model User {
   outgoingMails   OutgoingMail[]        @relation("MailRecipient")
   requestedMails  OutgoingMail[]        @relation("MailRequester")
   labelingEvents  LabelingActivity[]
+  doubleTasks     DoubleTask[]          @relation("DoubleTaskAssignee")
+  doubleReviews   DoubleOutcome[]       @relation("DoubleOutcomeReviewer")
 }
 
 // One row per signed-in browser. Signing a user out everywhere deletes their rows.
@@ -195,6 +197,7 @@ model Workspace {
   outgoingMails    OutgoingMail[]
   labelingEvents   LabelingActivity[]
   aiEndpointGrants AIEndpointGrant[]
+  doubleRounds     DoubleRound[]
 }
 
 // A person's role in one workspace. The supervisor tree links memberships of
@@ -253,6 +256,8 @@ model Taxonomy {
   aiLearningJobs AILearningJob[]        @relation("LearningJobs")
   aiSyncJobs     AITaxonomySyncJob[]
   labelingEvents LabelingActivity[]
+  doubleLabels   DoubleTaskLabel[]
+  doubleOutcomes DoubleOutcome[]
 
   @@unique([workspaceId, key])
   @@unique([workspaceId, id])
@@ -377,6 +382,9 @@ model Sentence {
   labelingJobs   AILabelingJobInput[]
   learningJobs   AILearningJobInput[]
   labelingEvents LabelingActivity[]
+  doubleRounds   DoubleRound[]
+  doubleTasks    DoubleTask[]
+  doubleOutcomes DoubleOutcome[]
 
   @@unique([workspaceId, recordKey])
   @@unique([workspaceId, id])
@@ -657,13 +665,16 @@ model Comment {
 // Deleting the record or the taxonomy deletes its rows; deleting the actor's
 // account keeps them without an actor.
 model LabelingActivity {
-  id          String   @id @default(cuid())
+  id          String               @id @default(cuid())
   workspaceId String
   sentenceId  String
   taxonomyId  String
   actorId     String?
   operationId String
-  createdAt   DateTime @default(now())
+  // label: a person's own labels (ordinary or double annotation); review: a
+  // supervisor's or admin's decision on a double-annotation disagreement.
+  kind        LabelingActivityKind @default(label)
+  createdAt   DateTime             @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
   sentence  Sentence  @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
@@ -674,6 +685,132 @@ model LabelingActivity {
   @@index([workspaceId, createdAt])
   @@index([workspaceId, actorId, createdAt])
   @@index([sentenceId])
+}
+
+enum LabelingActivityKind {
+  label
+  review
+}
+
+// Double annotation (lib/double-annotation.ts, docs/plans/double-annotation.md).
+// A round asks two different people to label a record independently. Each
+// person's labels are kept in their task (DoubleTaskLabel) and never
+// overwritten; SentenceAnnotation stays the record's current, exportable
+// result: the first answer while waiting, the agreed or reviewed path once
+// confirmed. DoubleOutcome holds the state per required taxonomy (the active
+// taxonomies when the round started). At most one active round per record
+// (partial unique index in the migration).
+enum DoubleRoundStatus {
+  active
+  completed // every required taxonomy confirmed, or a single label accepted
+  cancelled // double annotation stopped; the record is ordinary work again
+}
+
+enum DoubleTaskStatus {
+  pending
+  submitted // labels for every required taxonomy
+  skipped
+  cancelled
+}
+
+enum DoubleOutcomeState {
+  waiting // fewer than two answers
+  agreed // two identical paths
+  disagreed // two different paths, waiting for review
+  reviewed // a supervisor or admin chose the result
+  accepted_single // the second answer was waived; the one answer stands
+}
+
+model DoubleRound {
+  id          String            @id @default(cuid())
+  workspaceId String
+  sentenceId  String
+  status      DoubleRoundStatus @default(active)
+  createdById String?
+  createdAt   DateTime          @default(now())
+  closedAt    DateTime?
+  closedById  String?
+  closeReason String?
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id])
+  sentence  Sentence        @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  tasks     DoubleTask[]
+  outcomes  DoubleOutcome[]
+
+  @@unique([workspaceId, id])
+  @@index([sentenceId])
+  @@index([workspaceId, status])
+}
+
+// The work one person owes in a round: position 1 or 2, never the same person
+// twice (partial unique indexes). fromBaseline: labels that existed before the
+// round started and count as that person's answer.
+model DoubleTask {
+  id           String           @id @default(cuid())
+  workspaceId  String
+  roundId      String
+  sentenceId   String
+  position     Int
+  assigneeId   String?
+  status       DoubleTaskStatus @default(pending)
+  fromBaseline Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  submittedAt  DateTime?
+
+  round    DoubleRound       @relation(fields: [workspaceId, roundId], references: [workspaceId, id], onDelete: Cascade)
+  sentence Sentence          @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  assignee User?             @relation("DoubleTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  labels   DoubleTaskLabel[]
+
+  @@unique([workspaceId, id])
+  @@index([roundId])
+  @@index([sentenceId])
+  @@index([assigneeId, status])
+}
+
+// One person's submitted path for one taxonomy. Written once, never changed.
+model DoubleTaskLabel {
+  workspaceId       String
+  taskId            String
+  taxonomyId        String
+  level             Int
+  nodeCode          String // String codes; level-specific unknown codes (lib/constants.ts)
+  labelingStartedAt DateTime?
+  createdAt         DateTime  @default(now())
+
+  task     DoubleTask @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
+  taxonomy Taxonomy   @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([taskId, taxonomyId, level])
+  @@index([taxonomyId])
+}
+
+// The state of one required taxonomy in a round. sourceTaskId: the answer
+// that is the current result while waiting or disagreeing (the first to
+// arrive; never changed by a later answer). matched/comparedAt: the original
+// comparison, frozen when the second answer arrived; review never rewrites it.
+model DoubleOutcome {
+  workspaceId  String
+  roundId      String
+  sentenceId   String
+  taxonomyId   String
+  state        DoubleOutcomeState @default(waiting)
+  sourceTaskId String?
+  matched      Boolean?
+  comparedAt   DateTime?
+  reviewedById String?
+  reviewedAt   DateTime?
+  note         String?
+
+  round      DoubleRound @relation(fields: [workspaceId, roundId], references: [workspaceId, id], onDelete: Cascade)
+  sentence   Sentence    @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)
+  taxonomy   Taxonomy    @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
+  reviewedBy User?       @relation("DoubleOutcomeReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@id([roundId, taxonomyId])
+  @@index([sentenceId])
+  @@index([workspaceId, state])
+  @@index([taxonomyId, state])
 }
 
 // Who did what to which object (lib/audit.ts). workspaceId is null for

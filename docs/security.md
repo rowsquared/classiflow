@@ -169,6 +169,22 @@ self-supervision, or a labeller as supervisor. Changes that could remove the
 last admin of a workspace (or the last platform admin) are serialised and
 refused.
 
+### Double annotation
+
+Records in an active double-annotation round (`lib/server/double-annotation.ts`)
+narrow what some people may see and do, on top of record visibility:
+
+| Who | Sees | May write |
+| --- | --- | --- |
+| One of the round's two labellers (any role) | only their own answer and their own comments; no AI suggestions, no other labels, no last editor; label/AI queue filters skip the record; their queue tabs follow their own part | their own answer, once per taxonomy (final); skip their part; comments |
+| A labeller with access who is not in the round | no labels | nothing but comments and flags |
+| Admin not in the round | both answers, outcome, people | review decisions, accept single label, stop, hand over a part |
+| Supervisor not in the round | the same, when both labellers are in their subtree | the same; otherwise read-only (a person outside the team needs an admin) |
+
+Nobody reviews a round they label in. Bulk labels and bulk skips refuse a
+selection that contains an active round (409). The progress overview's
+double-annotation figures (agreement included) are null for labellers.
+
 ## Access matrix
 
 Paths below are relative to `/api/workspaces/[workspaceId]` unless they start
@@ -197,7 +213,9 @@ admin) with a valid session who does not have to reset their password.
 | `/sentences/[id]/annotations`, `/flag` | POST | member; record in scope |
 | `/sentences/[id]/comments` | GET, POST, PATCH (resolve) | member; record in scope |
 | `/sentences/[id]/comments` | DELETE | record in scope **and** (comment author or admin) |
-| `/sentences/bulk-label` | POST | member; **every** record in scope |
+| `/sentences/bulk-label` | POST | member; **every** record in scope; none in an active double-annotation round when labelling or skipping |
+| `/sentences/double-annotation` | POST (preview with `dryRun`, start) | admin, supervisor; every record in scope and both people in the caller's team |
+| `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
 | `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |
 | `/sentences/import`, `/imports/[id]` DELETE | POST, DELETE | admin |
 | `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |
@@ -210,7 +228,7 @@ admin) with a valid session who does not have to reset their password.
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
 | `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
-| `/export` | GET | admin; re-checked before every page of the stream |
+| `/export` | GET (`labels=confirmed`, `format=details`) | admin; re-checked before every page of the stream |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
 | `/progress/people` | GET | admin, supervisor (own subtree); same selector rule. Admins' unrestricted view also lists platform admins who labeled here without a membership |
 | `/progress/members` | GET | admin, supervisor; picker search within the caller's scope (names and roles only); a `teamId` outside it is a 403 |
