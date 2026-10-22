@@ -200,9 +200,8 @@ describe('overview', () => {
     expect(body.activity.labeledRecords).toBe(3)
     expect(body.projection).toMatchObject({
       completedInPeriod: 3,
-      importedInPeriod: 6,
-      status: 'no-net-progress',
-      date: null
+      status: 'projected',
+      date: expect.any(String)
     })
     expect(body.timeZone).toBe('UTC')
     expect(body.activityCoverageStart).toEqual(expect.any(String))

@@ -212,7 +212,7 @@ export default function ProgressDashboard({
         <Section
           id="overview"
           title="Workload now and activity"
-          description="Current workload and activity in the selected dates. The projection uses complete records with human label activity minus imports per day in that period, applied to the remaining records now. A relabeled record may make the estimate optimistic. AI suggestions do not count."
+          description="Current workload and activity in the selected dates. The projection applies complete records with human label activity per day in the selected period to the remaining records now. It assumes no new imports. A relabeled record may make the estimate optimistic. AI suggestions do not count."
           loading={!overviewQuery.data}
           updating={overviewQuery.isPlaceholderData}
           error={errorText(overviewQuery.error, 'the overview')}

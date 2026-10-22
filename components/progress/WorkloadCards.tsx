@@ -46,16 +46,14 @@ export default function WorkloadCards({ overview }: { overview: ProgressOverview
       ? 'Complete'
       : projection.status === 'projected'
         ? formatDay(projection.date!)
-        : projection.status === 'no-net-progress'
-          ? 'No date at current rate'
-          : projection.status === 'too-distant'
-            ? 'More than 10 years'
-            : 'Not enough activity'
+        : projection.status === 'too-distant'
+          ? 'More than 10 years'
+          : 'Not enough activity'
   const rate = (value: number) => value.toLocaleString('en-GB', { maximumFractionDigits: 1 })
   const projectionDetail =
     projection.status === 'complete'
       ? 'No records remaining'
-      : `${rate(projection.completedPerDay)} complete records labeled/day − ${rate(projection.importedPerDay)} imported/day = ${rate(projection.netPerDay)} net/day`
+      : `${rate(projection.completedPerDay)} complete records labeled/day over ${projection.daysInPeriod} days`
 
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-5">
