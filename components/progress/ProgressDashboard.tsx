@@ -247,7 +247,7 @@ export default function ProgressDashboard({
         <Section
           id="overview"
           title="Workload now and activity"
-          description="The first three cards are the records in scope as they are now; “Labeled in period” counts distinct records with a saved human label in the selected dates. AI suggestions alone never count."
+          description="Current workload and activity in the selected dates. The projection uses complete records with human label activity minus imports per day in that period, applied to the remaining records now. A relabeled record may make the estimate optimistic. AI suggestions do not count."
           loading={!overviewQuery.data}
           updating={overviewQuery.isPlaceholderData}
           error={errorText(overviewQuery.error, 'the overview')}

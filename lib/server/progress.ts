@@ -1,5 +1,6 @@
 import 'server-only'
 import { db } from '@/lib/workspace/db'
+import { projectCompletion } from '@/lib/progress-projection'
 import { Prisma } from '@/lib/generated/prisma/client'
 import type { CurrentUser } from '@/lib/api-auth'
 import { teamMembers, visibleMembers, type MemberRef } from '@/lib/access'
@@ -150,7 +151,13 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
   const { data: context, error } = await reportContext(user, filter)
   if (error !== undefined) return { error }
   const [row] = await db().$queryRaw<
-    Array<Omit<ProgressOverview['workload'], 'remaining'> & { labeledRecords: number }>
+    Array<
+      Omit<ProgressOverview['workload'], 'remaining'> & {
+        labeledRecords: number
+        completedInPeriod: number
+        importedInPeriod: number
+      }
+    >
   >`
     SELECT count(*)::int AS total,
            count(*) FILTER (WHERE s.status = 'submitted')::int AS complete,
@@ -160,14 +167,32 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
            count(*) FILTER (WHERE s.flagged)::int AS flagged,
            (SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
              WHERE ${activityWhere(user.workspaceId, context)}) AS "labeledRecords"
+           ,(SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
+               JOIN "Sentence" done ON done."workspaceId" = e."workspaceId" AND done.id = e."sentenceId"
+              WHERE ${activityWhere(user.workspaceId, context)} AND done.status = 'submitted'
+                ${assignedTo(context.scope.workload, Prisma.sql`done.id`)}) AS "completedInPeriod"
+           ,(SELECT count(*)::int FROM "Sentence" incoming
+              WHERE incoming."workspaceId" = ${user.workspaceId}
+                AND incoming."createdAt" >= GREATEST(${context.range.from}::timestamp, ${new Date(context.meta.activityCoverageStart)}::timestamp)
+                AND incoming."createdAt" < ${context.range.to}
+                ${assignedTo(context.scope.workload, Prisma.sql`incoming.id`)}) AS "importedInPeriod"
       FROM "Sentence" s
      WHERE s."workspaceId" = ${user.workspaceId} ${assignedTo(context.scope.workload, Prisma.sql`s.id`)}`
-  const { labeledRecords, ...counts } = row!
+  const { labeledRecords, completedInPeriod, importedInPeriod, ...counts } = row!
   return {
     data: {
       ...context.meta,
       workload: { ...counts, remaining: counts.total - counts.complete },
-      activity: { labeledRecords }
+      activity: { labeledRecords },
+      projection: projectCompletion({
+        remaining: counts.total - counts.complete,
+        completedInPeriod,
+        importedInPeriod,
+        startDate: context.range.startDate,
+        endDate: context.range.endDate,
+        activityCoverageStart: context.meta.activityCoverageStart,
+        timeZone: context.range.timeZone
+      })
     }
   }
 }

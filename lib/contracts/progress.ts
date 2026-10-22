@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { MAX_RANGE_DAYS } from '@/lib/reporting-dates'
+import type { CompletionProjection } from '@/lib/progress-projection'
 
 // Query parameters of /api/workspaces/[id]/progress/*, shared by the handlers and the page.
 
@@ -97,6 +98,7 @@ export type ReportMeta = {
 }
 
 export type ProgressOverview = ReportMeta & {
+  projection: CompletionProjection
   workload: {
     total: number
     complete: number

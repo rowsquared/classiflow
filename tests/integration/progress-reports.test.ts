@@ -199,6 +199,12 @@ describe('overview', () => {
     expect(body.workload).toMatchObject({ total: 6, complete: 3, remaining: 3, pending: 3, skipped: 0 })
     // r4 was labeled by two people: one record.
     expect(body.activity.labeledRecords).toBe(3)
+    expect(body.projection).toMatchObject({
+      completedInPeriod: 3,
+      importedInPeriod: 6,
+      status: 'no-net-progress',
+      date: null
+    })
     expect(body.timeZone).toBe('UTC')
     expect(body.activityCoverageStart).toEqual(expect.any(String))
   })
