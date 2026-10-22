@@ -17,6 +17,7 @@ test('queue opens discussion, counts refresh, drafts survive collapse, and Back/
   await expect(page.getByRole('columnheader', { name: 'Comments', exact: true })).toHaveCount(0)
   await expect(row.getByRole('button', { name: /^Comments/ })).toHaveCount(0)
   await row.click()
+  await expect(page).toHaveURL(/\/queue\/[^/?]+(\?|$)/)
   const id = new URL(page.url()).pathname.split('/').pop()!
   const response = await page.request.post(api(`/sentences/${id}/comments`), { data: { body: 'Queue icon check' } })
   expect(response.ok()).toBe(true)
@@ -92,6 +93,7 @@ test('small screens use an accessible dialog, preserve drafts on resize and hand
   page
 }) => {
   await rows(page).filter({ hasText: RECORDS[1]! }).click()
+  await expect(page.getByRole('heading', { name: 'Labeling', exact: true })).toBeVisible()
   await page.setViewportSize({ width: 700, height: 850 })
   await page.keyboard.press('c')
   const dialog = page.getByRole('dialog', { name: 'Comments', exact: true })
