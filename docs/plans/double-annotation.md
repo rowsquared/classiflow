@@ -90,7 +90,13 @@ viewers simply see only their own comments), kappa.
 - [ ] Progress dashboard: small double section (needs review, waiting, confirmed, agreement % with n)
 - [x] Unit tests for `lib/double-annotation.ts`
 - [ ] e2e journey (`tests/e2e/double-annotation.spec.ts`) + axe for the assignment dialog's new mode and the record panel
-- [ ] Manual check in the browser of all journeys (not yet done)
+- [x] Browser check, supervisor side (local demo data): dialog preview and start, queue filter and badges, record panel while waiting
+- [ ] Browser check, labeller side (blind view, locked answer) and a real disagreement review; covered by integration tests only so far
+
+**Local test setup used:** throwaway PostgreSQL 16 cluster on port 5499
+(`classiflow_dev` seeded with `scripts/seed-demo.ts`, `classiflow_test` for
+integration tests), dev server via the git-ignored `.claude/launch.json`
+entry `classiflow-double-local` on port 3003.
 - [ ] Docs: AGENTS.md, docs/security.md access matrix, README feature line
 - [ ] lint, format, build; benchmark queue filters at scale
 
