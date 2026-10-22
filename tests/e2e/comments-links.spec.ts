@@ -105,11 +105,9 @@ test('small screens use an accessible dialog, preserve drafts on resize and hand
   await expect(dialog).toHaveCount(0)
   await page.keyboard.press('c')
   await expect(dialog.getByLabel('Add new comment')).toHaveValue('Keep this draft')
+  // Comments are a dialog at every width: widening keeps it open with the draft.
   await page.setViewportSize({ width: 1280, height: 850 })
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Comments', exact: true }).getByLabel('Add new comment')).toHaveValue(
-    'Keep this draft'
-  )
+  await expect(dialog.getByLabel('Add new comment')).toHaveValue('Keep this draft')
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,

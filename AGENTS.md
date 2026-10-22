@@ -182,8 +182,8 @@ Read `prisma/schema.prisma` before changing data behavior.
 The queue and labeling screen show unresolved comment counts, with resolved
 counts shown separately. Record links use `/w/[workspaceId]/queue/[sentenceId]`;
 `?comments=open` opens the discussion (nuqs). Copy links never include the
-browser-local `list` navigation key. Discussion content is inline in the record
-panel on desktop and uses `Modal` on narrow screens.
+browser-local `list` navigation key. Discussion content opens in a `Modal`
+(`components/labeling/CommentsDialog.tsx`) at every screen size.
 
 ### CSV boundaries
 
