@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server'
 import { reloadWorkspaceUser, workspaceRoute } from '@/lib/api-auth'
 import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
-import { exportStream } from '@/lib/export-csv'
+import { ExportColumnError, detailsStream, exportStream } from '@/lib/export-csv'
 import { audit } from '@/lib/audit'
 import { logError } from '@/lib/logger'
 
 /**
- * GET /api/workspaces/[workspaceId]/export?status=...&dateRange=...&formulaSafe=false
+ * GET /api/workspaces/[workspaceId]/export?status=...&dateRange=...&labels=confirmed&formulaSafe=false
+ * GET ...?format=details: double-annotation details (each person's answer)
+ *
+ * labels=confirmed keeps only records whose labels are confirmed: complete
+ * ordinary work, and double annotation that agreed, was reviewed or accepted
+ * as a single label. The default exports every record with its current labels.
  *
  * Exports records with human labels, AI suggestions and comments; columns and
  * streaming in lib/export-csv.ts. Free-text cells that would run as
@@ -22,6 +27,8 @@ export const GET = workspaceRoute(
       const statusFilter = searchParams.get('status') || 'all'
       const dateRange = searchParams.get('dateRange') || 'all'
       const neutralizeFormulas = searchParams.get('formulaSafe') !== 'false'
+      const labels = searchParams.get('labels') === 'confirmed' ? 'confirmed' : 'all'
+      const details = searchParams.get('format') === 'details'
 
       // Build where clause
       const where: Prisma.SentenceWhereInput = {}
@@ -55,13 +62,19 @@ export const GET = workspaceRoute(
         }
       }
 
+      // Confirmed: submitted (every required taxonomy confirmed) and no round still open.
+      const filter: Prisma.SentenceWhereInput =
+        labels === 'confirmed'
+          ? { AND: [where, { status: 'submitted', doubleRounds: { none: { status: 'active' } } }] }
+          : where
+
       // Each page is read in its own short transaction after re-checking that
       // the caller is still an admin of this workspace.
       const scope = {
         workspaceId: actor.workspaceId,
         stillAllowed: async () => (await reloadWorkspaceUser(actor.id, actor.workspaceId))?.role === 'admin'
       }
-      const stream = await exportStream(scope, where, {
+      const stream = await (details ? detailsStream : exportStream)(scope, filter, {
         neutralizeFormulas,
         onDone: (records: number) =>
           audit({
@@ -69,8 +82,8 @@ export const GET = workspaceRoute(
             actorId: actor.id,
             action: 'export.downloaded',
             entityType: 'export',
-            entityId: 'records',
-            payload: { status: statusFilter, dateRange, records, formulaSafe: neutralizeFormulas }
+            entityId: details ? 'double-annotation-details' : 'records',
+            payload: { status: statusFilter, dateRange, labels, records, formulaSafe: neutralizeFormulas }
           })
       })
 
@@ -79,10 +92,13 @@ export const GET = workspaceRoute(
       return new NextResponse(stream, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="export-${actor.workspaceId}-${new Date().toISOString()}.csv"`
+          'Content-Disposition': `attachment; filename="${details ? 'double-annotation' : 'export'}-${actor.workspaceId}-${new Date().toISOString()}.csv"`
         }
       })
     } catch (error) {
+      if (error instanceof ExportColumnError) {
+        return NextResponse.json({ error: error.message }, { status: 409 })
+      }
       await logError('Export error', error)
       return NextResponse.json({ error: 'Export failed' }, { status: 500 })
     }

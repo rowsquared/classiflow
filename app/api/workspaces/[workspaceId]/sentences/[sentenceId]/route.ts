@@ -5,6 +5,7 @@ import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { logError } from '@/lib/logger'
+import { doubleViewFor, ownAnswers, recordView } from '@/lib/server/double-annotation'
 
 export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
@@ -35,6 +36,52 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
 
     if (!sentence) {
       return NextResponse.json({ error: 'Sentence not found' }, { status: 404 })
+    }
+
+    // Double annotation: its labellers see the record blind (own answer only,
+    // no AI suggestions, own comments); managers get both answers.
+    const doubleView = await doubleViewFor(user, sentenceId)
+    const double = doubleView ? await recordView(user, doubleView) : null
+    if (doubleView && doubleView.mode !== 'manager') {
+      const own = (await ownAnswers(user, [sentenceId])).get(sentenceId)
+      const taxonomies = await db().taxonomy.findMany({
+        where: { id: { in: own?.labels.map(l => l.taxonomyId) ?? [] } },
+        select: { id: true, key: true }
+      })
+      const keyOf = new Map(taxonomies.map(t => [t.id, t.key]))
+      const nodes = await db().taxonomyNode.findMany({
+        where: { taxonomyId: { in: taxonomies.map(t => t.id) }, code: { in: own?.labels.map(l => l.nodeCode) ?? [] } },
+        select: { taxonomyId: true, code: true, label: true, definition: true, isLeaf: true }
+      })
+      const nodeOf = new Map(nodes.map(n => [`${n.taxonomyId}:${n.code}`, n]))
+      const summaries = await commentSummaries([sentenceId], { authorId: user.id, sentenceIds: new Set([sentenceId]) })
+      return NextResponse.json({
+        ...sentence,
+        // The person's own part, not the record's (which would reveal the other answer).
+        status: double?.mode === 'task' ? double.taskStatus : 'pending',
+        lastEditorId: null,
+        commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
+        assignments: [],
+        _count: { comments: summaries.get(sentenceId)?.total ?? 0 },
+        annotations: (own?.labels ?? []).map(l => {
+          const node = nodeOf.get(`${l.taxonomyId}:${l.nodeCode}`)
+          return {
+            id: `${own!.id}:${l.taxonomyId}:${l.level}`,
+            sentenceId,
+            taxonomyId: l.taxonomyId,
+            level: l.level,
+            nodeCode: l.nodeCode,
+            source: 'user' as const,
+            createdAt: l.createdAt,
+            labelingStartedAt: l.labelingStartedAt,
+            taxonomy: { key: keyOf.get(l.taxonomyId) ?? '' },
+            nodeLabel: isUnknownNodeCode(l.nodeCode) ? 'Unknown' : (node?.label ?? ''),
+            nodeDefinition: node?.definition ?? null,
+            isLeaf: node?.isLeaf ?? false
+          }
+        }),
+        double
+      })
     }
 
     // Fetch labels for annotations (including handling unknown/-99)
@@ -196,7 +243,8 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
       ...sentence,
       commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
       assignments: sentence.assignments.map(a => ({ userId: a.membership.userId })),
-      annotations: finalAnnotations
+      annotations: finalAnnotations,
+      double
     }
 
     return NextResponse.json(enrichedSentence)

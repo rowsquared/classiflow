@@ -3,6 +3,7 @@ import { db, withWorkspace } from '@/lib/workspace/db'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { csvLine, type CsvColumn } from '@/lib/csv'
 import { logError } from '@/lib/logger'
+import { recordStatus, taxonomyStatus, type OutcomeState } from '@/lib/double-annotation'
 
 /**
  * Streaming CSV export of one workspace's records
@@ -15,7 +16,15 @@ import { logError } from '@/lib/logger'
  * Columns: id (the record key from the import); field_<name> and support_<name> in the order the names first
  * occur; then per taxonomy (by key) <key>_<level> human labels and
  * <key>_ai<level>/<key>_ai<level>c AI suggestions; then status, flagged,
- * last_editor, last_edited, comments. Unknown codes export as UNKNOWN.
+ * last_editor, last_edited, comments; then annotation_mode (single/double),
+ * annotation_status (unlabelled, partial, provisional, needs_review,
+ * confirmed) and <key>_annotation_status per taxonomy (lib/double-annotation.ts
+ * taxonomyStatus). The label columns hold the record's current result, which
+ * for double annotation can be provisional: the status columns say so.
+ * Unknown codes export as UNKNOWN.
+ *
+ * detailsStream(): the double-annotation details, one row per record, round,
+ * labeller and taxonomy, with each person's own answer.
  */
 
 const BATCH_SIZE = 1000
@@ -78,7 +87,20 @@ type ColumnPlan = {
   fields: string[]
   supports: string[]
   taxonomies: Array<{ id: string; key: string; maxDepth: number }>
+  /** Ordinary records are complete when every active taxonomy is labelled. */
+  activeTaxonomyIds: string[]
 }
+
+/** Refuses an export whose generated headers would collide (e.g. unusual taxonomy keys). */
+function assertUniqueHeaders(columns: CsvColumn[]) {
+  const seen = new Set<string>()
+  for (const { header } of columns) {
+    if (seen.has(header)) throw new ExportColumnError(`Two export columns would be called "${header}"`)
+    seen.add(header)
+  }
+}
+
+export class ExportColumnError extends Error {}
 
 async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput): Promise<ColumnPlan> {
   const fields: string[] = []
@@ -115,13 +137,20 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
       db().taxonomy.findMany({
         where: {
           workspaceId: scope.workspaceId,
-          OR: [{ annotations: { some: { sentence: where } } }, { aiSuggestions: { some: { sentence: where } } }]
+          OR: [
+            { annotations: { some: { sentence: where } } },
+            { aiSuggestions: { some: { sentence: where } } },
+            { doubleOutcomes: { some: { sentence: where } } }
+          ]
         },
         select: { id: true, key: true, maxDepth: true },
         orderBy: { key: 'asc' }
       })
     )
   ).map(t => ({ ...t, maxDepth: t.maxDepth || 5 }))
+  const activeTaxonomyIds = (
+    await scoped(scope, () => db().taxonomy.findMany({ where: { isActive: true }, select: { id: true } }))
+  ).map(t => t.id)
 
   const text = (header: string) => ({ header, text: true })
   const plain = (header: string) => ({ header })
@@ -137,9 +166,13 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
     plain('flagged'),
     text('last_editor'),
     plain('last_edited'),
-    text('comments')
+    text('comments'),
+    plain('annotation_mode'),
+    plain('annotation_status'),
+    ...taxonomies.map(t => plain(`${t.key}_annotation_status`))
   ]
-  return { columns, fields, supports, taxonomies }
+  assertUniqueHeaders(columns)
+  return { columns, fields, supports, taxonomies, activeTaxonomyIds }
 }
 
 const exportCode = (code: string) => (isUnknownNodeCode(code) ? 'UNKNOWN' : code)
@@ -151,7 +184,14 @@ async function readRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'sel
       annotations: { where: { source: 'user' }, select: { taxonomyId: true, level: true, nodeCode: true } },
       aiSuggestions: { select: { taxonomyId: true, level: true, nodeCode: true, confidenceScore: true } },
       comments: { select: { body: true, author: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
-      lastEditor: { select: { name: true } }
+      lastEditor: { select: { name: true } },
+      // The latest double-annotation round that was not stopped.
+      doubleRounds: {
+        where: { status: { not: 'cancelled' } },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { outcomes: { select: { taxonomyId: true, state: true } } }
+      }
     }
   })
 }
@@ -189,6 +229,20 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
     s.lastEditedAt ? s.lastEditedAt.toISOString() : '',
     s.comments.map(c => `[${c.author.name || 'Unknown'}]: ${c.body}`).join(' | ')
   )
+
+  const round = s.doubleRounds[0]
+  const outcomes = new Map(round?.outcomes.map(o => [o.taxonomyId, o.state as OutcomeState]))
+  const labelled = new Set(s.annotations.map(a => a.taxonomyId))
+  const statusOf = (taxonomyId: string) =>
+    taxonomyStatus({
+      outcome: round ? { state: outcomes.get(taxonomyId) ?? 'waiting' } : null,
+      hasLabels: labelled.has(taxonomyId)
+    })
+  const required = round ? round.outcomes.map(o => o.taxonomyId) : plan.activeTaxonomyIds
+  row.push(round ? 'double' : 'single', recordStatus(required.map(statusOf)))
+  for (const t of plan.taxonomies) {
+    row.push(!round || outcomes.has(t.id) ? statusOf(t.id) : labelled.has(t.id) ? 'single' : 'unlabelled')
+  }
   return row
 }
 
@@ -232,6 +286,151 @@ export async function exportStream(
         controller.enqueue(encoder.encode(lines.join('')))
       } catch (error) {
         await logError('Export failed while streaming', error, { records })
+        controller.error(error)
+      }
+    },
+    async cancel() {
+      await iterator.return(undefined)
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Double-annotation details: each person's own answer.
+
+const DETAIL_HEADERS = [
+  'id',
+  'round',
+  'round_status',
+  'round_started',
+  'position',
+  'labeller',
+  'labeller_status',
+  'from_existing_labels',
+  'taxonomy',
+  'code_1',
+  'code_2',
+  'code_3',
+  'code_4',
+  'code_5',
+  'answered_at',
+  'original_match',
+  'result_status',
+  'reviewed_by',
+  'reviewed_at',
+  'review_note'
+]
+const DETAIL_COLUMNS: CsvColumn[] = DETAIL_HEADERS.map(header => ({
+  header,
+  text: header === 'labeller' || header === 'reviewed_by' || header === 'review_note'
+}))
+
+async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'select'>) {
+  return db().sentence.findMany({
+    ...args,
+    select: {
+      id: true,
+      recordKey: true,
+      doubleRounds: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          tasks: {
+            orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              position: true,
+              status: true,
+              fromBaseline: true,
+              assignee: { select: { name: true } },
+              labels: { select: { taxonomyId: true, level: true, nodeCode: true, createdAt: true } }
+            }
+          },
+          outcomes: {
+            select: {
+              taxonomyId: true,
+              state: true,
+              matched: true,
+              reviewedAt: true,
+              note: true,
+              reviewedBy: { select: { name: true } }
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+/** Details CSV of double annotation: records that were ever in a round, admin export only. */
+export async function detailsStream(
+  scope: ExportScope,
+  filter: Prisma.SentenceWhereInput,
+  opts: { neutralizeFormulas: boolean; onDone?: (records: number) => Promise<void> | void }
+): Promise<ReadableStream<Uint8Array>> {
+  const where = { ...filter, workspaceId: scope.workspaceId, doubleRounds: { some: {} } }
+  const taxonomyKeys = new Map(
+    (await scoped(scope, () => db().taxonomy.findMany({ select: { id: true, key: true } }))).map(t => [t.id, t.key])
+  )
+  const encoder = new TextEncoder()
+  const iterator = pages(where, args => scoped(scope, () => readDetailRows(args)))
+  let records = 0
+
+  const rowsFor = (s: Awaited<ReturnType<typeof readDetailRows>>[number]): string[][] =>
+    s.doubleRounds.flatMap(round =>
+      round.outcomes
+        .slice()
+        .sort((a, b) => (taxonomyKeys.get(a.taxonomyId) ?? '').localeCompare(taxonomyKeys.get(b.taxonomyId) ?? ''))
+        .flatMap(outcome =>
+          round.tasks.map(task => {
+            const labels = task.labels.filter(l => l.taxonomyId === outcome.taxonomyId)
+            const code = (level: number) => labels.find(l => l.level === level)?.nodeCode ?? ''
+            const answeredAt = labels[0]?.createdAt
+            return [
+              s.recordKey,
+              round.id,
+              round.status,
+              round.createdAt.toISOString(),
+              String(task.position),
+              task.assignee?.name ?? '',
+              task.status,
+              task.fromBaseline ? 'true' : 'false',
+              taxonomyKeys.get(outcome.taxonomyId) ?? '',
+              code(1),
+              code(2),
+              code(3),
+              code(4),
+              code(5),
+              answeredAt ? answeredAt.toISOString() : '',
+              outcome.matched === null ? '' : String(outcome.matched),
+              outcome.state,
+              outcome.reviewedBy?.name ?? '',
+              outcome.reviewedAt ? outcome.reviewedAt.toISOString() : '',
+              outcome.note ?? ''
+            ]
+          })
+        )
+    )
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(csvLine(DETAIL_COLUMNS, DETAIL_HEADERS, { neutralizeFormulas: false })))
+    },
+    async pull(controller) {
+      try {
+        const next = await iterator.next()
+        if (next.done) {
+          await opts.onDone?.(records)
+          controller.close()
+          return
+        }
+        const lines = next.value.flatMap(rowsFor).map(row => '\n' + csvLine(DETAIL_COLUMNS, row, opts))
+        records += next.value.length
+        controller.enqueue(encoder.encode(lines.join('')))
+      } catch (error) {
+        await logError('Details export failed while streaming', error, { records })
         controller.error(error)
       }
     },

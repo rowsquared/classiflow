@@ -5,6 +5,8 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@/lib/generated/prisma/client'
 import { parseEnum } from '@/lib/utils'
+import { blindSentenceIds, notBlindFor, ownAnswers } from '@/lib/server/double-annotation'
+import { doubleRowSummaries, type DoubleRowSummary } from '@/lib/server/double-queue'
 
 // Queue data for the queue page (app/queue), /api/sentences and
 // /api/sentences/stats. Both read the same filter parameters through
@@ -24,7 +26,12 @@ type AISuggestionView = {
  * The records the caller may see, narrowed by the queue's filter parameters:
  * q, status, userId, assignedToUserId, lastEditorId, lastEditedFrom/To,
  * taxonomyKey/level/code/source, aiTaxonomyKey/aiLevel/aiCode/aiConfidenceMin/Max,
- * hasSubmittedLabels, hasAISuggestions, flagged, hasComments, importId, support1-5.
+ * hasSubmittedLabels, hasAISuggestions, flagged, hasComments, importId, support1-5,
+ * double (managers: any | review | waiting | gap | done).
+ *
+ * Double annotation: for the people who label a record in an active round,
+ * the status filter means their own part (pending, submitted or skipped), and
+ * label/AI filters skip such records (they would reveal the other answer).
  */
 export async function queueWhere(user: CurrentUser, searchParams: URLSearchParams): Promise<Prisma.SentenceWhereInput> {
   const q = searchParams.get('q') || ''
@@ -60,13 +67,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       .split(',')
       .map(s => parseEnum(SentenceStatus, s.trim()))
       .filter((s): s is SentenceStatus => s !== undefined)
-    if (statuses.length === 1) {
-      and.push({ status: statuses[0] })
-    } else if (statuses.length > 1) {
-      and.push({
-        OR: statuses.map(s => ({ status: s }))
-      })
-    }
+    if (statuses.length > 0) and.push({ OR: statuses.flatMap(s => personalStatusFilter(user, s)) })
   }
 
   // Visibility filtering based on role and assignments (admins: no filter)
@@ -118,6 +119,28 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       dateFilter.lte = toDate
     }
     and.push({ lastEditedAt: dateFilter })
+  }
+
+  if (
+    taxonomyKey ||
+    level ||
+    code ||
+    source ||
+    aiTaxonomyKey ||
+    aiLevel ||
+    aiCode ||
+    aiConfidenceMin ||
+    aiConfidenceMax ||
+    hasSubmittedLabels ||
+    hasAISuggestions
+  ) {
+    and.push(notBlindFor(user))
+  }
+
+  const double = searchParams.get('double') || ''
+  if (double && (user.role === 'admin' || user.role === 'supervisor')) {
+    const filter = doubleFilter(double)
+    if (filter) and.push(filter)
   }
 
   // Taxonomy/annotation filters
@@ -241,6 +264,41 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   }
 
   return and.length > 0 ? { AND: and } : {}
+}
+
+/** A record's status, or for its labellers in an active round, their own part's status. */
+function personalStatusFilter(user: CurrentUser, status: SentenceStatus): Prisma.SentenceWhereInput[] {
+  const mine = (taskStatus: Prisma.DoubleTaskWhereInput['status']): Prisma.SentenceWhereInput => ({
+    doubleRounds: { some: { status: 'active', tasks: { some: { assigneeId: user.id, status: taskStatus } } } }
+  })
+  const filters: Prisma.SentenceWhereInput[] = [{ AND: [{ status }, { NOT: mine({ not: 'cancelled' }) }] }]
+  if (status === 'pending' || status === 'submitted' || status === 'skipped') filters.push(mine(status))
+  return filters
+}
+
+/** The managers' double-annotation filter (`double` parameter). */
+function doubleFilter(value: string): Prisma.SentenceWhereInput | null {
+  switch (value) {
+    case 'any':
+      return { doubleRounds: { some: { status: { not: 'cancelled' } } } }
+    case 'review':
+      return { doubleRounds: { some: { status: 'active', outcomes: { some: { state: 'disagreed' } } } } }
+    case 'waiting':
+      return { doubleRounds: { some: { status: 'active', outcomes: { none: { state: 'disagreed' } } } } }
+    case 'gap':
+      return {
+        doubleRounds: {
+          some: {
+            status: 'active',
+            tasks: { some: { OR: [{ status: 'skipped' }, { status: 'pending', assigneeId: null }] } }
+          }
+        }
+      }
+    case 'done':
+      return { doubleRounds: { some: { status: 'completed' }, none: { status: 'active' } } }
+    default:
+      return null
+  }
 }
 
 /** Above this many matches a search term is not selective: scan instead of listing ids. */
@@ -423,23 +481,75 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     )
   })()
 
-  const [annotationNodes, aiSuggestionsBySentence, summaries] = await Promise.all([
+  // Double annotation: rows its labellers see blind show their own answer only.
+  const pageIds = sentences.map(s => s.id)
+  const blind = await blindSentenceIds(user, pageIds)
+  const [annotationNodes, aiSuggestionsBySentence, summaries, own, doubleRows] = await Promise.all([
     annotationNodesPromise,
     aiSuggestionsPromise,
-    commentSummaries(sentences.map(s => s.id))
+    commentSummaries(pageIds, { authorId: user.id, sentenceIds: blind }),
+    ownAnswers(user, Array.from(blind)),
+    user.role === 'labeller' ? Promise.resolve(new Map<string, DoubleRowSummary>()) : doubleRowSummaries(pageIds, blind)
   ])
+  const ownLabels = [...own.values()].flatMap(t => t.labels)
+  const ownTaxonomies = new Map(
+    ownLabels.length === 0
+      ? []
+      : (
+          await db().taxonomy.findMany({
+            where: { id: { in: Array.from(new Set(ownLabels.map(l => l.taxonomyId))) } },
+            select: { id: true, key: true }
+          })
+        ).map(t => [t.id, t.key])
+  )
+  const ownNodes =
+    ownLabels.length === 0
+      ? []
+      : await db().taxonomyNode.findMany({
+          where: {
+            taxonomyId: { in: Array.from(ownTaxonomies.keys()) },
+            code: { in: ownLabels.map(l => l.nodeCode) }
+          },
+          select: { taxonomyId: true, code: true, label: true }
+        })
 
-  const nodeLabels = new Map(annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
+  const nodeLabels = new Map([...annotationNodes, ...ownNodes].map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
 
-  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => ({
-    ...s,
-    commentSummary: summaries.get(s.id) ?? { total: 0, unresolved: 0 },
-    assignments: assignments.map(a => ({ user: a.membership.user })),
-    annotations: [
-      ...s.annotations.map(a => ({ ...a, nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null })),
-      ...(aiSuggestionsBySentence[s.id] ?? [])
-    ]
-  }))
+  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
+    const row = {
+      ...s,
+      commentSummary: summaries.get(s.id) ?? { total: 0, unresolved: 0 },
+      assignments: assignments.map(a => ({ user: a.membership.user })),
+      annotations: [
+        ...s.annotations.map(a => ({ ...a, nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null })),
+        ...(aiSuggestionsBySentence[s.id] ?? [])
+      ],
+      double: doubleRows.get(s.id) ?? null
+    }
+    if (!blind.has(s.id)) return row
+    const task = own.get(s.id)
+    return {
+      ...row,
+      status: (task && task.status !== 'cancelled' ? task.status : 'pending') as SentenceStatus,
+      lastEditor: null,
+      lastEditorId: null,
+      annotations: (task?.labels ?? []).map(l => ({
+        id: `${task!.id}:${l.taxonomyId}:${l.level}`,
+        workspaceId: s.workspaceId,
+        sentenceId: s.id,
+        taxonomyId: l.taxonomyId,
+        level: l.level,
+        nodeCode: l.nodeCode,
+        source: AnnotationSource.user,
+        createdById: user.id,
+        labelingStartedAt: l.labelingStartedAt,
+        createdAt: l.createdAt,
+        updatedAt: l.createdAt,
+        taxonomy: { key: ownTaxonomies.get(l.taxonomyId) ?? '' },
+        nodeLabel: nodeLabels.get(`${l.taxonomyId}-${l.nodeCode}`) || null
+      }))
+    }
+  })
 
   return {
     sentences: sentencesWithLabels,
@@ -455,12 +565,14 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 /** Counts per status for the records matching the queue's filters. */
 export async function getQueueStats(user: CurrentUser, searchParams: URLSearchParams) {
   const where = await queueWhere(user, searchParams)
-  const [total, pending, submitted, skipped, flagged] = await Promise.all([
+  const manager = user.role === 'admin' || user.role === 'supervisor'
+  const [total, pending, submitted, skipped, flagged, needsReview] = await Promise.all([
     db().sentence.count({ where }),
-    db().sentence.count({ where: { AND: [where, { status: 'pending' }] } }),
-    db().sentence.count({ where: { AND: [where, { status: 'submitted' }] } }),
-    db().sentence.count({ where: { AND: [where, { status: 'skipped' }] } }),
-    db().sentence.count({ where: { AND: [where, { flagged: true }] } })
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending') }] } }),
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'submitted') }] } }),
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'skipped') }] } }),
+    db().sentence.count({ where: { AND: [where, { flagged: true }] } }),
+    manager ? db().sentence.count({ where: { AND: [where, doubleFilter('review')!] } }) : Promise.resolve(0)
   ])
 
   return {
@@ -471,6 +583,8 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
       submitted,
       skipped,
       flagged,
+      // Records in double annotation with a disagreement (managers; 0 for labellers).
+      needsReview,
       progress: total > 0 ? Math.round((submitted / total) * 100) : 0
     }
   }

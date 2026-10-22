@@ -1,6 +1,8 @@
 # Independent double annotation: implementation plan
 
-**Status:** proposed; no application implementation started.
+**Status:** v1 in progress on branch `feature/double-annotation` (backend
+done and tested; UI next). Section 0 is the simplified v1 contract and the
+handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
 
@@ -11,6 +13,83 @@ in progress when this plan was drafted.
 **Interactive mockup:** open the [standalone preview](../mockups/double-annotation/index.html).
 Its [editable source and usage notes](../mockups/double-annotation/README.md)
 are stored alongside it. All interactions use illustrative data.
+
+## 0. v1 implementation (handover)
+
+### Simplified contract
+
+The goal is a workflow supervisors can run without training: pick two
+people, watch one badge, decide disagreements on the record screen.
+
+- **Model** (`prisma/schema.prisma`, migration `20261023100000_double_annotation`):
+  `DoubleRound` (one active per record) → two `DoubleTask`s (position 1/2,
+  two different people, partial unique indexes) → `DoubleTaskLabel` (each
+  person's path, immutable by trigger) and `DoubleOutcome` per required
+  taxonomy (`waiting | agreed | disagreed | reviewed | accepted_single`,
+  frozen `matched`/`comparedAt`, `sourceTaskId` = first answer).
+  `SentenceAnnotation` stays the current result (first answer while waiting
+  or disagreeing). `Sentence.status` is `submitted` only when every required
+  taxonomy is confirmed. `LabelingActivity.kind` is `label | review`.
+- **Rules:** `lib/double-annotation.ts` (pure), workflow in
+  `lib/server/double-annotation.ts`, queue row summary in
+  `lib/server/double-queue.ts`. Required taxonomies = active taxonomies when
+  the round starts (pinned via the outcome rows).
+- **Starting** (`POST /sentences/double-annotation`, preview with
+  `dryRun`, commit with the previewed counts as `expect`, 409 if changed):
+  per record `fresh` (both people label; old partial/legacy labels stay as a
+  fallback result), `labelled` (complete labels by one known author become
+  answer 1; the other chosen person adds answer 2), `already` (left alone),
+  `needs_first` (left out: unlabelled but only one person chosen). The
+  preview reports all four counts, so nothing is skipped silently.
+- **Labelling:** a participant's save writes their own answer; answers are
+  final (409 on change). Blind views: own labels only, no AI suggestions, no
+  other people's comments, own part's status in queue tabs, label/AI filters
+  skip such records. Skip only skips their part.
+- **Review:** a non-participant admin, or a supervisor whose team contains
+  both labellers, saves a path on the record screen = decision (`reviewed`,
+  original comparison kept). Allowed once both answers exist.
+- **Manager commands** (`POST /sentences/[id]/double-annotation`):
+  `accept_single` (reason; refused while disagreeing or with an empty
+  taxonomy), `stop` (back to ordinary work, history kept), `reassign`
+  (only a part with no answers yet).
+- **Bulk:** bulk label/skip refuse selections containing active rounds (409);
+  flags and comments still work.
+- **Export:** existing columns unchanged; appended `annotation_mode`,
+  `annotation_status` (`unlabelled | partial | provisional | needs_review |
+  confirmed`), `{key}_annotation_status` (`unlabelled | single | provisional |
+  disagreed | agreed | reviewed | accepted_single`). `labels=confirmed` keeps
+  confirmed records only; `format=details` streams one row per record,
+  round, person and taxonomy. Header collisions → 409.
+- **Learning:** unchanged code path: it selects `submitted` records, which
+  for double annotation now means confirmed. The learning counter grows only
+  when a path becomes confirmed.
+
+**Deliberately deferred** (keep out of v1 to stay simple): reopening a
+submitted answer (reviewer decides instead), repeat rounds, exposure
+tracking, command receipts table (record lock + final answers make replays
+safe), immutable learning snapshots/reservations, taxonomy-change
+revalidation of open rounds, private notes visible to reviewers (blind
+viewers simply see only their own comments), kappa.
+
+### Checklist
+
+- [x] Schema, migration (RLS, partial unique indexes, immutability trigger), `WORKSPACE_MODELS`
+- [x] Pure rules (`lib/double-annotation.ts`)
+- [x] Workflow service: start/plan, answer, compare, review, accept single, stop, reassign
+- [x] Single save route routes through the workflow; bulk refuses double records
+- [x] Blind reads: record GET, comments, queue rows/tabs/filters; manager `double` view on record GET
+- [x] Queue `double` filter (`any | review | waiting | gap | done`) and `needsReview` stat
+- [x] Export status columns, confirmed-only, details CSV
+- [x] Integration tests `tests/integration/double-annotation.test.ts` (5 journeys) + export header test updated
+- [ ] UI: assignment dialog mode "Two people (double annotation)" with preview counts
+- [ ] UI: queue badge per row, `double` filter in URL (`lib/queue-url.ts`), "Needs review · N" shortcut
+- [ ] UI: record screen review card (both answers, Use first/second, choose another, accept single, stop, reassign)
+- [ ] UI: labeller notice "Independent labelling" + locked submitted taxonomies
+- [ ] UI: export page selector (all / confirmed) + details download
+- [ ] Progress dashboard: small double section (needs review, waiting, confirmed, agreement % with n)
+- [ ] Unit tests for `lib/double-annotation.ts`; e2e journey + axe for new dialogs
+- [ ] Docs: AGENTS.md, docs/security.md access matrix, README feature line
+- [ ] lint, format, build; benchmark queue filters at scale
 
 ## 1. Product contract
 

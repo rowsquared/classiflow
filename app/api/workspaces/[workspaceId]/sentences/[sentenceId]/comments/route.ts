@@ -4,11 +4,14 @@ import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { logError } from '@/lib/logger'
+import { commentAudienceFilter } from '@/lib/server/double-annotation'
 
 const MAX_COMMENT_LENGTH = 10_000
 
 // Comment access follows record access: anyone who can see the record can read,
 // add and resolve its comments. Only the author or an admin may delete one.
+// Double annotation: people who see the record blind (its labellers) read and
+// resolve only their own comments, so a comment cannot reveal the other answer.
 
 export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
   try {
@@ -60,11 +63,13 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
     if (denied) return denied
     const { searchParams } = new URL(req.url)
     const includeResolved = searchParams.get('includeResolved') === 'true'
+    const audience = await commentAudienceFilter(user, sentenceId)
 
     const [comments, summaries] = await Promise.all([
       db().comment.findMany({
         where: {
           sentenceId,
+          ...audience,
           ...(includeResolved ? {} : { resolved: false })
         },
         include: {
@@ -77,7 +82,10 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
         },
         orderBy: { createdAt: 'desc' }
       }),
-      commentSummaries([sentenceId])
+      commentSummaries(
+        [sentenceId],
+        audience.authorId ? { authorId: user.id, sentenceIds: new Set([sentenceId]) } : undefined
+      )
     ])
 
     const commentSummary = summaries.get(sentenceId) ?? { total: 0, unresolved: 0 }
@@ -106,10 +114,11 @@ export const PATCH = workspaceRoute<'sentenceId'>([], async (req, { user, params
 
     const comment = await db().comment.findUnique({
       where: { id: commentId },
-      select: { sentenceId: true }
+      select: { sentenceId: true, authorId: true }
     })
+    const audience = await commentAudienceFilter(user, sentenceId)
 
-    if (!comment || comment.sentenceId !== sentenceId) {
+    if (!comment || comment.sentenceId !== sentenceId || (audience.authorId && comment.authorId !== user.id)) {
       return NextResponse.json({ ok: false, error: 'Comment not found for this sentence' }, { status: 404 })
     }
 
