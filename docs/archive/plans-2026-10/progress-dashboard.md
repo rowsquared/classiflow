@@ -50,7 +50,8 @@ by the single and bulk label saves (`lib/labeling-activity.ts`), one row per
 record per save; flag-, comment-, skip-only saves and AI suggestions write
 none. An optional `operationId` (UUID) in the save body makes a replayed
 request record nothing new (unique `(workspaceId, operationId, recordId)`);
-the browser does not send one yet (D3: generate one per save attempt). Row
+the browser sends one per save attempt and reuses it on retries (D3,
+`lib/save-operation.ts`). Row
 security like every workspace table; a trigger makes the table append-only
 (the only update allowed is the actor's `ON DELETE SET NULL`).
 

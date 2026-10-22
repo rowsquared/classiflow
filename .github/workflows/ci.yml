@@ -1,11 +1,8 @@
-# CI and the production deploy gate. See "Deploy triggers" in DEPLOYMENT.md.
+# CI and the production deploy gate. See "Deploy triggers" in COOLIFY_DEPLOYMENT.md.
 #
-# staging: Coolify auto-deploys on push, so the run there is a report card. It
-#          also records the "smoke" and "checks" results on the commit, which
-#          the main ruleset requires before scripts/promote-main.mjs may push it.
-# main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger and
-#          runs only after smoke and checks pass, so a broken commit never
-#          reaches prod.
+# staging: no staging environment is configured yet; pushes do not run CI.
+# main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger,
+#          after smoke, checks, integration and e2e pass.
 #
 # Temporarily (21 October 2026) pushes to staging do not run CI, to save
 # Actions minutes while we push often. Before promoting, run it by hand:
@@ -91,8 +88,8 @@ jobs:
         run: docker compose down -v
 
   checks:
-    # Typecheck, lint and unit tests block the deploy: next.config.ts skips type
-    # and lint errors during build, so this is the only place they are caught.
+    # Typecheck, lint, formatting and unit tests block the deploy. next build
+    # also type-checks; Next.js 16 does not run lint during the build.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -3,10 +3,12 @@
 **Archived 22 October 2026:** implemented. What is still open (environment,
 maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
 
-**Status:** decided 21 October 2026; phases 1 and 2 implemented the same day
-(see "Implementation status" below). **Baseline:** `staging` at `58bb4c2`.
+**Status:** phases 1 and 2 implemented 21–22 October 2026; deployment and
+remaining follow-ups are in the open-items list above. **Original baseline:**
+`staging` at `58bb4c2`. The implementation history below takes precedence
+over the original proposal retained later in this document.
 
-## Implementation status (21 October 2026)
+## Implementation history (21–22 October 2026)
 
 Done, verified with typecheck, lint (0 errors), 42 unit tests, 57 integration
 tests (PostgreSQL 16 locally; CI uses 18), 10 browser journeys against a
@@ -15,13 +17,13 @@ production build, and `npm audit --omit=dev` (0 findings):
 - **M01** Next 16.4 (`proxy.ts`, Turbopack), React Compiler, ESLint 10 flat
   config, CSP enforced with per-request nonces. The page guard reads the
   database session. The React Compiler lint rules found 18 effect/ref patterns in
-  the queue, labelling and taxonomy browser components; they are warnings until
-  M06 splits those components.
+  the queue, labelling and taxonomy browser components; M06 subsequently fixed
+  those patterns and made the rules errors again.
 - **M02** Prisma 7.10 with `@prisma/adapter-pg`, client in `lib/generated/prisma`,
   `prisma.config.ts`, explicit pool size (`DATABASE_POOL_SIZE`), scripts in
   TypeScript (`node scripts/*.ts`), no `openssl` or engine install scripts. The
   "restored copy of a populated database" test is moot (fresh start).
-- **M03** (partly) Vitest 5, Playwright 1.64, TypeScript 6.0 for the build and
+- **M03** Vitest 5, Playwright 1.64, TypeScript 6.0 for the build and
   the native 7.0 compiler for `npm run typecheck` (same results, about twice as
   fast), lucide-react 1.x, unused dependencies removed, build-only packages in
   `devDependencies`, Dependabot groups, Actions pinned to commit SHAs.
@@ -108,13 +110,10 @@ Still open from this plan:
   M01's optional removal of hand-written `useMemo`/`useCallback`.
 - The rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
-- Watch: Prisma 7.10's query interpreter runs the sub-queries of one
-  operation (relation `include`s) in parallel on an interactive
-  transaction's connection, which `pg` 8 reports as a deprecation
-  ("client.query() when the client is already executing a query") and `pg` 9
-  will reject. Our own queries inside a workspace transaction are already
-  queued (`lib/workspace/db.ts`). Do not take `pg` 9 before Prisma's adapter
-  handles this; Dependabot's Prisma group should bring the fix.
+- Dependency maintenance: the Prisma/`pg` transaction-concurrency caution
+  is tracked in [open items](../../plans/open-items.md#5-dependency-maintenance).
+  The October review observed concurrent relation subqueries on one
+  transaction connection; our own workspace queries were already queued.
 - Setting up staging and production from the docs (phase 3) is the
   maintainer's.
 

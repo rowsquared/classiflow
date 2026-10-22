@@ -145,6 +145,18 @@ describe('taxonomy CSV lifecycle', () => {
 })
 
 describe('record import and export', () => {
+  it('exports declared field and support columns even when every value is empty', async () => {
+    const response = await recordImportRoute.POST(
+      multipart('/x?dryRun=false', 'POST', {}, 'id,field_title,field_description,support_region\n007,,,\n'),
+      params()
+    )
+    expect(response.status).toBe(200)
+    const exported = await exportRoute.GET(request('/api/export'), params())
+    const [header, row] = parse(await exported.text()) as [string[], string[]]
+    expect(header.slice(0, 4)).toEqual(['id', 'field_title', 'field_description', 'support_region'])
+    expect(row.slice(0, 4)).toEqual(['007', '', '', ''])
+  })
+
   it('dry run and commit agree; ids keep leading zeros; uploader recorded', async () => {
     const csv = 'id,field_title,support_region\n007,"Baker, ""head""",=SUM(1)\n008,Clerk,North\n'
     const dry = await recordImportRoute.POST(multipart('/api/sentences/import?dryRun=true', 'POST', {}, csv), params())

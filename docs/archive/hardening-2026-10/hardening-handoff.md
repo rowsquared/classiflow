@@ -1,14 +1,14 @@
 # Hardening work: handoff
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../plans-2026-10/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../plans/open-items.md); the remaining-work table below records the state at handoff, before modernization. Links to source files point at the current code, which may have changed since.
 
 **Status:** 21 October 2026. All workstreams are done or mostly done in code; what
 is left needs production data, a decision, or its own upgrade plan (table below).
 **Pushing:** push only with the maintainer's go-ahead.
-**Staging deploys nothing at the moment (as of 21 October 2026):** a push to
-`staging` runs CI but no staging environment is updated. Do not treat a push as
-deployed or verified on staging; CI's `smoke` job is the only running check of
-the image. When staging deploys again, delete this note.
+**Staging status (updated 22 October 2026):** no staging environment is
+configured, and pushes to `staging` do not run CI. Start CI manually before
+promotion (`gh workflow run CI --ref staging`); see COOLIFY_DEPLOYMENT.md
+"Deploy triggers". A push does not establish deployment or staging verification.
 
 Start here if you are continuing the hardening work from the
 [review](2026-10-21-review.md). Each workstream in the

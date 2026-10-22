@@ -236,10 +236,14 @@ export default function QueuePageClient({
   }
 
   const handleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked && queue ? new Set(queue.sentences.map(s => s.id)) : NO_SELECTION)
+    if (!queue || queueQuery.isPlaceholderData || queueQuery.isError) return
+    const next = new Set(selectedIds)
+    queue.sentences.forEach(s => (checked ? next.add(s.id) : next.delete(s.id)))
+    setSelectedIds(next)
   }
 
   const handleSelect = (id: string, checked: boolean) => {
+    if (queueQuery.isPlaceholderData || queueQuery.isError) return
     const next = new Set(selectedIds)
     if (checked) next.add(id)
     else next.delete(id)
@@ -247,9 +251,13 @@ export default function QueuePageClient({
   }
 
   // After labels or assignments change: list and counts of every view.
-  const refreshQueue = () => queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) })
+  const refreshQueue = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress(workspaceId) })
+    ])
 
-  const allSelected = !!queue && queue.sentences.length > 0 && selectedIds.size === queue.sentences.length
+  const allSelected = !!queue && queue.sentences.length > 0 && queue.sentences.every(s => selectedIds.has(s.id))
   const someSelected = selectedIds.size > 0
   const isAdmin = currentUser?.role === 'admin'
   const activeTaxonomies = taxonomies.filter(t => t.isActive !== false)
@@ -431,6 +439,7 @@ export default function QueuePageClient({
                       <th className="pl-4 pr-2 py-3 text-left w-12">
                         <input
                           type="checkbox"
+                          disabled={queueQuery.isPlaceholderData || queueQuery.isError}
                           checked={allSelected}
                           onChange={e => handleSelectAll(e.target.checked)}
                           aria-label="Select all records on this page"
@@ -458,6 +467,7 @@ export default function QueuePageClient({
                       <SentenceRow
                         key={sentence.id}
                         sentence={sentence}
+                        selectionDisabled={queueQuery.isPlaceholderData || queueQuery.isError}
                         selected={selectedIds.has(sentence.id)}
                         onSelect={checked => handleSelect(sentence.id, checked)}
                         showAssignedTo={currentUser?.role === 'admin' || currentUser?.role === 'supervisor'}
@@ -475,8 +485,8 @@ export default function QueuePageClient({
                 {/* Pagination - below table */}
                 {queue && queue.pagination.total > 0 && (
                   <PaginationControls
-                    page={url.page}
-                    pageSize={url.limit}
+                    page={queue.pagination.page}
+                    pageSize={queue.pagination.limit}
                     total={queue.pagination.total}
                     totalPages={queue.pagination.pages}
                     onPageChange={page => setUrl({ page }, { history: 'push' })}

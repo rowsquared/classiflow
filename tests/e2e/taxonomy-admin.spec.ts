@@ -54,12 +54,12 @@ test('a taxonomy is created from a CSV, keeps its leading zeros and can be brows
   // Browse down to the third level.
   await page.goto(pagePath(`/taxonomies/${KEY}`))
   await expect(page.getByRole('heading', { name: `${KEY} taxonomy` })).toBeVisible()
-  await page.getByRole('button', { name: /^01 · Food and non-alcoholic beverages/ }).click()
-  await page.getByRole('button', { name: /^011 · Food/ }).click()
-  await expect(page.getByRole('button', { name: /^0111 · Bread and cereals/ })).toBeVisible()
+  await page.getByRole('button', { name: /^01\b/ }).click()
+  await page.getByRole('button', { name: /^011\b/ }).click()
+  await expect(page.getByRole('button', { name: /^0111\b/ })).toBeVisible()
   // Search finds codes as text, leading zeros included.
-  await page.getByPlaceholder('Search code or text...').fill('0111')
-  await expect(page.getByRole('button', { name: /^0111 · Bread and cereals/ })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Search COICOP' }).fill('0111')
+  await expect(page.getByRole('button', { name: /^0111\b/ })).toBeVisible()
 })
 
 test('nodes can be added incrementally under existing ones', async ({ page }) => {
@@ -81,9 +81,9 @@ test('nodes can be added incrementally under existing ones', async ({ page }) =>
 
   // 012 gained a child, so it is no longer a leaf; the browser shows the new level.
   await page.goto(pagePath(`/taxonomies/${KEY}`))
-  await page.getByRole('button', { name: /^01 · / }).click()
-  await page.getByRole('button', { name: /^012 · Non-alcoholic beverages/ }).click()
-  await expect(page.getByRole('button', { name: /^0121 · Coffee and tea/ })).toBeVisible()
+  await page.getByRole('button', { name: /^01\b/ }).click()
+  await page.getByRole('button', { name: /^012\b/ }).click()
+  await expect(page.getByRole('button', { name: /^0121\b/ })).toBeVisible()
 })
 
 test('the description can be edited, and the taxonomy deleted after typing DELETE', async ({ page }) => {

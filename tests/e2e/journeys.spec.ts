@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
 import { ADMIN, RECORDS } from './fixtures'
@@ -133,7 +134,11 @@ test('the export contains the human label with its leading zero', async ({ page 
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Export CSV' }).click()
   ])
-  const csv = (await (await download.createReadStream()).toArray()).join('')
+  expect(await download.failure()).toBeNull()
+  expect(download.suggestedFilename()).toMatch(/\.csv$/)
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  const csv = await readFile(path!, 'utf8')
   expect(csv).toContain('primary school teacher')
 
   const records = parse(csv, { columns: true, bom: true }) as Array<Record<string, string>>
@@ -164,6 +169,8 @@ test('a comment can be added from the labelling page without triggering shortcut
   await dialog.getByPlaceholder('Enter your comment...').fill('needs a second look: senior or junior?')
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog.getByText('needs a second look: senior or junior?')).toBeVisible()
+  // The refreshed list can render just before the save's pending guard clears.
+  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeEnabled()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 

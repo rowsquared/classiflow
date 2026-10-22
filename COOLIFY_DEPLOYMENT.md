@@ -468,8 +468,8 @@ The two environments are triggered differently, on purpose.
 
 | Branch | Coolify auto-deploy | What deploys it |
 | --- | --- | --- |
-| `staging` | on | Coolify deploys on every push. CI also runs, as a report card. |
-| `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API, and only after the `smoke` and `checks` jobs pass. |
+| `staging` | on (once configured) | Coolify deploys on every push once staging exists. CI must currently be started manually; restore automatic CI by adding `staging` to `push.branches` in `.github/workflows/ci.yml`. |
+| `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API only after `smoke`, `checks`, `integration` and `e2e` pass. |
 
 Staging may be briefly broken; the fast feedback is worth more than a gate.
 Production may not: a red run leaves the previous release serving.
@@ -481,8 +481,10 @@ Coolify uses, starts the stack on an empty database, and checks that migrations
 applied, the default admin was created, `/api/health` reports a connected
 database and the built commit, the server connects as the least-privilege
 runtime role, and `/login` renders. `checks` runs the typecheck, lint and unit tests
-(`npm run typecheck`, `npm run lint`, `npm test`); the build itself skips type
-and lint errors, so this is where they are caught.
+and formatting (`npm run typecheck`, `npm run lint`, `npm test`,
+`npm run format:check`). The build also type-checks; Next.js 16 does not run
+lint during the build. The `integration` and `e2e` jobs run the database
+integration tests and browser journeys, respectively; both also gate deployment.
 
 Two repository secrets drive the production deploy. Without them the job fails
 loudly rather than skipping, because a release that quietly deploys nothing is

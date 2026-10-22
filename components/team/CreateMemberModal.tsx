@@ -50,6 +50,7 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
@@ -95,6 +96,8 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
       }
       // Shown once: the password is not stored anywhere readable.
       setCreated({ username: form.username.toLowerCase(), password: form.tempPassword })
+    } catch {
+      setError('Could not reach the server. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -135,7 +138,12 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
   }
 
   return (
-    <Modal label="Add member" onClose={onClose}>
+    <Modal
+      label="Add member"
+      onClose={() => {
+        if (!busy) onClose()
+      }}
+    >
       <form onSubmit={submit} className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}>
         <h2 className="text-xl font-semibold text-gray-900">Add member</h2>
         {error && (
@@ -144,211 +152,219 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
           </div>
         )}
 
-        {(canAddExisting || mailEnabled) && (
-          <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-700">
-            <legend className="sr-only">Account</legend>
-            <label className="flex items-center gap-2">
-              <input type="radio" name="member-mode" checked={mode === 'new'} onChange={() => setMode('new')} /> New
-              account
-            </label>
-            {mailEnabled && (
+        <fieldset disabled={busy} className="space-y-4">
+          {(canAddExisting || mailEnabled) && (
+            <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-700">
+              <legend className="sr-only">Account</legend>
               <label className="flex items-center gap-2">
-                <input type="radio" name="member-mode" checked={mode === 'invite'} onChange={() => setMode('invite')} />{' '}
-                Invite by email
+                <input type="radio" name="member-mode" checked={mode === 'new'} onChange={() => setMode('new')} /> New
+                account
               </label>
-            )}
-            {canAddExisting && (
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="member-mode"
-                  checked={mode === 'existing'}
-                  onChange={() => setMode('existing')}
-                />{' '}
-                Existing account
-              </label>
-            )}
-          </fieldset>
-        )}
+              {mailEnabled && (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="member-mode"
+                    checked={mode === 'invite'}
+                    onChange={() => setMode('invite')}
+                  />{' '}
+                  Invite by email
+                </label>
+              )}
+              {canAddExisting && (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="member-mode"
+                    checked={mode === 'existing'}
+                    onChange={() => setMode('existing')}
+                  />{' '}
+                  Existing account
+                </label>
+              )}
+            </fieldset>
+          )}
 
-        {mode === 'invite' ? (
-          <div>
-            <label htmlFor="member-invite-email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              id="member-invite-email"
-              type="email"
-              required
-              value={form.email}
-              onChange={e => set('email', e.target.value)}
-              className={input}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              For people who already have a classiflow account (or will get one): they accept the invitation signed in
-              with the account that uses this address.
-            </p>
-          </div>
-        ) : mode === 'existing' ? (
-          <div>
-            <label htmlFor="member-existing" className="block text-sm font-medium text-gray-700 mb-1">
-              Username or email
-            </label>
-            <input
-              id="member-existing"
-              required
-              value={form.existingUser}
-              onChange={e => set('existingUser', e.target.value)}
-              className={input}
-            />
-          </div>
-        ) : (
-          <>
+          {mode === 'invite' ? (
             <div>
-              <label htmlFor="member-username" className="block text-sm font-medium text-gray-700 mb-1">
-                Username
-              </label>
-              <input
-                id="member-username"
-                required
-                minLength={3}
-                value={form.username}
-                onChange={e => set('username', e.target.value)}
-                className={input}
-              />
-            </div>
-            <div>
-              <label htmlFor="member-email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="member-invite-email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email
               </label>
               <input
-                id="member-email"
+                id="member-invite-email"
                 type="email"
                 required
                 value={form.email}
                 onChange={e => set('email', e.target.value)}
                 className={input}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                For people who already have a classiflow account (or will get one): they accept the invitation signed in
+                with the account that uses this address.
+              </p>
             </div>
+          ) : mode === 'existing' ? (
             <div>
-              <label htmlFor="member-name" className="block text-sm font-medium text-gray-700 mb-1">
-                Name
+              <label htmlFor="member-existing" className="block text-sm font-medium text-gray-700 mb-1">
+                Username or email
               </label>
               <input
-                id="member-name"
+                id="member-existing"
                 required
-                value={form.name}
-                onChange={e => set('name', e.target.value)}
+                value={form.existingUser}
+                onChange={e => set('existingUser', e.target.value)}
                 className={input}
               />
             </div>
-            {mailEnabled && (
-              <fieldset className="space-y-1 text-sm text-gray-700">
-                <legend className="block text-sm font-medium text-gray-700 mb-1">Access</legend>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="member-access"
-                    checked={access === 'invite'}
-                    onChange={() => setAccess('invite')}
-                  />{' '}
-                  Email a link to choose a password
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="member-access"
-                    checked={access === 'email_password'}
-                    onChange={() => setAccess('email_password')}
-                  />{' '}
-                  Generate and email a temporary password
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="member-access"
-                    checked={access === 'password'}
-                    onChange={() => setAccess('password')}
-                  />{' '}
-                  Set a temporary password and hand it over myself
-                </label>
-              </fieldset>
-            )}
-            {access === 'password' && (
+          ) : (
+            <>
               <div>
-                <label htmlFor="member-password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Temporary password
+                <label htmlFor="member-username" className="block text-sm font-medium text-gray-700 mb-1">
+                  Username
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    id="member-password"
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={10}
-                    value={form.tempPassword}
-                    onChange={e => set('tempPassword', e.target.value)}
-                    className={input}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(s => !s)}
-                    className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
-                  >
-                    {showPassword ? 'Hide' : 'Show'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      set('tempPassword', generatePassword())
-                      setShowPassword(true)
-                    }}
-                    className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
-                  >
-                    Generate
-                  </button>
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  At least 10 characters, not their name; they change it at first sign-in.
-                </p>
+                <input
+                  id="member-username"
+                  required
+                  minLength={3}
+                  value={form.username}
+                  onChange={e => set('username', e.target.value)}
+                  className={input}
+                />
               </div>
-            )}
-          </>
-        )}
+              <div>
+                <label htmlFor="member-email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  id="member-email"
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={e => set('email', e.target.value)}
+                  className={input}
+                />
+              </div>
+              <div>
+                <label htmlFor="member-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
+                <input
+                  id="member-name"
+                  required
+                  value={form.name}
+                  onChange={e => set('name', e.target.value)}
+                  className={input}
+                />
+              </div>
+              {mailEnabled && (
+                <fieldset className="space-y-1 text-sm text-gray-700">
+                  <legend className="block text-sm font-medium text-gray-700 mb-1">Access</legend>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="member-access"
+                      checked={access === 'invite'}
+                      onChange={() => setAccess('invite')}
+                    />{' '}
+                    Email a link to choose a password
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="member-access"
+                      checked={access === 'email_password'}
+                      onChange={() => setAccess('email_password')}
+                    />{' '}
+                    Generate and email a temporary password
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="member-access"
+                      checked={access === 'password'}
+                      onChange={() => setAccess('password')}
+                    />{' '}
+                    Set a temporary password and hand it over myself
+                  </label>
+                </fieldset>
+              )}
+              {access === 'password' && (
+                <div>
+                  <label htmlFor="member-password" className="block text-sm font-medium text-gray-700 mb-1">
+                    Temporary password
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="member-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={10}
+                      value={form.tempPassword}
+                      onChange={e => set('tempPassword', e.target.value)}
+                      className={input}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(s => !s)}
+                      className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        set('tempPassword', generatePassword())
+                        setShowPassword(true)
+                      }}
+                      className="px-3 border border-gray-300 rounded-lg text-sm text-gray-700"
+                    >
+                      Generate
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    At least 10 characters, not their name; they change it at first sign-in.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
 
-        <div>
-          <label htmlFor="member-role" className="block text-sm font-medium text-gray-700 mb-1">
-            Role in this workspace
-          </label>
-          <select id="member-role" value={form.role} onChange={e => set('role', e.target.value)} className={input}>
-            <option value="labeller">Labeller</option>
-            <option value="supervisor">Supervisor</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div>
-          <Combobox
-            label="Supervisor"
-            labelClassName="block text-sm font-medium text-gray-700 mb-1"
-            placeholder="None"
-            inputClassName="!px-3 !py-2 border-gray-300 rounded-lg text-gray-900"
-            options={supervisors.map(s => ({ value: s.id, label: s.name || s.username, hint: s.role }))}
-            value={form.supervisorId || null}
-            onChange={value => set('supervisorId', value ?? '')}
-          />
-        </div>
+          <div>
+            <label htmlFor="member-role" className="block text-sm font-medium text-gray-700 mb-1">
+              Role in this workspace
+            </label>
+            <select id="member-role" value={form.role} onChange={e => set('role', e.target.value)} className={input}>
+              <option value="labeller">Labeller</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <Combobox
+              label="Supervisor"
+              labelClassName="block text-sm font-medium text-gray-700 mb-1"
+              placeholder="None"
+              inputClassName="!px-3 !py-2 border-gray-300 rounded-lg text-gray-900"
+              options={supervisors.map(s => ({ value: s.id, label: s.name || s.username, hint: s.role }))}
+              value={form.supervisorId || null}
+              onChange={value => set('supervisorId', value ?? '')}
+            />
+          </div>
 
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
-          >
-            Cancel
-          </button>
-          <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'flex-1')}>
-            {mode === 'existing' ? 'Add' : mode === 'invite' ? 'Send invitation' : 'Create'}
-          </button>
-        </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'flex-1')}>
+              {mode === 'existing' ? 'Add' : mode === 'invite' ? 'Send invitation' : 'Create'}
+            </button>
+          </div>
+        </fieldset>
       </form>
     </Modal>
   )

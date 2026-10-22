@@ -52,7 +52,7 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
   older entries every six hours (`AUDIT_RETENTION_DAYS`, default 730; `0`
   keeps them). Mail outbox rows: 90 days (`MAIL_RETENTION_DAYS`).
 - **Required check:**
-  - [ ] Add the `e2e` CI job to the `main` ruleset (GitHub › Settings › Rules;
+  - [ ] Add the `e2e` CI job to the `main` ruleset (GitHub > Settings > Rules;
         `deploy-prod` already waits for it). Before the first production
         release.
 - **Later, not needed for staging:**
@@ -86,6 +86,16 @@ reach other workspaces' models.
       tested).
 - [ ] Remove hand-written `useMemo`/`useCallback` where the React Compiler
       covers them (M01).
+
+## 5. Dependency maintenance
+
+- [ ] **Before upgrading to `pg` 9:** verify that Prisma's PostgreSQL adapter
+      handles relation subqueries on an interactive transaction's connection
+      without concurrent `client.query()` calls. The October review observed
+      a deprecation warning with `pg` 8; `pg` 9 will reject that pattern.
+      Keep `pg` on 8 until the adapter handles it, and rerun the integration
+      suite when upgrading. Background is in the archived
+      [modernization plan](../archive/plans-2026-10/modernization-2026-10.md).
 
 Independent double annotation now has a proposed
 [implementation plan](double-annotation.md); it is not implemented. Other

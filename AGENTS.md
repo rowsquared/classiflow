@@ -151,8 +151,9 @@ Read `prisma/schema.prisma` before changing data behavior.
 - The individual annotation endpoint replaces annotations for the selected
   taxonomy while retaining the others. It computes `submitted` when all active
   taxonomies have annotations, otherwise `pending`; skipping sets `skipped`.
-  The UI enforces leaf/unknown selection. The bulk endpoint currently sets
-  `submitted` directly, so inspect both paths when changing completion behavior.
+  Both save endpoints validate leaf/unknown paths and share the completion
+  rules. Bulk flags, comments and skips are transactional for the whole
+  selection; inspect both save paths when changing completion behavior.
   `escalated` also exists in the schema; flags are a separate boolean.
 - `SentenceAssignment` joins records and users. Roles are `admin`, `supervisor`,
   and `labeller`; users can have a supervisor and subordinate labellers. Queue,

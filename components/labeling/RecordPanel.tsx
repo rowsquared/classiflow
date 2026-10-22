@@ -7,6 +7,7 @@ import type { LabelingRecord } from './data'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 type RecordPanelProps = {
+  disabled?: boolean
   record: LabelingRecord
   navigation: NavigationList
   onPrevious: () => void
@@ -14,7 +15,7 @@ type RecordPanelProps = {
 }
 
 /** Left side of the labelling screen: the record's fields and context, and previous/next. */
-export default function RecordPanel({ record, navigation, onPrevious, onNext }: RecordPanelProps) {
+export default function RecordPanel({ record, navigation, onPrevious, onNext, disabled = false }: RecordPanelProps) {
   const { sentenceIds, currentIndex } = navigation
   return (
     <ResizablePanel
@@ -91,6 +92,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
         </div>
         <div className="flex gap-2">
           <button
+            disabled={disabled || currentIndex <= 0}
             onClick={onPrevious}
             className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
             title="Previous sentence"
@@ -99,6 +101,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
             <ChevronLeft className="w-5 h-5" aria-hidden="true" />
           </button>
           <button
+            disabled={disabled}
             onClick={onNext}
             className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
             title="Next sentence"

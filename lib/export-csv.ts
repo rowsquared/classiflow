@@ -102,8 +102,10 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
       const fieldMapping = (s.fieldMapping ?? {}) as Mapping
       const supportMapping = (s.supportMapping ?? {}) as Mapping
       for (const i of SLOTS) {
-        if (s[`field${i}`]) add(fields, `field_${fieldMapping[i] || `field${i}`}`)
-        if (s[`support${i}`]) add(supports, `support_${supportMapping[i] || `support${i}`}`)
+        if (Object.hasOwn(fieldMapping, String(i)) || s[`field${i}`])
+          add(fields, `field_${fieldMapping[i] || `field${i}`}`)
+        if (Object.hasOwn(supportMapping, String(i)) || s[`support${i}`])
+          add(supports, `support_${supportMapping[i] || `support${i}`}`)
       }
     }
   }
@@ -159,7 +161,7 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
   const supportMapping = (s.supportMapping ?? {}) as Mapping
   const valueFor = (column: string, prefix: 'field' | 'support', mapping: Mapping) => {
     const name = column.slice(prefix.length + 1)
-    const slot = SLOTS.find(i => mapping[i] === name)
+    const slot = SLOTS.find(i => (mapping[i] || `${prefix}${i}`) === name)
     return slot ? (s[`${prefix}${slot}`] ?? '') : ''
   }
   const labels = new Map(s.annotations.map(a => [`${a.taxonomyId}:${a.level}`, a.nodeCode]))

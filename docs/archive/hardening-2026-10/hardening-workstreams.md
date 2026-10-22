@@ -1,6 +1,6 @@
 # classiflow hardening investigation briefs
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../plans-2026-10/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../plans/open-items.md). Links to moved or removed source files use the reviewed `8c037de` snapshot; other source links point to the current checkout.
 
 Companion to the [21 October 2026 review](2026-10-21-review.md). These are proposed
 assignments, not approved implementation designs or a record of completed fixes.
@@ -38,13 +38,13 @@ date; close findings with evidence rather than deleting their history.
 **Priority:** P0. **Dependencies:** coordinate the current-user guard with W02;
 write regression tests immediately, without waiting for broad W10 cleanup.
 
-**Read:** [middleware](../../../middleware.ts), the review's
+**Read:** [middleware](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/middleware.ts), the review's
 [unguarded route inventory](2026-10-21-review.md#1-application-api-access-control-is-incomplete),
-[annotation writes](../../../app/api/sentences/[sentenceId]/annotations/route.ts),
-[bulk writes](../../../app/api/sentences/bulk-label/route.ts),
-[assignments](../../../app/api/sentences/assign/route.ts),
+[annotation writes](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/%5BsentenceId%5D/annotations/route.ts),
+[bulk writes](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/bulk-label/route.ts),
+[assignments](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/assign/route.ts),
 [user detail](../../../app/api/users/[userId]/route.ts), and
-[record detail](../../../app/api/sentences/[sentenceId]/route.ts).
+[record detail](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/%5BsentenceId%5D/route.ts).
 
 **Evidence:** unguarded destructive/import/comment routes; comments use the first
 database user as author. Annotation routes lack record visibility checks.
@@ -108,12 +108,12 @@ and custom routes have an Origin check (W04).
 **Priority:** P0 for default credentials/logging when deployed; P1 for lifecycle
 hardening. **Dependencies:** common guard contract with W01; runtime upgrades W03.
 
-**Read:** [auth config](../../../lib/auth.config.ts), [JWT callbacks](../../../lib/auth.ts),
+**Read:** [auth config](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/lib/auth.config.ts), [JWT callbacks](../../../lib/auth.ts),
 [password reset](../../../app/api/auth/reset-password/route.ts),
 [user mutations](../../../app/api/users/[userId]/route.ts),
-[bootstrap](../../../scripts/init-admin.js),
+[bootstrap](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/scripts/init-admin.js),
 password recovery script (`scripts/reset-admin-password.ts`, since replaced),
-[queue scope](../../../app/api/sentences/route.ts), and [schema](../../../prisma/schema.prisma).
+[queue scope](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/route.ts), and [schema](../../../prisma/schema.prisma).
 
 **Evidence:** bootstrap and recovery scripts print passwords and accept known
 fallbacks. JWT roles/reset flags refresh only on sign-in or explicit session
@@ -268,11 +268,11 @@ April 2028) and a committed npm lockfile.
 and ingress settings with W12. Exploitability of proxy/storage findings needs
 deployment verification.
 
-**Read:** [server fetch](../../../lib/server-fetch.ts),
-[Next config](../../../next.config.ts), [middleware](../../../middleware.ts),
-[record import](../../../app/api/sentences/import/route.ts),
+**Read:** [server fetch](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/lib/server-fetch.ts),
+[Next config](../../../next.config.ts), [middleware](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/middleware.ts),
+[record import](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/import/route.ts),
 historical `app/api/ai-labeling/external-training/{upload,start}/route.ts`,
-[queue API](../../../app/api/sentences/route.ts), and [health](../../../app/api/health/route.ts).
+[queue API](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/route.ts), and [health](../../../app/api/health/route.ts).
 
 **Evidence:** server-side fetch constructs an origin from request Host/protocol
 headers when no configured base URL exists, then forwards cookies. This creates
@@ -347,9 +347,9 @@ rules and remains out of source control/images.
 W06 and metric definitions with W08.
 
 **Read:** [schema](../../../prisma/schema.prisma),
-[individual annotation API](../../../app/api/sentences/[sentenceId]/annotations/route.ts),
-[bulk API](../../../app/api/sentences/bulk-label/route.ts),
-[constants](../../../lib/constants.ts), [labeling UI](../../../app/queue/[sentenceId]/page.tsx).
+[individual annotation API](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/%5BsentenceId%5D/annotations/route.ts),
+[bulk API](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/bulk-label/route.ts),
+[constants](../../../lib/constants.ts), [labeling UI](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/queue/%5BsentenceId%5D/page.tsx).
 
 **Evidence:** bulk writes set `submitted` without checking all active taxonomies,
 even with no labels. Individual writes trust client leaf/unknown completeness,
@@ -419,13 +419,13 @@ production access; do not auto-relabel).
 
 **Priority:** P1. **Dependencies:** W01/W04; domain invariants W05.
 
-**Read:** [record importer](../../../app/api/sentences/import/route.ts),
-[export](../../../app/api/export/route.ts),
-[taxonomy create](../../../app/api/taxonomies/route.ts),
-[validate](../../../app/api/taxonomies/validate/route.ts),
-[update/delete](../../../app/api/taxonomies/[key]/route.ts),
-[existing-taxonomy import](../../../app/api/taxonomies/[key]/import/route.ts),
-[restore](../../../app/api/taxonomies/[key]/restore/route.ts), and schema relations.
+**Read:** [record importer](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/import/route.ts),
+[export](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/export/route.ts),
+[taxonomy create](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/route.ts),
+[validate](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/validate/route.ts),
+[update/delete](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/%5Bkey%5D/route.ts),
+[existing-taxonomy import](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/%5Bkey%5D/import/route.ts),
+[restore](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/%5Bkey%5D/restore/route.ts), and schema relations.
 
 **Evidence:** similar CSV validation is repeated across handlers. Export escapes
 quotes in selected field/comment values but wraps every cell without centralized
@@ -499,8 +499,8 @@ counter semantics, W12 hosting topology. This is classiflow work only.
 **Read:** [monitor](../../../lib/ai-job-monitor.ts), [HTTP client](../../../lib/ai-labeling.ts),
 historical `lib/ai-job-queue.ts` and
 `app/api/ai-labeling/external-training/start/route.ts`,
-[active jobs](../../../app/api/ai-jobs/active/route.ts),
-[cancel](../../../app/api/ai-jobs/[jobId]/cancel/route.ts), and [learning](../../../app/api/ai-labeling/learn/route.ts).
+[active jobs](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/ai-jobs/active/route.ts),
+[cancel](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/ai-jobs/%5BjobId%5D/cancel/route.ts), and [learning](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/ai-labeling/learn/route.ts).
 
 **Evidence:** process-local monitor sets provide no cross-instance ownership.
 Recovery relies on polling the active-jobs API and covers labeling/learning,
@@ -567,12 +567,12 @@ labeling continues with the AI service absent. No Taxomind source changes needed
 **Priority:** P1 for incorrect metrics, P2 for measured optimization.
 **Dependencies:** W01 visibility and W05 completion semantics must be shared.
 
-**Read:** [queue API](../../../app/api/sentences/route.ts),
-[queue stats](../../../app/api/sentences/stats/route.ts),
-[progress stats](../../../app/api/progress/stats/route.ts),
-[team metrics](../../../app/api/progress/team/route.ts),
-[taxonomy nodes](../../../app/api/taxonomies/[key]/nodes/route.ts),
-[export](../../../app/api/export/route.ts), [health](../../../app/api/health/route.ts).
+**Read:** [queue API](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/route.ts),
+[queue stats](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/sentences/stats/route.ts),
+[progress stats](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/progress/stats/route.ts),
+[team metrics](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/progress/team/route.ts),
+[taxonomy nodes](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/taxonomies/%5Bkey%5D/nodes/route.ts),
+[export](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/api/export/route.ts), [health](../../../app/api/health/route.ts).
 
 **Evidence:** progress agreement reads `SentenceAnnotation(source='ai')`, while
 current monitors write `SentenceAISuggestion`. Matching uses sentence/level and
@@ -627,8 +627,8 @@ show before/after results at agreed sizes without stale data or scope leakage.
 
 **Priority:** P2. **Dependencies:** stable API contracts from W01/W05/W08.
 
-**Read:** [queue client](../../../app/queue/QueuePageClient.tsx),
-[labeling page](../../../app/queue/[sentenceId]/page.tsx),
+**Read:** [queue client](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/queue/QueuePageClient.tsx),
+[labeling page](https://github.com/rowsquared/classiflow/blob/8c037dec685d1421635e7544ef57f4a96faaa9c5/app/queue/%5BsentenceId%5D/page.tsx),
 [taxonomy browser](../../../components/TaxonomyBrowser.tsx),
 [assignment modal](../../../components/queue/AssignmentModal.tsx),
 [resize panel](../../../components/ResizablePanel.tsx),

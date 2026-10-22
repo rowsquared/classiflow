@@ -5,6 +5,9 @@ import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// Only the top dialog handles keys when a dialog opens another dialog.
+const dialogStack: symbol[] = []
+
 /**
  * Dialog behaviour for an element that is mounted while the dialog is open:
  * moves focus into it, keeps Tab inside it, closes on Escape and gives focus
@@ -18,15 +21,18 @@ export function useDialog(onClose: () => void, label: string) {
   })
 
   useEffect(() => {
+    const token = Symbol('dialog')
+    dialogStack.push(token)
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusables = () =>
       Array.from(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-        el => el.getClientRects().length > 0
+        el => el.getClientRects().length > 0 && !el.matches(':disabled') && !el.closest('fieldset[disabled]')
       )
     const autofocus = ref.current?.querySelector<HTMLElement>('[autofocus]')
     ;(autofocus ?? focusables()[0] ?? ref.current)?.focus()
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (dialogStack.at(-1) !== token) return
       if (event.key === 'Escape') {
         event.stopPropagation()
         onCloseRef.current()
@@ -53,6 +59,8 @@ export function useDialog(onClose: () => void, label: string) {
     // Capture phase, so page-level keyboard shortcuts do not see Escape/Tab first.
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
+      const index = dialogStack.indexOf(token)
+      if (index >= 0) dialogStack.splice(index, 1)
       document.removeEventListener('keydown', onKeyDown, true)
       previous?.focus()
     }

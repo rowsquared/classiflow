@@ -81,13 +81,18 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
   const closeToast = useCallback((id: string) => setToasts(t => t.filter(x => x.id !== id)), [])
 
   const reload = useCallback(async () => {
-    const [res, invited] = await Promise.all([
-      fetch(workspaceApi('/users?includeSuspended=true')),
-      fetch(workspaceApi('/invitations'))
+    const results = await Promise.allSettled([
+      fetch(workspaceApi('/users?includeSuspended=true')).then(async res => {
+        if (!res.ok) throw new Error('members')
+        setMembers((await res.json()).users)
+      }),
+      fetch(workspaceApi('/invitations')).then(async res => {
+        if (!res.ok) throw new Error('invitations')
+        setInvitations((await res.json()).invitations)
+      })
     ])
-    if (res.ok) setMembers((await res.json()).users)
-    else notify('error', 'Could not reload the members.')
-    if (invited.ok) setInvitations((await invited.json()).invitations)
+    if (results.some(result => result.status === 'rejected'))
+      notify('error', 'Could not reload the team. Please refresh the page.')
   }, [notify])
 
   const changed = async (message: string) => {

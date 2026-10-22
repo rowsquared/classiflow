@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchJson } from '@/lib/query/fetch'
 import PageHeader from '@/components/PageHeader'
 import TaxonomyBrowser from '@/components/TaxonomyBrowser'
 import { ToastContainer, type Toast } from '@/components/Toast'
@@ -53,15 +54,20 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const activeTaxonomy = taxonomies[activeTaxonomyIndex] ?? null
   // The labels being chosen for the active taxonomy. Until the user changes
   // something they are the record's saved labels (or its AI suggestion).
-  const [draft, setDraft] = useState<{ taxonomyKey: string; labels: SelectedLabel[] } | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, SelectedLabel[]>>({})
   const savedLabels = sentence && activeTaxonomy ? labelsFromAnnotations(sentence.annotations, activeTaxonomy.key) : []
-  const editing = draft !== null && draft.taxonomyKey === activeTaxonomy?.key
-  const selectedLabels = editing ? draft.labels : savedLabels
+  const draft = activeTaxonomy ? drafts[activeTaxonomy.key] : undefined
+  const selectedLabels = draft ?? savedLabels
   // Chosen but not submitted: the workspace switcher asks before leaving.
-  useUnsavedChanges(editing && labelsSignature(selectedLabels) !== labelsSignature(savedLabels))
+  useUnsavedChanges(
+    Object.entries(drafts).some(
+      ([key, labels]) =>
+        labelsSignature(labels) !== labelsSignature(labelsFromAnnotations(sentence?.annotations ?? [], key))
+    )
+  )
   const setSelectedLabels = useCallback(
     (labels: SelectedLabel[]) => {
-      if (activeTaxonomy) setDraft({ taxonomyKey: activeTaxonomy.key, labels })
+      if (activeTaxonomy) setDrafts(previous => ({ ...previous, [activeTaxonomy.key]: labels }))
     },
     [activeTaxonomy]
   )
@@ -121,15 +127,22 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const updateRecord = (patch: Partial<LabelingRecord>) =>
     queryClient.setQueryData<LabelingRecord>(recordKey, old => (old ? { ...old, ...patch } : old))
   // Labels, flags and statuses changed: the queue's lists and counts are out of date.
-  const invalidateQueue = () => queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) })
+  const invalidateQueue = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress(workspaceId) })
+    ])
 
   const [saveOperation] = useState(() => new SaveOperation())
-  const postAnnotations = async (body: Record<string, unknown>) =>
-    fetch(api(`/sentences/${sentenceId}/annotations`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
+  const annotationMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      fetchJson<AnnotationResponse>(api(`/sentences/${sentenceId}/annotations`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+  })
+  const saving = annotationMutation.isPending
 
   const openComments = () => {
     setCommentsRequested(true)
@@ -152,6 +165,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         return false
       }
       await queryClient.invalidateQueries({ queryKey: [...recordKey, 'comments'] })
+      invalidateQueue()
       return true
     } catch (error) {
       console.error(failure, error)
@@ -168,8 +182,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const handleTaxonomyTabChange = (index: number) => {
     if (index < 0 || index >= taxonomies.length) return
     setActiveTaxonomyIndex(index)
-    // The new tab starts from the record's saved labels for that taxonomy.
-    setDraft(null)
+    setCurrentTaxonomyLevel(1)
   }
 
   const goToQueue = () => router.push(href('/queue'))
@@ -195,38 +208,32 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   }
 
   const handleFlag = async () => {
-    if (!sentence) return
+    if (!sentence || saving) return
     try {
-      const res = await postAnnotations({ status: sentence.status, annotations: [], flagged: !sentence.flagged })
-      if (res.ok) {
-        updateRecord({ flagged: !sentence.flagged })
-        invalidateQueue()
-      }
-    } catch (error) {
-      console.error('Failed to toggle flag:', error)
+      await annotationMutation.mutateAsync({ status: 'pending', annotations: [], flagged: !sentence.flagged })
+      updateRecord({ flagged: !sentence.flagged })
+      invalidateQueue()
+    } catch {
+      showError('Failed to update flag. Please try again.')
     }
   }
 
   const handleSkip = async () => {
+    if (saving) return
     try {
-      const res = await postAnnotations({
-        status: 'skipped',
-        annotations: [],
-        flagged: sentence?.flagged,
-        labelingStartedAt
-      })
-      if (res.ok) {
-        invalidateQueue()
-        handleNext()
-      }
-    } catch (error) {
-      console.error('Failed to skip:', error)
+      await annotationMutation.mutateAsync({ status: 'skipped', annotations: [], labelingStartedAt })
+      updateRecord({ status: 'skipped' })
+      invalidateQueue()
+      handleNext()
+    } catch {
+      showError('Failed to skip record. Please try again.')
     }
   }
 
   const canSubmit = canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
 
   const handleSubmit = async () => {
+    if (saving) return
     if (!canSubmit || !activeTaxonomy) {
       showError('Please select a complete path or mark as unknown')
       return
@@ -238,19 +245,13 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         nodeCode: l.nodeCode, // level-specific unknown codes included
         taxonomyKey: activeTaxonomy.key
       }))
-      const res = await postAnnotations({
+      const data = await annotationMutation.mutateAsync({
         status: 'submitted', // The server keeps 'pending' until every taxonomy is done
         annotations,
-        flagged: sentence?.flagged,
         labelingStartedAt,
         // Sending the same labels again after a failure is the same save.
         operationId: saveOperation.idFor(JSON.stringify([sentenceId, annotations]))
       })
-      const data = (await res.json().catch(() => ({}))) as AnnotationResponse
-      if (!res.ok) {
-        showError(`Failed to submit annotations: ${data.error || 'Unknown error'}`)
-        return
-      }
       saveOperation.succeeded()
 
       if (data.status) updateRecord({ status: data.status })
@@ -259,8 +260,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       // Saved labels of the other tabs come from the record: reload it.
       queryClient.invalidateQueries({ queryKey: recordKey, exact: true })
 
-      const nextIndex = activeTaxonomyIndex + 1
-      if (!data.allCompleted && nextIndex < taxonomies.length) {
+      // Visit any unfinished taxonomy, including one before the current tab.
+      const nextIndex = taxonomies.findIndex(t => !(data.completedTaxonomies ?? []).includes(t.key))
+      if (!data.allCompleted && nextIndex >= 0) {
         handleTaxonomyTabChange(nextIndex)
       } else {
         // Every taxonomy is done: on to the next record of the list.
@@ -268,7 +270,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       }
     } catch (error) {
       console.error('Failed to submit:', error)
-      showError('Failed to submit annotations')
+      showError(error instanceof Error ? error.message : 'Failed to submit annotations')
     }
   }
 
@@ -277,10 +279,11 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const handleKeyPressRef = useRef<(e: KeyboardEvent) => void>(() => {})
   useEffect(() => {
     handleKeyPressRef.current = (e: KeyboardEvent) => {
+      if (saving || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.target instanceof HTMLElement) {
         // Shortcuts are for the labeling screen, not for an open dialog.
-        if (e.target.closest('[role="dialog"]')) return
+        if (e.target.closest('[role="dialog"], [contenteditable="true"], [role="combobox"], select')) return
         // Enter on a focused control activates that control, not Submit.
         if (e.key === 'Enter' && e.target.closest('button, a, select, [role="button"]')) return
       }
@@ -310,21 +313,31 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [])
 
-  const message = (text: string, tone: 'muted' | 'error') => (
+  const message = (text: string, tone: 'muted' | 'error', retry?: () => void) => (
     <>
       <PageHeader title="Labeling" />
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex flex-col gap-3 items-center justify-center min-h-[calc(100vh-66px)]">
         <div
           role={tone === 'error' ? 'alert' : 'status'}
           className={tone === 'error' ? 'text-red-700' : 'text-gray-600'}
         >
           {text}
         </div>
+        {retry && (
+          <button className={buttonClass('secondary')} onClick={retry}>
+            Retry
+          </button>
+        )}
       </div>
     </>
   )
 
   if (recordQuery.isPending || taxonomiesQuery.isPending) return message('Loading...', 'muted')
+  if (recordQuery.isError || taxonomiesQuery.isError)
+    return message('Could not load the labeling screen. Please try again.', 'error', () => {
+      recordQuery.refetch()
+      taxonomiesQuery.refetch()
+    })
   if (!sentence) return message('Sentence not found', 'error')
   if (taxonomies.length === 0) return message('No active taxonomies found', 'error')
 
@@ -337,7 +350,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         setIsNavigatingBack(true)
         goToQueue()
       }}
-      disabled={isNavigatingBack}
+      disabled={isNavigatingBack || saving}
       className={buttonClass('secondary')}
     >
       ← {isNavigatingBack ? 'Loading queue…' : 'Back to queue'}
@@ -349,7 +362,13 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       <ToastContainer toasts={toasts} onClose={removeToast} />
       <PageHeader title="Labeling" actions={backButton} />
       <div className="h-[calc(100vh-66px)] bg-gray-50 flex overflow-hidden">
-        <RecordPanel record={sentence} navigation={navigation} onPrevious={handlePrevious} onNext={handleNext} />
+        <RecordPanel
+          record={sentence}
+          navigation={navigation}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          disabled={saving}
+        />
 
         {/* Right Panel - Taxonomy */}
         <div className="flex-1 bg-white relative flex flex-col overflow-hidden">
@@ -363,6 +382,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
                     return (
                       <button
                         key={tax.key}
+                        disabled={saving}
                         onClick={() => handleTaxonomyTabChange(index)}
                         aria-pressed={active}
                         className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative ${
@@ -394,6 +414,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             >
               <TaxonomyBrowser
                 key={activeTaxonomy.key}
+                disabled={saving}
                 taxonomy={activeTaxonomy}
                 selectedLabels={selectedLabels}
                 onLabelsChange={setSelectedLabels}
@@ -405,6 +426,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           )}
 
           <ActionBar
+            saving={saving}
             hasComment={hasComment}
             flagged={sentence.flagged}
             skipped={sentence.status === 'skipped'}
@@ -421,6 +443,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
       {showCommentDialog && (
         <CommentsDialog
+          loading={commentsQuery.isPending}
+          error={commentsQuery.isError}
+          onRetry={() => commentsQuery.refetch()}
           comments={comments}
           showResolved={showResolvedComments}
           hasResolved={Boolean(commentsQuery.data?.hasResolved)}

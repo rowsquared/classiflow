@@ -10,6 +10,9 @@ type CommentsDialogProps = {
   comments: RecordComment[]
   showResolved: boolean
   hasResolved: boolean
+  loading?: boolean
+  error?: boolean
+  onRetry?: () => void
   onToggleShowResolved: () => void
   onResolve: (commentId: string, resolved: boolean) => void
   onDelete: (commentId: string) => void
@@ -23,6 +26,9 @@ export default function CommentsDialog({
   comments,
   showResolved,
   hasResolved,
+  loading = false,
+  error = false,
+  onRetry,
   onToggleShowResolved,
   onResolve,
   onDelete,
@@ -30,23 +36,32 @@ export default function CommentsDialog({
   onClose
 }: CommentsDialogProps) {
   const [comment, setComment] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const save = async () => {
-    if (!comment.trim()) {
-      onClose()
-      return
-    }
+    if (saving || !comment.trim()) return
     // The new comment appears in the list above; the dialog stays open.
-    if (await onAdd(comment)) setComment('')
+    setSaving(true)
+    try {
+      if (await onAdd(comment)) setComment('')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <Modal label="Comments" onClose={onClose}>
+    <Modal
+      label="Comments"
+      onClose={() => {
+        if (!saving) onClose()
+      }}
+    >
       <div className={`${dialogPanelClass} p-6 w-[32rem] max-h-[80vh] flex flex-col`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-gray-900">Comments</h2>
           <button
             onClick={onClose}
+            disabled={saving}
             className="text-gray-500 hover:text-gray-700 transition-colors"
             aria-label="Close comments"
           >
@@ -69,7 +84,19 @@ export default function CommentsDialog({
           </p>
         )}
 
-        {comments.length > 0 ? (
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            Could not load comments.{' '}
+            <button className={buttonClass('secondary', 'sm')} onClick={onRetry}>
+              Retry
+            </button>
+          </p>
+        )}
+        {loading ? (
+          <p role="status" className="mb-4 text-sm text-gray-600">
+            Loading comments…
+          </p>
+        ) : comments.length > 0 ? (
           <ul className="mb-4 space-y-3 max-h-60 overflow-y-auto pr-1">
             {comments.map(c => (
               <li
@@ -107,11 +134,11 @@ export default function CommentsDialog({
               </li>
             ))}
           </ul>
-        ) : (
+        ) : !error ? (
           <p className="text-sm text-gray-600 mb-4">
             {showResolved ? 'No comments found.' : 'No unresolved comments yet.'}
           </p>
-        )}
+        ) : null}
 
         <div className="mb-4">
           <label htmlFor="new-comment" className="block text-sm font-medium text-gray-700 mb-2">
@@ -119,6 +146,8 @@ export default function CommentsDialog({
           </label>
           <textarea
             id="new-comment"
+            disabled={saving}
+            maxLength={10000}
             value={comment}
             onChange={e => setComment(e.target.value)}
             placeholder="Enter your comment..."
@@ -127,11 +156,11 @@ export default function CommentsDialog({
         </div>
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={buttonClass('secondary')}>
+          <button onClick={onClose} disabled={saving} className={buttonClass('secondary')}>
             Close
           </button>
-          <button onClick={save} className={buttonClass('primary')}>
-            Save
+          <button onClick={save} disabled={saving || !comment.trim()} className={buttonClass('primary')}>
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

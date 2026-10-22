@@ -17,7 +17,7 @@ const rows = (page: Page) => page.locator('tbody tr')
 
 test('search and tab survive a reload and back/forward', async ({ page }) => {
   await signIn(page)
-  await expect(rows(page).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Pending \(/ })).toHaveAttribute('aria-current', 'page')
   const pending = await rows(page).count()
 
   // The All tab, so the search finds the record whatever earlier journeys

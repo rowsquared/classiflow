@@ -21,7 +21,7 @@ type AssignmentModalProps = {
   onSuccess: () => void
 }
 
-const NONE: ReadonlySet<string> = new Set()
+const NO_ASSIGNMENTS: Record<string, string[]> = {}
 
 export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: AssignmentModalProps) {
   const { workspaceId, api } = useWorkspacePaths()
@@ -36,20 +36,34 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   // Who is assigned to the selected records now; always asked fresh.
   const current = useQuery({
     queryKey: queryKeys.assignments(workspaceId, idsParam),
-    queryFn: ({ signal }) =>
-      fetchJson<{ userAssignments?: Record<string, string[]> }>(api(`/sentences/assign?sentenceIds=${idsParam}`), {
-        signal
-      }).then(d => new Set(Object.keys(d.userAssignments ?? {})) as ReadonlySet<string>),
+    queryFn: async ({ signal }) => {
+      const assignments: Record<string, string[]> = {}
+      // The full selection can exceed HTTP header limits. Keep GET URLs short.
+      for (let offset = 0; offset < sentenceIds.length; offset += 200) {
+        const ids = new URLSearchParams({ sentenceIds: sentenceIds.slice(offset, offset + 200).join(',') })
+        const data = await fetchJson<{ userAssignments: Record<string, string[]> }>(api(`/sentences/assign?${ids}`), {
+          signal
+        })
+        for (const [userId, ids] of Object.entries(data.userAssignments))
+          assignments[userId] = [...(assignments[userId] ?? []), ...ids]
+      }
+      return assignments
+    },
     staleTime: 0,
     gcTime: 0
   })
 
   const users = members.data ?? []
-  const initialUserIds = current.data ?? NONE
-  // The user's choice; until they change something it is the current assignment.
-  const [choice, setChoice] = useState<ReadonlySet<string> | null>(null)
-  const selectedUserIds = choice ?? initialUserIds
-  const setSelectedUserIds = (ids: ReadonlySet<string>) => setChoice(ids)
+  const assignments = current.data ?? NO_ASSIGNMENTS
+  const initialUserIds = new Set(Object.keys(assignments))
+  const fullyAssigned = new Set(
+    Object.entries(assignments)
+      .filter(([, ids]) => new Set(ids).size === sentenceIds.length)
+      .map(([id]) => id)
+  )
+  // Only deliberate choices are writes. Mixed assignments remain mixed until touched.
+  const [choice, setChoice] = useState<Record<string, boolean>>({})
+  const selectedUserIds = new Set(users.filter(u => choice[u.id] ?? fullyAssigned.has(u.id)).map(u => u.id))
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -58,32 +72,23 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
     saveError || (members.isError ? 'Failed to load users' : current.isError ? 'Failed to load assignments' : '')
   const setError = setSaveError
 
-  const handleToggleUser = (userId: string) => {
-    const newSet = new Set(selectedUserIds)
-    if (newSet.has(userId)) {
-      newSet.delete(userId)
-    } else {
-      newSet.add(userId)
-    }
-    setSelectedUserIds(newSet)
-  }
+  const handleToggleUser = (userId: string) =>
+    setChoice(previous => ({ ...previous, [userId]: !selectedUserIds.has(userId) }))
 
-  const handleSelectAll = (shown: User[]) => {
-    const next = new Set(selectedUserIds)
-    if (allShownSelected) shown.forEach(u => next.delete(u.id))
-    else shown.forEach(u => next.add(u.id))
-    setSelectedUserIds(next)
-  }
+  const handleSelectAll = (shown: User[]) =>
+    setChoice(previous => ({
+      ...previous,
+      ...Object.fromEntries(shown.map(u => [u.id, !allShownSelected]))
+    }))
+  const toAdd = Object.keys(choice).filter(id => choice[id] && !fullyAssigned.has(id))
+  const toRemove = Object.keys(choice).filter(id => !choice[id] && initialUserIds.has(id))
 
   const handleSave = async () => {
+    if (submitting || loading || current.isError || members.isError) return
     setSubmitting(true)
     setError('')
 
     try {
-      // Compute diff
-      const toAdd = Array.from(selectedUserIds).filter(id => !initialUserIds.has(id))
-      const toRemove = Array.from(initialUserIds).filter(id => !selectedUserIds.has(id))
-
       // Nothing changed
       if (toAdd.length === 0 && toRemove.length === 0) {
         onClose()
@@ -154,8 +159,6 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   const allShownSelected = assignableUsers.length > 0 && assignableUsers.every(u => selectedUserIds.has(u.id))
 
   // Compute diff for button label
-  const toAdd = Array.from(selectedUserIds).filter(id => !initialUserIds.has(id))
-  const toRemove = Array.from(initialUserIds).filter(id => !selectedUserIds.has(id))
   const hasChanges = toAdd.length > 0 || toRemove.length > 0
 
   const getButtonLabel = () => {
@@ -169,7 +172,12 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   }
 
   return (
-    <Modal label="Manage assignments" onClose={onClose}>
+    <Modal
+      label="Manage assignments"
+      onClose={() => {
+        if (!submitting) onClose()
+      }}
+    >
       <div className={`${dialogPanelClass} p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col`}>
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -215,6 +223,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
             <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
+                  disabled={submitting || current.isError || members.isError}
                   type="checkbox"
                   checked={allShownSelected}
                   onChange={() => handleSelectAll(assignableUsers)}
@@ -241,12 +250,13 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
               ) : (
                 assignableUsers.map(user => {
                   const isSelected = selectedUserIds.has(user.id)
-                  const wasInitial = initialUserIds.has(user.id)
+                  const wasInitial = fullyAssigned.has(user.id)
+                  const mixed = choice[user.id] === undefined && initialUserIds.has(user.id) && !wasInitial
                   // Visual cue: green border for newly added, red border for to-be-removed
                   let borderClass = 'border border-transparent'
                   if (isSelected && !wasInitial) {
                     borderClass = 'border border-green-300 bg-green-50'
-                  } else if (!isSelected && wasInitial) {
+                  } else if (choice[user.id] === false && initialUserIds.has(user.id)) {
                     borderClass = 'border border-red-300 bg-red-50'
                   }
 
@@ -256,6 +266,10 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                       className={`flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors ${borderClass}`}
                     >
                       <input
+                        ref={node => {
+                          if (node) node.indeterminate = mixed
+                        }}
+                        disabled={submitting || current.isError || members.isError}
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => handleToggleUser(user.id)}
@@ -269,10 +283,11 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                           >
                             {user.role}
                           </span>
+                          {mixed && <span className="text-xs text-gray-600">Assigned to some selected records</span>}
                           {isSelected && !wasInitial && (
                             <span className="text-xs text-green-600 font-medium">+ adding</span>
                           )}
-                          {!isSelected && wasInitial && (
+                          {choice[user.id] === false && initialUserIds.has(user.id) && (
                             <span className="text-xs text-red-600 font-medium">- removing</span>
                           )}
                         </div>
@@ -286,13 +301,18 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
 
             {/* Actions */}
             <div className="flex gap-3 pt-4 mt-4 border-t border-gray-200">
-              <button type="button" onClick={onClose} className={buttonClass('secondary', 'md', 'flex-1')}>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={onClose}
+                className={buttonClass('secondary', 'md', 'flex-1')}
+              >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                disabled={submitting || !hasChanges}
-                className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                disabled={submitting || loading || current.isError || members.isError || !hasChanges}
+                className={buttonClass('primary', 'md', 'flex-1')}
               >
                 {getButtonLabel()}
               </button>

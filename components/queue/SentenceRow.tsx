@@ -70,6 +70,7 @@ type Sentence = {
 
 interface SentenceRowProps {
   sentence: Sentence
+  selectionDisabled?: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
   showAssignedTo?: boolean
@@ -83,6 +84,7 @@ interface SentenceRowProps {
 
 export default function SentenceRow({
   sentence,
+  selectionDisabled = false,
   selected,
   onSelect,
   showAssignedTo = false,
@@ -208,6 +210,7 @@ export default function SentenceRow({
       <td className="pl-4 pr-2 py-3 w-12" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
+          disabled={selectionDisabled}
           checked={selected}
           onChange={e => onSelect(e.target.checked)}
           aria-label={`Select record: ${sentence.field1}`}

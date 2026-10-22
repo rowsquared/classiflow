@@ -2,6 +2,8 @@ import 'server-only'
 import { db } from '@/lib/workspace/db'
 import { latestSyncByTaxonomy, NEVER_SYNCED } from '@/lib/server/ai-jobs'
 import { workspaceJobSettings } from '@/lib/ai-connections'
+import type { Prisma } from '@/lib/generated/prisma/client'
+import type { TaxonomyNodesQuery } from '@/lib/contracts/taxonomy-nodes'
 
 // Taxonomy data for the admin page, the queue page and
 // /api/workspaces/[workspaceId]/taxonomies. Every member of the workspace sees them.
@@ -71,7 +73,7 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
 /** What the labelling screens need to know about each taxonomy. */
 export async function listActiveTaxonomies(workspaceId: string) {
   const taxonomies = await db().taxonomy.findMany({
-    where: { workspaceId },
+    where: { workspaceId, isActive: true },
     select: {
       id: true,
       key: true,
@@ -85,4 +87,29 @@ export async function listActiveTaxonomies(workspaceId: string) {
     ok: true as const,
     taxonomies: taxonomies.map(t => ({ ...t, lastAISyncStatus: syncs.get(t.id)?.lastAISyncStatus ?? null }))
   }
+}
+
+export async function listTaxonomyNodes(workspaceId: string, key: string, query: TaxonomyNodesQuery) {
+  const taxonomy = await db().taxonomy.findUnique({
+    where: { workspaceId_key: { workspaceId, key } },
+    select: { id: true }
+  })
+  if (!taxonomy) return null
+  const { parentCode, code, level, q, limit, offset } = query
+  const where: Prisma.TaxonomyNodeWhereInput = { taxonomyId: taxonomy.id }
+  if (parentCode !== undefined) where.parentCode = parentCode === '' ? null : parentCode
+  if (code !== undefined) where.code = code
+  if (level !== undefined) where.level = level
+  if (q) where.OR = [{ code: { startsWith: q, mode: 'insensitive' } }, { label: { contains: q, mode: 'insensitive' } }]
+  const [items, total] = await Promise.all([
+    db().taxonomyNode.findMany({
+      where,
+      orderBy: [{ level: 'asc' }, { code: 'asc' }],
+      skip: offset,
+      take: limit,
+      select: { code: true, label: true, level: true, parentCode: true, isLeaf: true, definition: true, examples: true }
+    }),
+    db().taxonomyNode.count({ where })
+  ])
+  return { items, total, limit, offset }
 }

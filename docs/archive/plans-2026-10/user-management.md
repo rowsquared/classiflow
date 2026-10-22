@@ -3,8 +3,9 @@
 **Archived 22 October 2026:** implemented. What is still open (environment,
 maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
 
-**Status:** proposed 21 October 2026; revised the same day for workspaces and
-Better Auth (next section, which takes precedence over the original text below).
+**Status:** implemented 21–22 October 2026. The implementation status below
+takes precedence over the original proposal and design revisions retained
+in this archive. Live mail verification remains in the open-items list above.
 
 ## Revision for workspaces and Better Auth (21 October 2026)
 
@@ -18,11 +19,11 @@ through this mapping:
 | --- | --- |
 | U1 last seen | `WorkspaceMembership.lastSeenAt` (exists in the schema) is "last active **in this workspace**", written by workspace requests at most every 5 minutes with a conditional raw `UPDATE`; background polls pass `passive`. Global activity is the latest `Session.updatedAt`, shown on `/accounts` only. |
 | U2 Team page | The Team page manages **members of one workspace**; account actions (temporary password, name) follow the "local account" rule (only accounts that belong to this workspace alone and never signed in; platform admins always). The platform `/accounts` page covers global accounts. |
-| U3 lifecycle | "Deactivate" in this workspace = **suspend the membership** (done: `DELETE`/`PUT status`); deactivate everywhere = **ban** (platform admin, done). Last-admin checks are serialised (done). Emails and usernames are stored lower case (done). bcrypt's 72-byte limit is moot (scrypt). Remaining: password policy, "unassign open records" on removal. |
+| U3 lifecycle | "Deactivate" in this workspace = **suspend the membership** (done: `DELETE`/`PUT status`); deactivate everywhere = **ban** (platform admin, done). Last-admin checks are serialised (done). Emails and usernames are stored lower case (done). bcrypt's 72-byte limit is moot (scrypt). Password policy and optional "unassign open records" on removal are done. |
 | U4 CSV import | Imports **members** into the current workspace: new accounts are created; existing accounts may only be added by platform admins (no account-existence probing). Create-only. |
 | U5 sessions | "Sign out everywhere" = delete the user's `Session` rows (platform admins; a person for themselves). Lockout records and "Unlock" no longer apply: the limit is per IP in the database (`RateLimit`), not per account. |
 | U6 audit | Workspace audit only shows the workspace's events; per-member history in the drawer reads it; account events (platform) show on `/accounts`. `/w/[id]/admin/audit` reads its filters from the URL. |
-| U7 mail | Transport and outbox as written. Password links use **Better Auth's reset-password flow** (`requestPasswordReset` / `resetPassword`, token in `Verification`, `sendResetPassword` hook) instead of hand-rolled HMAC tokens; invitations are the same flow with a longer expiry and an "invitation" template. Links are built from `BETTER_AUTH_URL`. Invitations name the workspace and role; accepting never reveals other memberships. |
+| U7 mail | Transport and outbox are implemented. Password links use `lib/account-links.ts` with hashed secrets in Better Auth's `Verification` table; Better Auth's own reset endpoints stay disabled. See U7b/U7c below for the implemented password-link and workspace-invitation flows. Trusted link configuration lives in ENV_SETUP.md. |
 
 **Decisions taken (defaults proposed in "Decisions for the maintainer"; change
 them here if needed):** 1. removal does not unassign by default (checkbox);
@@ -35,14 +36,14 @@ download; 7. last seen and invitation resending are workspace-admin-only
 (no SMTP dependency); 9. invitations 72 h, password links 60 min;
 10. classiflow gets its own `N8N_EMAIL_WEBHOOK_SECRET` value.
 
-**Order now:** U1 → U5 → U3 password policy → U6 → U2 → U7 (a, c, b) → U4.
+**Implementation order (completed):** U1 → U5 → U3 password policy → U6 → U2 → U7 (a, c, b) → U4.
 
 ### Maintainer revision: temporary-password email (21 October 2026)
 
 The maintainer explicitly approved generated temporary passwords by email,
 as in survey-hub, alongside invitation links. This revision takes precedence
-over the older links-only text and outbox assumptions below. This is planned
-U7/U4 behavior, not a statement that email is implemented.
+over the older links-only text and outbox assumptions below. U7/U4 are now
+implemented; the implementation status below records the delivered behavior.
 
 - **Permissions:** only workspace admins may resend invitations within their
   workspace; supervisors may not. Platform admins retain administrative access.
@@ -102,7 +103,7 @@ U7/U4 behavior, not a statement that email is implemented.
   unit tested), member drawer with role/supervisor/temporary password and
   audit links, show-once password dialog, toasts; e2e journeys for Team and
   Accounts. Mail-dependent parts (email indicator, invitation mode, resend)
-  wait for U7.
+  were completed with U7.
 - **U3 done**, including changing a member's email (22 October 2026):
   `lib/password-policy.ts` (10–256 characters, not common, not built from
   username/email/name; the forced change must differ) applied to every
@@ -130,8 +131,9 @@ U7/U4 behavior, not a statement that email is implemented.
   one conditional update, links minted at send time, `sending` past the timeout
   becomes `unknown`, a timer per instance sends rows a restart left behind),
   `GET /api/system/mail`, `scripts/mock-mail-webhook.mjs`. n8n only, no SMTP
-  (decision 8). Retention of `OutgoingMail`: documented as a prune in
-  DEPLOYMENT.md "Mail", not automated (audit retention is still open).
+  (decision 8). Finished `OutgoingMail` rows are pruned automatically each
+  hour (`MAIL_RETENTION_DAYS`, default 90); audit retention is also automated
+  (`AUDIT_RETENTION_DAYS`, default 730, every six hours). See DEPLOYMENT.md.
 - **U7c done:** `/forgot-password` and `/set-password`, password links in Better
   Auth's `Verification` table (SHA-256 of a random secret, purpose and the
   email it was sent to; `lib/account-links.ts`) instead of the HMAC tokens

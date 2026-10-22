@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // Browser journeys against a production build (`npm run build` first) and a
 // disposable database. See tests/e2e/README.md.
@@ -9,6 +12,12 @@ const MAIL_PORT = PORT + 1
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // Downloads in a Windows Desktop checkout can stay locked. Keep each
+  // checkout's temporary artifacts separate, including concurrent worktrees.
+  outputDir:
+    process.platform === 'win32'
+      ? join(tmpdir(), 'classiflow-e2e', createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12))
+      : 'test-results',
   globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: false,
   workers: 1,

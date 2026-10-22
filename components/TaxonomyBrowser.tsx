@@ -1,7 +1,8 @@
 'use client'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { buttonClass } from '@/components/ui/styles'
 import { Info } from 'lucide-react'
 import Tooltip from '@/components/Tooltip'
 import { isUnknownNodeCode } from '@/lib/constants'
@@ -64,9 +65,10 @@ interface TaxonomyBrowserProps {
   taxonomyIndex?: number // Index of this taxonomy (0 = first, uses primary/teal color)
   onCurrentLevelChange?: (level: number) => void // Callback to expose current level to parent
   showTabs?: boolean
+  disabled?: boolean
 }
 
-type NodesResponse = { items?: TaxonomyNode[]; total?: number }
+type NodesResponse = { items: TaxonomyNode[]; total: number; offset: number; limit: number }
 
 /**
  * Browse one taxonomy level by level, or search it, and choose a path of
@@ -81,9 +83,11 @@ export default function TaxonomyBrowser({
   onLabelsChange,
   taxonomyIndex = 0,
   onCurrentLevelChange,
-  showTabs = false
+  showTabs = false,
+  disabled = false
 }: TaxonomyBrowserProps) {
   const { href, api, workspaceId } = useWorkspacePaths()
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [showLevelNames, setShowLevelNames] = useStoredBoolean('showLevelNames', true)
 
@@ -195,75 +199,57 @@ export default function TaxonomyBrowser({
   const browseParams = new URLSearchParams({ level: String(currentLevel) })
   if (currentParent !== null) browseParams.set('parentCode', currentParent)
   const nodesParams = searchQuery ? new URLSearchParams({ q: debouncedSearch }).toString() : browseParams.toString()
-  const nodesQuery = useQuery({
-    queryKey: queryKeys.taxonomyNodes(workspaceId, taxonomy.key, nodesParams),
-    queryFn: ({ signal }) =>
-      fetchJson<NodesResponse>(api(`/taxonomies/${taxonomy.key}/nodes?${nodesParams}`), { signal }),
-    enabled: !searchQuery || debouncedSearch === searchQuery
+  const nodesQuery = useInfiniteQuery({
+    queryKey: [...queryKeys.taxonomyNodes(workspaceId, taxonomy.key, nodesParams), 'pages'],
+    initialPageParam: 0,
+    queryFn: ({ signal, pageParam }) =>
+      fetchJson<NodesResponse>(api(`/taxonomies/${taxonomy.key}/nodes?${nodesParams}&offset=${pageParam}`), { signal }),
+    getNextPageParam: page =>
+      page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined,
+    enabled: !searchQuery || debouncedSearch === searchQuery,
+    retry: false
   })
-  const taxonomyNodes = nodesQuery.data?.items ?? []
+  const taxonomyNodes = nodesQuery.data?.pages.flatMap(page => page.items) ?? []
   const isLoadingNodes = nodesQuery.isPending || (Boolean(searchQuery) && debouncedSearch !== searchQuery)
 
-  // Build full path by recursively fetching parents
-  const buildFullPath = async (node: TaxonomyNode): Promise<TaxonomyNode[]> => {
-    const path: TaxonomyNode[] = [node]
-
-    let currentNode = node
-    while (currentNode.parentCode !== null && currentNode.parentCode !== undefined) {
-      try {
-        // Fetch all nodes at the parent's level with a higher limit to ensure we get the parent
-        // The default limit is 100, but some taxonomies might have more nodes at a level
-        const res = await fetch(api(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500`))
-        if (!res.ok) {
-          console.warn(`Failed to fetch nodes at level ${currentNode.level - 1}`)
-          break
-        }
-
-        const data = await res.json()
-        // Find the specific parent by code - ensure string comparison to handle leading zeros
-        const parent = data.items?.find((n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode))
-
-        if (!parent) {
-          // If parent not found in first page, check if there are more results
-          if (data.total > data.items.length) {
-            console.warn(
-              `Parent node with code ${currentNode.parentCode} not found in first ${data.items.length} nodes at level ${currentNode.level - 1} (total: ${data.total})`
-            )
-            // Try fetching with offset to get more results
-            let found = false
-            for (let offset = data.items.length; offset < data.total && offset < 2000; offset += 500) {
-              const moreRes = await fetch(
-                api(`/taxonomies/${taxonomy.key}/nodes?level=${currentNode.level - 1}&limit=500&offset=${offset}`)
-              )
-              if (!moreRes.ok) break
-              const moreData = await moreRes.json()
-              const foundParent = moreData.items?.find(
-                (n: TaxonomyNode) => String(n.code) === String(currentNode.parentCode)
-              )
-              if (foundParent) {
-                path.unshift(foundParent)
-                currentNode = foundParent
-                found = true
-                break
-              }
-            }
-            if (!found) break
-          } else {
-            console.warn(`Parent node with code ${currentNode.parentCode} not found at level ${currentNode.level - 1}`)
-            break
-          }
-        } else {
-          path.unshift(parent) // Add to beginning of array
-          currentNode = parent
-        }
-      } catch (error) {
-        console.error('Failed to fetch parent node:', error)
-        break
+  // Fetch each ancestor by its exact code. Searching through capped pages could
+  // silently construct an incomplete path in a large taxonomy.
+  const pathMutation = useMutation({
+    mutationFn: async (node: TaxonomyNode) => {
+      const path = [node]
+      let current = node
+      while (current.parentCode !== null) {
+        const params = new URLSearchParams({ code: current.parentCode })
+        const data = await queryClient.fetchQuery({
+          queryKey: queryKeys.taxonomyNodes(workspaceId, taxonomy.key, params.toString()),
+          queryFn: ({ signal }) =>
+            fetchJson<NodesResponse>(api(`/taxonomies/${taxonomy.key}/nodes?${params}`), { signal })
+        })
+        const parent = data.items[0]
+        if (!parent || parent.level !== current.level - 1)
+          throw new Error('The label path could not be loaded. Please try again.')
+        path.unshift(parent)
+        current = parent
       }
+      if (path[0]?.level !== 1) throw new Error('The label path could not be loaded. Please try again.')
+      return path
+    },
+    onSuccess: path => {
+      onLabelsChange(
+        path.map(node => ({
+          level: node.level,
+          nodeCode: node.code,
+          taxonomyKey: taxonomy.key,
+          label: node.label,
+          definition: node.definition,
+          examples: node.examples,
+          isLeaf: node.isLeaf || node.level >= taxonomy.maxDepth
+        }))
+      )
+      setSearchQuery('')
     }
-
-    return path
-  }
+  })
+  const busy = disabled || pathMutation.isPending
   const hasAISuggestions = Boolean(storedAISuggestions && storedAISuggestions.length > 0)
 
   // Check if we've diverged from AI suggestions:
@@ -283,31 +269,11 @@ export default function TaxonomyBrowser({
   }
 
   // Handle node click
-  const handleNodeClick = async (node: TaxonomyNode) => {
-    // Determine if this node is a leaf
+  const handleNodeClick = (node: TaxonomyNode) => {
+    if (busy) return
     const isLeaf = node.isLeaf || node.level >= taxonomy.maxDepth
-
-    // If in search mode, first we need to reconstruct the breadcrumb to this node
-    // and set the selected labels accordingly
     if (searchQuery) {
-      // Build the full path from root to this node
-      const fullPath = await buildFullPath(node)
-
-      // Convert path to selected labels
-      const newLabels: SelectedLabel[] = fullPath.map(pathNode => ({
-        level: pathNode.level,
-        nodeCode: pathNode.code,
-        taxonomyKey: taxonomy.key,
-        label: pathNode.label,
-        definition: pathNode.definition,
-        examples: pathNode.examples,
-        isLeaf: pathNode.isLeaf || pathNode.level >= taxonomy.maxDepth
-      }))
-
-      onLabelsChange(newLabels)
-
-      // Clear search; the new labels decide the level shown
-      setSearchQuery('')
+      pathMutation.mutate(node)
     } else {
       // Normal navigation mode
       const newLabel: SelectedLabel = {
@@ -362,7 +328,7 @@ export default function TaxonomyBrowser({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+    <fieldset disabled={busy} className="min-w-0 flex-1 overflow-y-auto p-6 flex flex-col">
       <div className="space-y-4 flex-shrink-0">
         {/* Selected Labels as Chips */}
         <div>
@@ -378,9 +344,17 @@ export default function TaxonomyBrowser({
                     <div
                       key={i}
                       className={`inline-flex items-center px-2 py-1 rounded text-sm border cursor-pointer transition-colors ${colors.chip}`}
-                      onClick={() => handleChipClick(label)}
+                      role="group"
+                      aria-label={`Selected label ${label.nodeCode}`}
                     >
-                      <span className={`text-xs px-2 py-0.5 rounded ${colors.chipLevel}`}>L{label.level}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleChipClick(label)}
+                        className={`text-xs px-2 py-0.5 rounded ${colors.chipLevel}`}
+                        aria-label={`Browse level ${label.level} for ${label.nodeCode}`}
+                      >
+                        L{label.level}
+                      </button>
                       <span className="ml-2 font-medium">
                         {isUnknownNodeCode(label.nodeCode)
                           ? 'Unknown'
@@ -487,11 +461,24 @@ export default function TaxonomyBrowser({
 
         {/* Taxonomy Nodes */}
         <div className="space-y-0 flex-1 overflow-y-auto border-t border-gray-200">
+          {pathMutation.isError && (
+            <div role="alert" className="py-3 text-sm text-red-700">
+              {pathMutation.error.message}
+            </div>
+          )}
+          {nodesQuery.isError && (
+            <div role="alert" className="py-3 text-sm text-red-700">
+              Could not load labels.{' '}
+              <button type="button" onClick={() => nodesQuery.refetch()} className={buttonClass('secondary', 'sm')}>
+                Retry
+              </button>
+            </div>
+          )}
           {isLoadingNodes ? (
             <div className="text-center py-8 text-gray-500">
               <div className="text-sm">Loading...</div>
             </div>
-          ) : taxonomyNodes.length === 0 ? (
+          ) : taxonomyNodes.length === 0 && !nodesQuery.isError ? (
             <div className="text-center py-8 text-gray-500">
               {searchQuery ? (
                 <div>
@@ -514,7 +501,8 @@ export default function TaxonomyBrowser({
                 <div
                   key={node.code}
                   role="button"
-                  tabIndex={0}
+                  tabIndex={busy ? -1 : 0}
+                  aria-disabled={busy}
                   aria-pressed={isSelected}
                   onClick={() => handleNodeClick(node)}
                   onKeyDown={e => {
@@ -577,7 +565,17 @@ export default function TaxonomyBrowser({
             })
           )}
         </div>
+        {nodesQuery.hasNextPage && (
+          <button
+            type="button"
+            disabled={nodesQuery.isFetchingNextPage || busy}
+            onClick={() => nodesQuery.fetchNextPage()}
+            className={buttonClass('secondary')}
+          >
+            {nodesQuery.isFetchingNextPage ? 'Loading…' : 'Load more labels'}
+          </button>
+        )}
       </div>
-    </div>
+    </fieldset>
   )
 }

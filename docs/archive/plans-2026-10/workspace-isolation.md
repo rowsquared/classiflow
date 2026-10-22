@@ -3,10 +3,13 @@
 **Archived 22 October 2026:** implemented. What is still open (environment,
 maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
 
-**Status:** implementation proposal, 21 October 2026. No workspace feature changes
-implemented. **Reviewed baseline:** classiflow `fae270f`; SurveyHub `4bfe9bc`.
-The modernization work is concurrent: recheck its landed code before starting
-implementation. This document does not change that workstream's files.
+**Status:** implemented 21–22 October 2026; staging verification remains in
+the open-items list above. **Original reviewed baseline:** classiflow
+`fae270f`; SurveyHub `4bfe9bc`. The implementation history below takes
+precedence over the original proposal retained later in this document.
+
+Links to moved or removed source files use the classiflow baseline snapshot;
+other source links point to the current checkout.
 
 ## Implementation status (handover, 21 October 2026)
 
@@ -217,10 +220,10 @@ in particular, single and bulk labeling already share completion rules through
 
 Evidence: [schema](../../../prisma/schema.prisma),
 [record access](../../../lib/access.ts), [session authorization](../../../lib/api-auth.ts),
-[security matrix](../../security.md), [imports](../../../app/api/imports/route.ts),
-[taxonomy creation](../../../app/api/taxonomies/route.ts),
+[security matrix](../../security.md), [imports](https://github.com/rowsquared/classiflow/blob/fae270f74e9b6b6698e8cd0330afa75586d8c13c/app/api/imports/route.ts),
+[taxonomy creation](https://github.com/rowsquared/classiflow/blob/fae270f74e9b6b6698e8cd0330afa75586d8c13c/app/api/taxonomies/route.ts),
 [completion rules](../../../lib/annotation-status.ts),
-[record import](../../../app/api/sentences/import/route.ts),
+[record import](https://github.com/rowsquared/classiflow/blob/fae270f74e9b6b6698e8cd0330afa75586d8c13c/app/api/sentences/import/route.ts),
 [CSV export](../../../lib/export-csv.ts), [AI requests](../../../lib/ai-labeling.ts),
 [AI monitors](../../../lib/ai-job-monitor.ts).
 

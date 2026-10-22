@@ -27,36 +27,51 @@ export default function TimeZoneDialog({ current, onSave, onClose }: TimeZoneDia
   const [error, setError] = useState<string | null>(null)
 
   const save = async (value: string | null) => {
+    if (saving) return
     setSaving(true)
-    const message = await onSave(value)
-    setSaving(false)
-    if (message) setError(message)
-    else onClose()
+    setError(null)
+    try {
+      const message = await onSave(value)
+      if (message) setError(message)
+      else onClose()
+    } catch {
+      setError('Could not save the time zone. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <Modal label="Reporting time zone" onClose={onClose} closeOnOverlayClick>
+    <Modal
+      label="Reporting time zone"
+      onClose={() => {
+        if (!saving) onClose()
+      }}
+      closeOnOverlayClick
+    >
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <h2 className="text-lg font-semibold text-gray-900">Reporting time zone</h2>
         <p className="mt-1 text-sm text-gray-600">
           Progress counts calendar days and Monday weeks in this time zone, for everyone in this workspace.
         </p>
         {/* A native select: long, but type-ahead finds a zone and it needs no popup inside the dialog. */}
-        <label className="mt-4 block text-sm text-gray-700">
+        <label htmlFor="reporting-time-zone" className="mt-4 block text-sm text-gray-700">
           Time zone
-          <select
-            value={zone}
-            onChange={e => setZone(e.target.value)}
-            className="mt-1 block w-full rounded border border-gray-500 px-2 py-1.5 text-sm text-gray-900"
-          >
-            {!options.includes(current) && <option value={current}>{current}</option>}
-            {options.map(z => (
-              <option key={z} value={z}>
-                {z}
-              </option>
-            ))}
-          </select>
         </label>
+        <select
+          id="reporting-time-zone"
+          disabled={saving}
+          value={zone}
+          onChange={e => setZone(e.target.value)}
+          className="mt-1 block w-full rounded border border-gray-500 px-2 py-1.5 text-sm text-gray-900"
+        >
+          {!options.includes(current) && <option value={current}>{current}</option>}
+          {options.map(z => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
         {error && (
           <p role="alert" className="mt-3 text-sm text-red-700">
             {error}
@@ -71,7 +86,7 @@ export default function TimeZoneDialog({ current, onSave, onClose }: TimeZoneDia
           >
             Use the deployment default
           </button>
-          <button type="button" onClick={onClose} className={buttonClass('secondary', 'sm')}>
+          <button type="button" onClick={onClose} disabled={saving} className={buttonClass('secondary', 'sm')}>
             Cancel
           </button>
           <button type="button" onClick={() => save(zone)} disabled={saving} className={buttonClass('primary', 'sm')}>

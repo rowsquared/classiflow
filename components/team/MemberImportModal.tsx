@@ -1,6 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import Modal from '@/components/Modal'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { csvLine } from '@/lib/csv'
@@ -46,6 +50,7 @@ const ACCESS_LABEL: Record<string, string> = {
  * a CSV built in the browser; the server keeps none of them.
  */
 export default function MemberImportModal({ mailEnabled, onClose, onImported }: Props) {
+  const { workspaceId, api } = useWorkspacePaths()
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +61,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
   const [copied, setCopied] = useState(false)
 
   const send = async (dryRun: boolean) => {
-    if (!file) return
+    if (!file || busy) return
     setBusy(true)
     setError(null)
     try {
@@ -82,31 +87,25 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
       } else {
         setResult({ importId: data.importId, rows: data.rows, replayed: data.replayed })
       }
+    } catch {
+      setError('Could not reach the server. Please try again.')
     } finally {
       setBusy(false)
     }
   }
 
-  // Follow the mail outcomes for a short while.
-  const waiting = result?.rows.some(r => r.mailStatus === 'pending' || r.mailStatus === 'sending') ?? false
-  useEffect(() => {
-    if (!result || !waiting) return
-    let polls = 0
-    const timer = setInterval(async () => {
-      if (++polls > 20 || document.visibilityState !== 'visible') return
-      const res = await fetch(workspaceApi(`/users/import/${result.importId}`))
-      if (!res.ok) return
-      const status: { rows: ResultRow[] } = await res.json()
-      const byLine = new Map(status.rows.map(r => [r.line, r.mailStatus]))
-      setResult(current =>
-        current
-          ? { ...current, rows: current.rows.map(r => ({ ...r, mailStatus: byLine.get(r.line) ?? r.mailStatus })) }
-          : current
-      )
-    }, 3000)
-    return () => clearInterval(timer)
-  }, [result, waiting])
-
+  // Poll outcomes without replacing the one-time passwords in the import response.
+  const outcomes = useQuery({
+    queryKey: [...queryKeys.members(workspaceId), 'import', result?.importId],
+    queryFn: ({ signal }) => fetchJson<{ rows: ResultRow[] }>(api(`/users/import/${result!.importId}`), { signal }),
+    enabled: !!result && result.rows.some(r => r.mailStatus === 'pending' || r.mailStatus === 'sending'),
+    refetchInterval: query => {
+      const rows = query.state.data?.rows ?? result?.rows ?? []
+      return rows.some(r => r.mailStatus === 'pending' || r.mailStatus === 'sending') ? 3000 : false
+    }
+  })
+  const mailByLine = new Map(outcomes.data?.rows.map(r => [r.line, r.mailStatus]))
+  const resultRows = result?.rows.map(r => ({ ...r, mailStatus: mailByLine.get(r.line) ?? r.mailStatus })) ?? []
   const generated = result?.rows.filter(r => r.password) ?? []
   const credentialsText = generated.map(r => `${r.username}\t${r.password}`).join('\n')
   const downloadCredentials = () => {
@@ -120,9 +119,14 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
     link.href = url
     link.download = 'new-member-passwords.csv'
     link.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
-  const close = () => (result ? onImported(`${result.rows.length} members imported`) : onClose())
+  const close = () => {
+    if (!busy) {
+      if (result) onImported(`${result.rows.length} members imported`)
+      else onClose()
+    }
+  }
 
   const errorsByLine = new Map<number, RowError[]>()
   for (const e of preview?.errors ?? []) errorsByLine.set(e.line, [...(errorsByLine.get(e.line) ?? []), e])
@@ -139,6 +143,11 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                 ? 'This file was already imported; nothing new was created.'
                 : `${result.rows.length} members created.`}
             </p>
+            {error && (
+              <p role="alert" className="text-sm text-red-700">
+                {error}
+              </p>
+            )}
             {generated.length > 0 && (
               <div role="alert" className="p-3 rounded bg-amber-50 text-amber-900 text-sm border border-amber-200">
                 Generated passwords are shown only now. Copy or download them before closing; afterwards, send a
@@ -157,7 +166,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-gray-900">
-                  {result.rows.map(r => (
+                  {resultRows.map(r => (
                     <tr key={r.line}>
                       <td className="px-3 py-2 text-gray-500">{r.line}</td>
                       <td className="px-3 py-2">{r.username}</td>
@@ -175,8 +184,12 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                   <button
                     type="button"
                     onClick={async () => {
-                      await navigator.clipboard.writeText(credentialsText)
-                      setCopied(true)
+                      try {
+                        await navigator.clipboard.writeText(credentialsText)
+                        setCopied(true)
+                      } catch {
+                        setError('Could not copy passwords. Download the CSV instead.')
+                      }
                     }}
                     className={buttonClass('secondary')}
                   >
@@ -218,6 +231,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                 CSV file
               </label>
               <input
+                disabled={busy}
                 id="member-import-file"
                 type="file"
                 accept=".csv,text/csv"
@@ -291,7 +305,8 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={onClose}
+                disabled={busy}
+                onClick={close}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
               >
                 Cancel

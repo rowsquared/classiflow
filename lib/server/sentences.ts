@@ -275,7 +275,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   const sort = searchParams.get('sort') || 'createdAt'
   const order: 'asc' | 'desc' = searchParams.get('order') === 'desc' ? 'desc' : 'asc'
   // The UI offers page sizes up to 10000 ("all"); anything else is clamped.
-  const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1)
+  const requestedPage = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1)
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 10000)
 
   const where = await queueWhere(user, searchParams)
@@ -301,50 +301,50 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     orderBy = [{ id: order }]
   }
 
-  // Fetch sentences + total count in parallel
-  const [sentences, total] = await Promise.all([
-    db().sentence.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        annotations: {
-          include: {
-            taxonomy: {
-              select: { key: true }
-            }
+  // A page can disappear after records leave the filtered queue.
+  if (sort === 'createdAt' || sort === 'lastEditedAt' || sort === 'status') orderBy.push({ id: 'asc' })
+  const total = await db().sentence.count({ where })
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / limit)))
+  const sentences = await db().sentence.findMany({
+    where,
+    orderBy,
+    skip: (page - 1) * limit,
+    take: limit,
+    include: {
+      annotations: {
+        include: {
+          taxonomy: {
+            select: { key: true }
           }
-        },
-        comments: {
-          select: {
-            id: true,
-            body: true,
-            createdAt: true,
-            author: {
-              select: { name: true }
-            }
-          }
-        },
-        lastEditor: {
-          select: {
-            name: true,
-            username: true,
-            email: true
-          }
-        },
-        assignments: {
-          select: {
-            membership: { select: { user: { select: { id: true, username: true, name: true } } } }
-          }
-        },
-        _count: {
-          select: { comments: true }
         }
+      },
+      comments: {
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+          author: {
+            select: { name: true }
+          }
+        }
+      },
+      lastEditor: {
+        select: {
+          name: true,
+          username: true,
+          email: true
+        }
+      },
+      assignments: {
+        select: {
+          membership: { select: { user: { select: { id: true, username: true, name: true } } } }
+        }
+      },
+      _count: {
+        select: { comments: true }
       }
-    }),
-    db().sentence.count({ where })
-  ])
+    }
+  })
 
   // Build sets for annotation nodes
   const annotationTaxonomyIds = new Set<string>()
@@ -371,14 +371,14 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
         })
       : Promise.resolve([])
 
-  // Prepare AI suggestions fetch (only for sentences without annotations)
-  const sentencesWithoutAnnotations = sentences.filter(s => s.annotations.length === 0)
+  // A human label for one taxonomy must not hide suggestions for the others.
+  const annotatedTaxonomies = new Set(sentences.flatMap(s => s.annotations.map(a => `${s.id}:${a.taxonomyId}`)))
   const aiSuggestionsPromise = (async () => {
-    if (sentencesWithoutAnnotations.length === 0) {
+    if (sentences.length === 0) {
       return {} as Record<string, AISuggestionView[]>
     }
 
-    const sentenceIds = sentencesWithoutAnnotations.map(s => s.id)
+    const sentenceIds = sentences.map(s => s.id)
     const aiSuggestions = await db().sentenceAISuggestion.findMany({
       where: {
         sentenceId: { in: sentenceIds }
@@ -414,6 +414,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 
     return aiSuggestions.reduce(
       (acc, suggestion) => {
+        if (annotatedTaxonomies.has(`${suggestion.sentenceId}:${suggestion.taxonomyId}`)) return acc
         ;(acc[suggestion.sentenceId] ??= []).push({
           id: suggestion.id,
           level: suggestion.level,
@@ -435,26 +436,14 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 
   const nodeLabels = new Map(annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
 
-  // Attach labels to annotations; sentences without annotations show their AI suggestions instead
-  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
-    // The API reports assignees as users, not memberships.
-    const assignees = assignments.map(a => ({ user: a.membership.user }))
-    if (s.annotations.length === 0 && aiSuggestionsBySentence[s.id]) {
-      return {
-        ...s,
-        assignments: assignees,
-        annotations: aiSuggestionsBySentence[s.id]
-      }
-    }
-    return {
-      ...s,
-      assignments: assignees,
-      annotations: s.annotations.map(a => ({
-        ...a,
-        nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null
-      }))
-    }
-  })
+  const sentencesWithLabels = sentences.map(({ assignments, ...s }) => ({
+    ...s,
+    assignments: assignments.map(a => ({ user: a.membership.user })),
+    annotations: [
+      ...s.annotations.map(a => ({ ...a, nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null })),
+      ...(aiSuggestionsBySentence[s.id] ?? [])
+    ]
+  }))
 
   return {
     sentences: sentencesWithLabels,

@@ -55,6 +55,7 @@ export default function PaginationControls({
         {showCustomInput ? (
           <div className="flex items-center gap-2">
             <input
+              aria-label="Custom records per page"
               type="number"
               min="1"
               max="10000"
@@ -90,7 +91,7 @@ export default function PaginationControls({
             <option value={100}>100</option>
             <option value={250}>250</option>
             <option value={500}>500</option>
-            <option value={9999}>All</option>
+            <option value={9999}>9,999</option>
             {isCustomSize && <option value={pageSize}>{pageSize} (custom)</option>}
             <option value="custom">Custom...</option>
           </select>

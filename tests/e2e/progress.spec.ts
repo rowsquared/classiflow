@@ -47,11 +47,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('shows workload and activity; the period survives reload and back/forward', async ({ page }) => {
-  const reports: number[] = []
-  page.on('response', async response => {
-    if (/\/progress\/(overview|activity|people)/.test(response.url())) {
-      reports.push((await response.body()).length)
-    }
+  let reportRequests = 0
+  page.on('request', request => {
+    if (/\/progress\/(overview|activity|people)/.test(request.url())) reportRequests++
   })
   await page.goto(pagePath('/progress'))
   await expect(page.getByRole('heading', { name: 'Workload now and activity' })).toBeVisible()
@@ -60,12 +58,24 @@ test('shows workload and activity; the period survives reload and back/forward',
   await expect(page.getByTestId('activity-chart')).toBeVisible()
   await expect(page.getByTestId('people-table')).toBeVisible()
   // The server rendered all three sections: mounting fetched nothing again.
-  expect(reports).toEqual([])
+  expect(reportRequests).toBe(0)
 
+  const responses = Promise.all(
+    ['overview', 'activity', 'people'].map(report =>
+      page.waitForResponse(
+        response =>
+          response.url().includes(`/progress/${report}?`) && new URL(response.url()).searchParams.get('days') === '30'
+      )
+    )
+  )
   await page.getByRole('button', { name: 'Last 30 days' }).click()
+  // Finish reading the measured responses before reload/back can cancel them.
+  const reports = await Promise.all((await responses).map(async response => (await response.body()).length))
   await expect(page).toHaveURL(/[?&]days=30/)
   await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true')
   await page.reload()
+  // The period is server-rendered; wait for hydration before using client-side history.
+  await expect(page.getByRole('button', { name: /Account menu/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true')
   await page.goBack()
   await expect(page).not.toHaveURL(/days=30/)

@@ -3,6 +3,7 @@
 import { ChevronsRight, CircleHelp, Flag, MessageSquare } from 'lucide-react'
 
 type ActionBarProps = {
+  saving: boolean
   hasComment: boolean
   flagged: boolean
   skipped: boolean
@@ -30,6 +31,7 @@ const shortcutClasses = {
 
 /** The labelling actions with their keyboard shortcuts (C, F, U, S, Enter). */
 export default function ActionBar({
+  saving,
   hasComment,
   flagged,
   skipped,
@@ -46,6 +48,7 @@ export default function ActionBar({
       <div className="sticky bottom-0 border-t border-gray-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
           <button
+            disabled={saving}
             onClick={onComment}
             className={`${actionButtonBaseClass} ${hasComment ? commentActiveClasses : primaryActionClasses}`}
             title="Add comment (C)"
@@ -56,6 +59,7 @@ export default function ActionBar({
             <span className={`${hasComment ? shortcutClasses.light : shortcutClasses.dark}`}>C</span>
           </button>
           <button
+            disabled={saving}
             onClick={onFlag}
             className={`${actionButtonBaseClass} ${flagged ? flagActiveClasses : primaryActionClasses}`}
             title="Flag/Unflag (F)"
@@ -67,6 +71,7 @@ export default function ActionBar({
             <span className={`${flagged ? shortcutClasses.light : shortcutClasses.dark}`}>F</span>
           </button>
           <button
+            disabled={saving}
             onClick={onUnknown}
             className={`${actionButtonBaseClass} ${primaryActionClasses}`}
             title="Unknown (U)"
@@ -77,6 +82,7 @@ export default function ActionBar({
             <span className={shortcutClasses.dark}>U</span>
           </button>
           <button
+            disabled={saving}
             onClick={onSkip}
             className={`${actionButtonBaseClass} ${skipped ? skipActiveClasses : primaryActionClasses}`}
             title="Skip (S)"
@@ -88,14 +94,14 @@ export default function ActionBar({
           </button>
           <button
             onClick={onSubmit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || saving}
             className={`ml-auto flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
               submitted ? submittedSubmitClasses : canSubmit ? primaryActionClasses : disabledSubmitClasses
             }`}
             title="Submit (Enter)"
             aria-keyshortcuts="Enter"
           >
-            <span className="text-sm font-medium">Submit</span>
+            <span className="text-sm font-medium">{saving ? 'Saving…' : 'Submit'}</span>
             <div
               className={`flex h-5 w-5 items-center justify-center rounded ${
                 submitted || canSubmit ? shortcutClasses.dark : `${shortcutClasses.dark} opacity-70 text-white/80`
