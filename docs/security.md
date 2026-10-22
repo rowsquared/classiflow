@@ -134,7 +134,7 @@ is not stored.
 - **Namespaces:** every request names `<AI_SOURCE_SLUG>--<workspaceId>`, so
   workspaces never train or query the same model at classiflow's end. Whether
   Taxomind enforces that separation for one credential is not verified yet
-  (release gate in docs/plans/workspace-isolation.md).
+  (release gate in docs/archive/plans-2026-10/workspace-isolation.md).
 - **Jobs** keep the connection version they started with; results are stored
   only for the job's recorded input records, and only while the workspace is
   active. Cross-workspace job functions (recovery, admission, lease release)
@@ -186,7 +186,7 @@ admin) with a valid session who does not have to reset their password.
 | `/api/workspaces/[workspaceId]` | GET | member |
 | `/api/workspaces/[workspaceId]` | PUT (rename, reporting time zone, archive, reopen) | workspace admin |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
-| `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, DELETE (retire) | platform admin |
+| `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, PUT (which workspaces may use it), DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
 | `/sentences/[id]` | GET | member; record in scope |
 | `/sentences/[id]/annotations`, `/flag` | POST | member; record in scope |
@@ -200,19 +200,20 @@ admin) with a valid session who does not have to reset their password.
 | `/users` | GET | admin (all members), supervisor (own team) |
 | `/users` | POST | admin (new account + membership; access by handed-over password, invitation link or emailed password); adding an existing account directly: platform admin |
 | `/users/import`, `/users/import/[id]`, `/users/import/template` | POST, GET | admin (CSV member import: new accounts only) |
+| `/users/export` | GET | admin (every member of this workspace as CSV; no secrets) |
 | `/users/[id]/mail` | POST | admin (not supervisors); password link or invitation resend, local-account rule |
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
 | `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
 | `/export` | GET | admin; re-checked before every page of the stream |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
-| `/progress/people` | GET | admin, supervisor (own subtree); same selector rule |
+| `/progress/people` | GET | admin, supervisor (own subtree); same selector rule. Admins' unrestricted view also lists platform admins who labeled here without a membership |
+| `/progress/members` | GET | admin, supervisor; picker search within the caller's scope (names and roles only); a `teamId` outside it is a 403 |
 | `/ai-labeling/*`, `/ai-jobs/*`, `/ai-settings`, `/ai-settings/connection`, `/audit` | all | admin (credentials write-only) |
 
 ## Known gaps
 
-Open items are in the [modernization plan](plans/modernization-2026-10.md)
-("Carried over from hardening"). Cross-site mutation
+Open items are in [open items](plans/open-items.md). Cross-site mutation
 checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.

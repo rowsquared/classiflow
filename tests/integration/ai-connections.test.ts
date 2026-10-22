@@ -47,6 +47,11 @@ beforeEach(async () => {
 const approve = (body: unknown) => endpointsRoute.POST(request('/api/ai-endpoints', { method: 'POST', body }))
 const connect = (body: unknown) => connectionRoute.POST(request('/x', { method: 'POST', body }), params())
 const settings = async () => (await settingsRoute.GET(request('/x'), params())).json()
+const withWorkspaceConnection = async () => {
+  const { withWorkspace } = await import('@/lib/workspace/db')
+  const { connectionForNewJobs } = await import('@/lib/ai-connections')
+  return withWorkspace(ws.id, () => connectionForNewJobs())
+}
 
 async function approvedEndpoint(baseUrl = 'https://taxomind.example.org/api') {
   signInAs(platform)
@@ -182,6 +187,100 @@ describe('workspace connections', () => {
     signInAs(otherAdmin)
     const other = await settings()
     expect(other).toMatchObject({ active: null, versions: [], enabled: false })
+    selectWorkspace(ws.id)
+  })
+})
+
+describe('endpoint access per workspace', () => {
+  const setAccess = (endpointId: string, body: unknown) =>
+    endpointRoute.PUT(request('/x', { method: 'PUT', body }), plainParams({ endpointId }))
+
+  it('is changed by platform admins only', async () => {
+    const endpoint = await approvedEndpoint()
+    signInAs(admin)
+    expect((await setAccess(endpoint.id, { allWorkspaces: false, workspaceIds: [] })).status).toBe(403)
+    signInAs(platform)
+    expect((await setAccess('missing', { allWorkspaces: true })).status).toBe(404)
+    expect((await setAccess(endpoint.id, { allWorkspaces: false, workspaceIds: ['nope'] })).status).toBe(400)
+  })
+
+  it('limits an endpoint to chosen workspaces, for listing, connecting and starting jobs', async () => {
+    const endpoint = await approvedEndpoint()
+    signInAs(admin)
+    await connect({ endpointId: endpoint.id, credential: SECRET })
+    const put = (enabled: boolean) => settingsRoute.PUT(request('/x', { method: 'PUT', body: { enabled } }), params())
+    expect((await put(true)).status).toBe(200)
+
+    // Open only to another workspace: this one loses it.
+    const other = await createWorkspace()
+    selectWorkspace(ws.id)
+    signInAs(platform)
+    const res = await setAccess(endpoint.id, { allWorkspaces: false, workspaceIds: [other.id] })
+    expect(res.status).toBe(200)
+    expect((await res.json()).endpoint).toMatchObject({ allWorkspaces: false, workspaceIds: [other.id] })
+
+    signInAs(admin)
+    const now = await settings()
+    expect(now.endpoints).toEqual([])
+    expect(now.active).toMatchObject({ endpointAllowed: false })
+    expect((await connect({ endpointId: endpoint.id, credential: SECRET })).status).toBe(400)
+    expect(await withWorkspaceConnection()).toEqual({ unavailable: 'endpoint_not_allowed' })
+    await put(false)
+    const again = await put(true)
+    expect(again.status).toBe(409)
+    expect((await again.json()).code).toBe('endpoint_not_allowed')
+
+    // Granted to this workspace: usable again.
+    signInAs(platform)
+    await setAccess(endpoint.id, { allWorkspaces: false, workspaceIds: [other.id, ws.id] })
+    signInAs(admin)
+    expect((await settings()).endpoints.map((e: { id: string }) => e.id)).toEqual([endpoint.id])
+    expect((await put(true)).status).toBe(200)
+  })
+})
+
+describe('job settings', () => {
+  const putSettings = (body: unknown) => settingsRoute.PUT(request('/x', { method: 'PUT', body }), params())
+
+  it('default to the deployment settings and take workspace overrides', async () => {
+    signInAs(admin)
+    const before = await settings()
+    expect(before.jobSettings.overrides).toEqual({
+      labelingBatchSize: null,
+      learningBatchSize: null,
+      learningMinNewAnnotations: null
+    })
+    expect(before.jobSettings.effective).toEqual(before.jobSettings.defaults)
+
+    const res = await putSettings({ jobSettings: { labelingBatchSize: 250, learningMinNewAnnotations: 0 } })
+    expect(res.status).toBe(200)
+    const after = (await res.json()).jobSettings
+    expect(after.effective).toMatchObject({ labelingBatchSize: 250, learningMinNewAnnotations: 0 })
+    expect(after.effective.learningBatchSize).toBe(before.jobSettings.defaults.learningBatchSize)
+
+    // null goes back to the default
+    const reset = await (await putSettings({ jobSettings: { labelingBatchSize: null } })).json()
+    expect(reset.jobSettings.effective.labelingBatchSize).toBe(before.jobSettings.defaults.labelingBatchSize)
+    expect(await prisma.auditLog.count({ where: { workspaceId: ws.id, action: 'ai.job_settings_changed' } })).toBe(2)
+  })
+
+  it('refuses invalid values and other roles', async () => {
+    signInAs(admin)
+    for (const jobSettings of [{ labelingBatchSize: 0 }, { learningBatchSize: 1.5 }, { other: 1 }]) {
+      expect((await putSettings({ jobSettings })).status).toBe(400)
+    }
+    expect((await putSettings({})).status).toBe(400)
+    signInAs(supervisor)
+    expect((await putSettings({ jobSettings: { labelingBatchSize: 5 } })).status).toBe(403)
+  })
+
+  it('are per workspace', async () => {
+    signInAs(admin)
+    await putSettings({ jobSettings: { learningBatchSize: 7 } })
+    await createWorkspace()
+    const otherAdmin = await createUser('admin')
+    signInAs(otherAdmin)
+    expect((await settings()).jobSettings.overrides.learningBatchSize).toBeNull()
     selectWorkspace(ws.id)
   })
 })

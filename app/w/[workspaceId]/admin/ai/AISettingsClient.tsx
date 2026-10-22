@@ -18,7 +18,11 @@ type Connection = {
   credentialStored: boolean
   endpoint: { id: string; name: string; baseUrl: string }
   endpointRetired: boolean
+  endpointAllowed: boolean
 }
+
+type JobSettings = { labelingBatchSize: number; learningBatchSize: number; learningMinNewAnnotations: number }
+type JobSettingKey = keyof JobSettings
 
 export type AISettings = {
   deployment: { ready: boolean; keysConfigured: boolean; sourceSlugConfigured: boolean }
@@ -27,7 +31,39 @@ export type AISettings = {
   active: Connection | null
   versions: Connection[]
   endpoints: Array<{ id: string; name: string; baseUrl: string }>
+  jobSettings: {
+    overrides: { [K in JobSettingKey]: number | null }
+    defaults: JobSettings
+    effective: JobSettings
+  }
 }
+
+const JOB_SETTING_FIELDS: Array<{ key: JobSettingKey; label: string; help: string; min: number }> = [
+  {
+    key: 'labelingBatchSize',
+    label: 'Labelling batch size',
+    help: 'Records per AI labelling job; larger selections are split into several jobs.',
+    min: 1
+  },
+  {
+    key: 'learningBatchSize',
+    label: 'Learning batch size',
+    help: 'Records per learning job.',
+    min: 1
+  },
+  {
+    key: 'learningMinNewAnnotations',
+    label: 'Labels before learning',
+    help: 'New human labels a taxonomy needs before the model can be trained again.',
+    min: 0
+  }
+]
+
+const overridesAsText = (overrides: AISettings['jobSettings']['overrides']) =>
+  Object.fromEntries(JOB_SETTING_FIELDS.map(({ key }) => [key, overrides[key]?.toString() ?? ''])) as Record<
+    JobSettingKey,
+    string
+  >
 
 /**
  * A workspace's AI connection: which approved AI service it uses, with which
@@ -48,6 +84,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
   })
   const [endpointId, setEndpointId] = useState(initial.active?.endpoint.id ?? initial.endpoints[0]?.id ?? '')
   const [credential, setCredential] = useState('')
+  const [jobSettingsText, setJobSettingsText] = useState(() => overridesAsText(initial.jobSettings.overrides))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
 
@@ -85,6 +122,22 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
       'Connection saved. Running jobs finish with the previous one.'
     )
     if (saved) setCredential('')
+  }
+
+  const saveJobSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    // An empty field goes back to the deployment default.
+    const jobSettings = Object.fromEntries(
+      JOB_SETTING_FIELDS.map(({ key }) => {
+        const text = jobSettingsText[key].trim()
+        return [key, text === '' ? null : Number(text)]
+      })
+    )
+    const saved = await call('/ai-settings', 'PUT', { jobSettings }, 'Job settings saved. They apply to new jobs.')
+    if (saved) {
+      const next = queryClient.getQueryData<AISettings>(settingsKey)
+      if (next) setJobSettingsText(overridesAsText(next.jobSettings.overrides))
+    }
   }
 
   const { deployment, active } = settings
@@ -164,6 +217,9 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
               <dd className="text-gray-900">
                 {active.endpoint.name} <span className="text-gray-600">({active.endpoint.baseUrl})</span>
                 {active.endpointRetired && <span className="ml-2 text-red-700">no longer approved</span>}
+                {!active.endpointRetired && !active.endpointAllowed && (
+                  <span className="ml-2 text-red-700">no longer open to this workspace</span>
+                )}
               </dd>
               <dt className="text-gray-600">Version</dt>
               <dd className="text-gray-900">
@@ -244,6 +300,46 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                 </div>
               </>
             )}
+          </form>
+        </section>
+
+        <section className="p-6 rounded-lg bg-white border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Job settings</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Leave a field empty to use the deployment default. Changes apply to jobs started afterwards.
+          </p>
+          <form onSubmit={saveJobSettings} className="mt-4 space-y-4">
+            {JOB_SETTING_FIELDS.map(field => (
+              <div key={field.key}>
+                <label htmlFor={`ai-${field.key}`} className="block text-sm font-medium text-gray-700 mb-1">
+                  {field.label}
+                </label>
+                <input
+                  id={`ai-${field.key}`}
+                  type="number"
+                  inputMode="numeric"
+                  min={field.min}
+                  max={field.key === 'learningMinNewAnnotations' ? 1_000_000 : 100_000}
+                  step={1}
+                  placeholder={`Default: ${settings.jobSettings.defaults[field.key]}`}
+                  value={jobSettingsText[field.key]}
+                  onChange={e => setJobSettingsText(prev => ({ ...prev, [field.key]: e.target.value }))}
+                  disabled={archived}
+                  aria-describedby={`ai-${field.key}-help`}
+                  className="w-48 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <p id={`ai-${field.key}-help`} className="mt-1 text-xs text-gray-600">
+                  {field.help} In use: {settings.jobSettings.effective[field.key]}.
+                </p>
+              </div>
+            ))}
+            <button
+              type="submit"
+              disabled={busy || archived}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Save job settings
+            </button>
           </form>
         </section>
 

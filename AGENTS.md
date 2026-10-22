@@ -91,7 +91,7 @@ Browser: React client components
 | Area | Entry points and responsibilities |
 | --- | --- |
 | Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, query cache, nuqs adapter, sidebar), `components/Sidebar.tsx`, `components/WorkspaceSwitcher.tsx`, `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
-| Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan and status in `docs/plans/workspace-isolation.md` |
+| Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan in `docs/archive/plans-2026-10/workspace-isolation.md` |
 | Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments |
 | Individual labeling | `app/w/[workspaceId]/queue/[sentenceId]/page.tsx`, `components/labeling/` (screen, data hooks, panels, comments dialog), `components/TaxonomyBrowser.tsx`, `lib/labeling.ts` (submit and navigation rules), `lib/labeling-navigation.ts` (previous/next list); hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/w/[workspaceId]/taxonomies/[key]/page.tsx` |
@@ -222,7 +222,8 @@ writes need the same scope as reads. The access matrix is in
 ## Optional AI integration
 
 - **Per-workspace connections** (`lib/ai-connections.ts`): platform admins
-  approve Taxomind endpoints (`AIEndpoint`); a workspace admin creates an
+  approve Taxomind endpoints (`AIEndpoint`), for every workspace or only for
+  granted ones (`AIEndpointGrant`); a workspace admin creates an
   immutable `AIConnectionVersion` (approved endpoint, namespace
   `<AI_SOURCE_SLUG>--<workspaceId>`, credential encrypted by
   `lib/ai-credentials.ts` with `AI_CREDENTIALS_KEYS`) and turns
@@ -235,7 +236,10 @@ writes need the same scope as reads. The access matrix is in
   typed by the OpenAPI contract (`lib/contracts/taxomind.ts`, including
   `TaxonomyRequest`). `lib/ai-utils.ts` builds named field payloads from
   `fieldN` / `fieldMapping`. Batch sizes, thresholds, ceilings and polling
-  settings live in `lib/constants.ts`; Compose defaults can differ.
+  settings live in `lib/constants.ts`; Compose defaults can differ. Workspaces
+  may override the batch sizes and learning threshold (`Workspace.ai*`, read
+  with `workspaceJobSettings()`). Jobs store the creating request's ID
+  (`requestId`) and send it to Taxomind as `x-request-id`.
 - Three job kinds in `lib/ai-job-monitor.ts`: labeling (`AILabelingJob`, its
   records in `AILabelingJobInput`), learning (`AILearningJob` /
   `AILearningJobInput`) and taxonomy sync (`AITaxonomySyncJob`). Routes create
@@ -347,10 +351,11 @@ files for deployment details; these are separate from the local dev stack.
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.
 
-Framework/library upgrades, stack changes and the open items left by the
-October 2026 hardening round are in the
-[modernization plan](docs/plans/modernization-2026-10.md). The hardening
-review, briefs and handoff are archived in `docs/archive/hardening-2026-10/`;
-read them only for the reasoning behind a decision. These are
+What is still open (staging, maintainer decisions, Taxomind) is in
+[open items](docs/plans/open-items.md). The October 2026 plans (modernization,
+workspace isolation, user management, progress dashboard) are implemented and
+archived in `docs/archive/plans-2026-10/`, the hardening review, briefs and
+handoff in `docs/archive/hardening-2026-10/`; read them only for the reasoning
+behind a decision. These are
 dated findings and proposed work, not implemented behavior or additional
 standing instructions.

@@ -1,6 +1,6 @@
 # classiflow hardening investigation briefs
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../../plans/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../plans-2026-10/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
 
 Companion to the [21 October 2026 review](2026-10-21-review.md). These are proposed
 assignments, not approved implementation designs or a record of completed fixes.

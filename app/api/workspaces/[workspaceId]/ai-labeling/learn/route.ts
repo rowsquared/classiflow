@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { afterCommit, db, scopeWorkspaceId } from '@/lib/workspace/db'
 import { scheduleAIJobs } from '@/lib/ai-job-monitor'
-import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connections'
-import { AI_LEARNING_BATCH_SIZE, AI_LEARNING_MIN_NEW_ANNOTATIONS } from '@/lib/constants'
+import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs, workspaceJobSettings } from '@/lib/ai-connections'
+import { currentRequestId } from '@/lib/request-id'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
 import { logError, requestLogger } from '@/lib/logger'
@@ -39,10 +39,11 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       )
     }
 
-    if (taxonomy.newAnnotationsSinceLastLearning < AI_LEARNING_MIN_NEW_ANNOTATIONS) {
+    const { learningBatchSize: batchSize, learningMinNewAnnotations } = await workspaceJobSettings()
+    if (taxonomy.newAnnotationsSinceLastLearning < learningMinNewAnnotations) {
       return NextResponse.json(
         {
-          error: `At least ${AI_LEARNING_MIN_NEW_ANNOTATIONS} new annotations are required before training (currently ${taxonomy.newAnnotationsSinceLastLearning})`
+          error: `At least ${learningMinNewAnnotations} new annotations are required before training (currently ${taxonomy.newAnnotationsSinceLastLearning})`
         },
         { status: 400 }
       )
@@ -81,8 +82,9 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
 
     // Split into batches
     const batches: string[][] = []
-    for (let i = 0; i < allSentenceIds.length; i += AI_LEARNING_BATCH_SIZE) {
-      batches.push(allSentenceIds.slice(i, i + AI_LEARNING_BATCH_SIZE))
+    const requestId = await currentRequestId()
+    for (let i = 0; i < allSentenceIds.length; i += batchSize) {
+      batches.push(allSentenceIds.slice(i, i + batchSize))
     }
 
     // Create one job per batch and launch monitors
@@ -95,8 +97,9 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
           taxonomyId: taxonomy.id,
           status: 'pending',
           totalSentences: batchIds.length,
-          batchSize: AI_LEARNING_BATCH_SIZE,
+          batchSize,
           connectionVersionId: connection.id,
+          requestId,
           filterCriteria: { since: taxonomy.lastLearningAt?.toISOString() ?? null }
         },
         include: {
@@ -134,7 +137,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
         taxonomy: taxonomy.key,
         records: allSentenceIds.length,
         annotations: annotations.length,
-        batchSize: AI_LEARNING_BATCH_SIZE
+        batchSize
       },
       'Created AI learning jobs'
     )

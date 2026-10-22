@@ -62,7 +62,7 @@ Open http://localhost:3000 and sign in with `DEFAULT_ADMIN_USERNAME` (or `DEFAUL
 ### Benchmarks
 
 The progress reports and the queue search have a repeatable benchmark on
-seeded data (docs/plans/progress-dashboard.md records the results):
+seeded data (docs/archive/plans-2026-10/progress-dashboard.md records the results):
 
 ```bash
 createdb classiflow_bench_test     # once; _bench or _test, the seed empties every table

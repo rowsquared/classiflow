@@ -245,8 +245,9 @@ export default function Sidebar() {
       }
     : null
 
-  // TODO: Make this configurable from admin page
-  const surveyTitle = 'classiflow' // Can be set to e.g., 'HIES 2015'
+  // The product name; the exercise's own name (e.g. 'HIES 2015') is the
+  // workspace's, shown by the WorkspaceSwitcher below and set by its admins.
+  const productName = 'classiflow'
 
   const visibleNavItems = user ? navItems.filter(item => item.roles.includes(user.role)) : []
 
@@ -305,7 +306,7 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* Survey Title - Fades in/out when expanded/collapsed */}
+          {/* Product name - Fades in/out when expanded/collapsed */}
           <h1
             className="text-sm font-semibold text-gray-900 truncate overflow-hidden"
             suppressHydrationWarning
@@ -315,7 +316,7 @@ export default function Sidebar() {
               transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
             }}
           >
-            {surveyTitle}
+            {productName}
           </h1>
         </div>
 

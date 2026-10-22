@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { User } from '@/lib/generated/prisma/client'
 import { settleBackgroundTasks } from '@/lib/after-response'
-import { deliverMail, queueMail, recoverOutbox } from '@/lib/mail/outbox'
+import { deliverMail, pruneOutbox, queueMail, recoverOutbox } from '@/lib/mail/outbox'
 import { checkPassword, setPassword } from '@/lib/passwords'
 import {
   createUser,
@@ -94,6 +94,22 @@ describe('outbox', () => {
     await deliverMail([broken])
     expect((await prisma.outgoingMail.findUniqueOrThrow({ where: { id: refused } })).status).toBe('failed')
     expect((await prisma.outgoingMail.findUniqueOrThrow({ where: { id: broken } })).status).toBe('unknown')
+  })
+
+  it('prunes finished rows past the retention period, never queued or sending ones', async () => {
+    const user = await createUser('labeller')
+    const old = new Date(Date.now() - 91 * 24 * 60 * 60_000)
+    const row = (status: 'sent' | 'failed' | 'unknown' | 'pending' | 'sending', createdAt: Date) =>
+      prisma.outgoingMail.create({ data: { purpose: 'password_changed', userId: user.id, status, createdAt } })
+    const kept = [await row('pending', old), await row('sending', old), await row('sent', new Date())]
+    await row('sent', old)
+    await row('failed', old)
+    await row('unknown', old)
+    expect(await pruneOutbox()).toBe(3)
+    const left = await prisma.outgoingMail.findMany({ where: { userId: user.id }, select: { id: true } })
+    expect(left.map(r => r.id).sort()).toEqual(kept.map(r => r.id).sort())
+    // The queued row would otherwise be sent by the next test's recovery.
+    await prisma.outgoingMail.deleteMany({ where: { userId: user.id } })
   })
 
   it('turns a mail abandoned while sending into unknown and never resends it', async () => {

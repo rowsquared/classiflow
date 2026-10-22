@@ -37,6 +37,7 @@ import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-la
 import * as overviewRoute from '@/app/api/workspaces/[workspaceId]/progress/overview/route'
 import * as activityRoute from '@/app/api/workspaces/[workspaceId]/progress/activity/route'
 import * as peopleRoute from '@/app/api/workspaces/[workspaceId]/progress/people/route'
+import * as membersRoute from '@/app/api/workspaces/[workspaceId]/progress/members/route'
 import * as workspaceRoute from '@/app/api/workspaces/[workspaceId]/route'
 
 // Team tree in the main workspace:
@@ -400,6 +401,37 @@ describe('people', () => {
     expect((await people()).status).toBe(403)
   })
 
+  it('lists platform admins who labeled here without a membership, for unrestricted views only', async () => {
+    const platform = await prisma.user.create({
+      data: {
+        username: `platform-${Date.now()}`,
+        email: `platform-${Date.now()}@test.local`,
+        name: 'Platform Person',
+        role: 'admin',
+        mustResetPassword: false,
+        sessions: { create: { token: `token-${Date.now()}`, expiresAt: new Date(Date.now() + 3600_000) } }
+      }
+    })
+    signInAs(platform)
+    expect((await save(r5.id, { annotations: label() })).status).toBe(200)
+
+    signInAs(admin)
+    const { body } = await people()
+    expect(body.total).toBe(7)
+    expect(body.people.find((p: { userId: string }) => p.userId === platform.id)).toMatchObject({
+      platformOnly: true,
+      role: 'admin',
+      assigned: 0,
+      labeledRecords: 1
+    })
+    expect(body.people.find((p: { userId: string }) => p.userId === l1.id)).toMatchObject({ platformOnly: false })
+    expect((await people('q=Platform%20Person')).body.people).toHaveLength(1)
+    // A team or person view lists members of that scope only.
+    expect(
+      (await people(`teamId=${sup.id}`)).body.people.some((p: { userId: string }) => p.userId === platform.id)
+    ).toBe(false)
+  })
+
   it('shows suspended members with their history', async () => {
     await prisma.workspaceMembership.update({
       where: { workspaceId_userId: { workspaceId: wsId(), userId: l1.id } },
@@ -411,6 +443,38 @@ describe('people', () => {
       status: 'suspended',
       labeledRecords: 2
     })
+  })
+})
+
+describe('picker search', () => {
+  async function members(query = '') {
+    const res = await membersRoute.GET(request(`/x/members?${query}`), params())
+    return { status: res.status, body: await res.json() }
+  }
+  const ids = (body: { members: Array<{ userId: string }> }) => body.members.map(m => m.userId).sort()
+
+  it('finds people the viewer may see, by name, limited, with a hint that there are more', async () => {
+    signInAs(admin)
+    expect(ids((await members()).body)).toEqual([admin.id, sup.id, l1.id, sub.id, l2.id, l3.id].sort())
+    const limited = await members('limit=2')
+    expect(limited.body.members).toHaveLength(2)
+    expect(limited.body.more).toBe(true)
+    expect(ids((await members(`q=${encodeURIComponent(l3.username)}`)).body)).toEqual([l3.id])
+    expect(ids((await members('kind=team')).body)).toEqual([admin.id, sup.id, sub.id].sort())
+    expect(ids((await members(`teamId=${sub.id}`)).body)).toEqual([sub.id, l2.id].sort())
+    expect(ids((await members(`teamId=${sub.id}&userId=${l1.id}`)).body)).toEqual([])
+    expect(Object.keys((await members('limit=1')).body.members[0]).sort()).toEqual(
+      ['name', 'role', 'status', 'userId', 'username'].sort()
+    )
+  })
+
+  it('stays inside the viewer scope', async () => {
+    signInAs(sup)
+    expect(ids((await members()).body)).toEqual([sup.id, l1.id, sub.id, l2.id].sort())
+    expect(ids((await members(`userId=${l3.id}`)).body)).toEqual([])
+    expect((await members(`teamId=${l3.id}`)).status).toBe(403)
+    signInAs(l1)
+    expect((await members()).status).toBe(403)
   })
 })
 

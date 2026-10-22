@@ -87,7 +87,7 @@ Each topic lives in one place:
 | [COOLIFY_DEPLOYMENT.md](COOLIFY_DEPLOYMENT.md) | Coolify-specific setup, deploy triggers and releases |
 | [docs/security.md](docs/security.md) | Who can see and change what (access matrix) |
 | [AGENTS.md](AGENTS.md) | Architecture and conventions for contributors and coding agents |
-| [docs/plans/modernization-2026-10.md](docs/plans/modernization-2026-10.md) | Proposed framework, library and runtime upgrades (Next 16, Prisma 7, auth) and open hardening items |
+| [docs/plans/open-items.md](docs/plans/open-items.md) | What is still open: staging setup, maintainer decisions, Taxomind work (the October 2026 plans are in `docs/archive/plans-2026-10/`) |
 
 ## License
 

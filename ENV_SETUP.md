@@ -56,11 +56,13 @@ For local testing, `node scripts/mock-mail-webhook.mjs` (DEVELOPMENT.md).
 | `APP_BASE_URL` | no | `BETTER_AUTH_URL` | no | Public URL used in mail links. Never taken from the request's `Host` header |
 | `INVITATION_LINK_HOURS` | no | `72` | no | Lifetime of invitation links (new accounts and workspace invitations) |
 | `PASSWORD_RESET_LINK_MINUTES` | no | `60` | no | Lifetime of a password link |
+| `MAIL_RETENTION_DAYS` | no | `90` | no | Days sent, failed and unknown rows stay in the mail outbox (`OutgoingMail`) before they are deleted automatically; `0` keeps them. The audit log keeps the mail events |
 
 ## AI suggestions (optional)
 
 AI is configured **per workspace** (Admin › AI Settings): a platform admin
-approves the Taxomind services workspaces may use (Workspaces page), and each
+approves the Taxomind services workspaces may use (Workspaces page; open to
+every workspace or only to chosen ones), and each
 workspace admin connects the workspace to one of them with the workspace's own
 access token. The deployment only provides the encryption keys for those tokens
 and the namespace. Leave `AI_CREDENTIALS_KEYS` unset for human-only labelling;
@@ -73,9 +75,9 @@ AI features stay disabled.
 | `AI_LABELING_API_URL` | no | unset | no | Optional: registered once as an *approved* Taxomind service at start-up (base URL including any path prefix such as `/api`). It configures no workspace; each still needs its own connection and token. Platform admins can approve and retire services in the UI instead |
 | `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` | no | 3 | no | AI jobs (labelling, learning, taxonomy sync) one workspace may have running at the AI service; more wait as "pending" |
 | `AI_MAX_ACTIVE_JOBS` | no | 10 | no | The same ceiling for the whole deployment; queued jobs are admitted fairly across workspaces |
-| `AI_LABELING_BATCH_SIZE` | no | 1000 / 100 | no | Records per labelling job |
-| `AI_LEARNING_BATCH_SIZE` | no | 100 / 100 | no | Records per learning job |
-| `AI_LEARNING_MIN_NEW_ANNOTATIONS` | no | 500 / 500 | no | New human labels needed before learning can start |
+| `AI_LABELING_BATCH_SIZE` | no | 1000 / 100 | no | Records per labelling job (default; a workspace admin can set its own under Admin › AI Settings) |
+| `AI_LEARNING_BATCH_SIZE` | no | 100 / 100 | no | Records per learning job (default, overridable per workspace) |
+| `AI_LEARNING_MIN_NEW_ANNOTATIONS` | no | 500 / 500 | no | New human labels needed before learning can start (default, overridable per workspace) |
 | `AI_JOB_POLL_INTERVAL_MS` | no | 60000 / 5000 | no | Status poll interval; also sets the job lease length (2 × interval + 60 s) |
 | `AI_JOB_POLL_TIMEOUT_MS` | no | 18000000 (5 h) / 600000 | no | A job still running after this is marked failed |
 

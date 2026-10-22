@@ -1,5 +1,5 @@
 // Seeds a disposable database with a representative workspace for the progress
-// and queue benchmarks (docs/plans/progress-dashboard.md, "Performance budget").
+// and queue benchmarks (docs/archive/plans-2026-10/progress-dashboard.md, "Performance budget").
 //
 //   DATABASE_URL=postgresql://.../classiflow_bench_test node scripts/bench/seed-progress.ts --records 50000
 //

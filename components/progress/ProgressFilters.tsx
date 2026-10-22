@@ -1,41 +1,10 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import Combobox, { type ComboboxOption } from '@/components/ui/Combobox'
 import { RANGE_PRESETS, isCustomRange, type ProgressUrlState } from '@/lib/progress-url'
 import { MAX_RANGE_DAYS, daysBetween, parseCalendarDate } from '@/lib/reporting-dates'
-
-export type PickerMember = {
-  id: string
-  name: string
-  username: string
-  role: 'admin' | 'supervisor' | 'labeller'
-  status: 'active' | 'suspended'
-  supervisorId: string | null
-}
-
-/** The member and everyone below them in the supervisor tree (user ids). */
-export function subtreeOf(members: PickerMember[], rootId: string): Set<string> {
-  const ids = new Set([rootId])
-  let added = true
-  while (added) {
-    added = false
-    for (const m of members) {
-      if (m.supervisorId && ids.has(m.supervisorId) && !ids.has(m.id)) {
-        ids.add(m.id)
-        added = true
-      }
-    }
-  }
-  return ids
-}
-
-const ROLE_HINT = { admin: 'admin', supervisor: 'supervisor', labeller: 'labeller' } as const
-const option = (m: PickerMember): ComboboxOption => ({
-  value: m.id,
-  label: m.name || m.username,
-  hint: m.status === 'suspended' ? `${ROLE_HINT[m.role]}, inactive` : ROLE_HINT[m.role]
-})
+import type { ProgressMemberOption } from '@/lib/contracts/progress'
+import MemberPicker from './MemberPicker'
 
 const PRESET_LABEL: Record<(typeof RANGE_PRESETS)[number], string> = {
   7: 'Last 7 days',
@@ -48,14 +17,15 @@ type ProgressFiltersProps = {
   state: ProgressUrlState
   /** The applied range (inclusive dates) as the server resolved it, once known. */
   range: { startDate: string; endDate: string } | null
-  members: PickerMember[]
+  /** Members the server already resolved (the selected team and person). */
+  known: ProgressMemberOption[]
   /** Labellers report on themselves only: no team or person pickers. */
   showPickers: boolean
   onChange: (patch: Partial<ProgressUrlState>) => void
 }
 
 /** Date range (presets or custom with Apply), team and person. */
-export default function ProgressFilters({ state, range, members, showPickers, onChange }: ProgressFiltersProps) {
+export default function ProgressFilters({ state, range, known, showPickers, onChange }: ProgressFiltersProps) {
   const custom = isCustomRange(state)
   const [editing, setEditing] = useState(false)
   const [from, setFrom] = useState(state.startDate ?? range?.startDate ?? '')
@@ -74,9 +44,6 @@ export default function ProgressFilters({ state, range, members, showPickers, on
     onChange({ startDate: from, endDate: to, page: 1 })
   }
 
-  const teamOptions = members.filter(m => m.role !== 'labeller').map(option)
-  const people = state.teamId ? members.filter(m => subtreeOf(members, state.teamId!).has(m.id)) : members
-  const personOptions = people.map(option)
   const showCustomForm = editing || custom
 
   return (
@@ -158,22 +125,23 @@ export default function ProgressFilters({ state, range, members, showPickers, on
 
         {showPickers && (
           <>
-            <Combobox
+            <MemberPicker
               label="Team"
-              className="w-56"
-              options={teamOptions}
+              kind="team"
               value={state.teamId}
+              known={known}
               placeholder="Whole workspace"
-              emptyText="No supervisors"
+              emptyText="No supervisors found"
               onChange={value => onChange({ teamId: value, page: 1 })}
             />
-            <Combobox
+            <MemberPicker
               label="Person"
-              className="w-56"
-              options={personOptions}
+              kind="person"
+              teamId={state.teamId}
               value={state.personId}
+              known={known}
               placeholder="Everyone"
-              emptyText="Nobody in this team"
+              emptyText={state.teamId ? 'Nobody found in this team' : 'Nobody found'}
               onChange={value => onChange({ personId: value, page: 1 })}
             />
           </>

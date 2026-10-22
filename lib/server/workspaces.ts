@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { Role, SessionUser } from '@/lib/api-auth'
 import { afterCommit, db, withWorkspace } from '@/lib/workspace/db'
 import { cancelExternalJob } from '@/lib/ai-job-monitor'
+import { currentRequestId } from '@/lib/request-id'
 import { auditInTransaction } from '@/lib/audit'
 
 // The workspace directory and lifecycle (control plane). Workspace and
@@ -141,9 +142,10 @@ export async function setWorkspaceStatus(workspaceId: string, status: 'active' |
       ...sync.map(job => ({ kind: 'sync' as const, ...job }))
     ].flatMap(job => (job.externalJobId ? [{ ...job, externalJobId: job.externalJobId }] : []))
     if (external.length > 0) {
+      const requestId = await currentRequestId()
       afterCommit(() => {
         for (const job of external) {
-          void cancelExternalJob(workspaceId, job.kind, job.externalJobId, job.connectionVersionId)
+          void cancelExternalJob(workspaceId, job.kind, job.externalJobId, job.connectionVersionId, requestId)
         }
       })
     }

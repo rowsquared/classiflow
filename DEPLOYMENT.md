@@ -141,9 +141,10 @@ never the request's host, so set it to the public `https://` address.
 - **Outcomes** on the Team page: sent, failed (the workflow refused it; resending
   is safe), unknown (timeout or server error). Emailed temporary passwords are
   never retried or stored; after a failure send a password link instead.
-- **Retention:** `OutgoingMail` rows are only needed for recent status. Prune
-  them with the audit log, for example after 30 days:
-  `DELETE FROM "OutgoingMail" WHERE "createdAt" < now() - interval '30 days'`.
+- **Retention:** `OutgoingMail` rows are only needed for recent status. Each
+  instance deletes sent, failed and unknown rows older than
+  `MAIL_RETENTION_DAYS` (default 90; `0` keeps them) once an hour. The mail
+  events stay in the audit log.
 - **Check it:** sign in, open Team, create a test member with "Email a link to
   choose a password", and look for "email sent" in the member's drawer.
 
@@ -168,7 +169,9 @@ logs). Every request gets an ID: a well-formed `X-Request-ID` from the reverse
 proxy is kept (8–128 letters, digits, `.`, `_`, `:` or `-`), otherwise one is
 generated. It comes back as the `x-request-id` response header, appears on
 that request's log lines and is stored on its audit entries (`requestId`), so
-a reported error can be traced from the audit log to the logs. Unhandled
+a reported error can be traced from the audit log to the logs. AI jobs keep the
+ID of the request that started them and send it to Taxomind as `x-request-id`
+on every call (cancelling sends the cancelling request's). Unhandled
 errors in workspace API routes are logged with it and answered with a plain
 500. Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` points at an OTLP/HTTP
 collector (ENV_SETUP.md "Logs and traces").

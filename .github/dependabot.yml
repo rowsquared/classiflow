@@ -19,7 +19,7 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Prisma 8 only after general availability (docs/plans/modernization-2026-10.md).
+      # Prisma 8 only after general availability (docs/archive/plans-2026-10/modernization-2026-10.md).
       - dependency-name: prisma
         versions: [">=8.0.0-0"]
       - dependency-name: "@prisma/client"

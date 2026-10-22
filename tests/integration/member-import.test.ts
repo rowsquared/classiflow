@@ -3,11 +3,22 @@ import { NextRequest } from 'next/server'
 import type { User } from '@/lib/generated/prisma/client'
 import { settleBackgroundTasks } from '@/lib/after-response'
 import { checkPassword } from '@/lib/passwords'
-import { createUser, createWorkspace, params, prisma, resetDatabase, signInAs, wsId } from './helpers'
+import {
+  createUser,
+  createWorkspace,
+  params,
+  prisma,
+  request,
+  resetDatabase,
+  selectWorkspace,
+  signInAs,
+  wsId
+} from './helpers'
 import { disableMail, enableMail, startMailWebhook } from './mail-helpers'
 
 import * as importRoute from '@/app/api/workspaces/[workspaceId]/users/import/route'
 import * as importStatusRoute from '@/app/api/workspaces/[workspaceId]/users/import/[importId]/route'
+import * as exportRoute from '@/app/api/workspaces/[workspaceId]/users/export/route'
 
 const HEADER = 'username,email,name,role,supervisor,access,password'
 
@@ -169,5 +180,39 @@ describe('member CSV import', () => {
     } finally {
       enableMail(webhook.url)
     }
+  })
+})
+
+describe('member CSV export', () => {
+  const download = () => exportRoute.GET(request('/x'), params())
+
+  it('lists every member of this workspace, suspended ones included, for admins only', async () => {
+    const labeller = await createUser('labeller', { supervisorId: supervisor.id })
+    const suspended = await createUser('labeller')
+    await prisma.workspaceMembership.update({
+      where: { workspaceId_userId: { workspaceId: wsId(), userId: suspended.id } },
+      data: { status: 'suspended' }
+    })
+    const home = wsId()
+    const elsewhere = await createWorkspace()
+    const stranger = await createUser('labeller', { workspaceId: elsewhere.id })
+    selectWorkspace(home)
+
+    signInAs(admin)
+    const res = await download()
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/csv')
+    const csv = await res.text()
+    const lines = csv.split('\n')
+    expect(lines[0]).toMatch(/^"username","email","name","role","supervisor","status"/)
+    expect(lines.find(l => l.startsWith(`"${labeller.username}"`))).toContain(
+      `"${labeller.email}","${labeller.name}","labeller","${supervisor.username}","active"`
+    )
+    expect(lines.find(l => l.startsWith(`"${suspended.username}"`))).toContain('"suspended"')
+    expect(csv).not.toContain(stranger.username)
+    expect(await prisma.auditLog.count({ where: { workspaceId: home, action: 'members.exported' } })).toBe(1)
+
+    signInAs(supervisor)
+    expect((await download()).status).toBe(403)
   })
 })

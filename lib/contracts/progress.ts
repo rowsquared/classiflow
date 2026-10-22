@@ -58,6 +58,32 @@ export const reportPeopleQuery = reportFilterQuery.extend({
 })
 export type PeopleQuery = z.output<typeof reportPeopleQuery>
 
+export const MEMBER_OPTIONS_LIMIT = 20
+
+/** The team and person pickers: a server search, at most `limit` matches. */
+export const reportMembersQuery = z.object({
+  q: z.string().trim().max(100).optional(),
+  /** team: supervisors and admins (team roots); person: anyone. */
+  kind: z.enum(['team', 'person'], { error: 'kind must be team or person' }).default('person'),
+  /** Only people in this member's team (persons only). */
+  teamId: selector,
+  /** Only this person (to show a selected value or check it is in a team). */
+  userId: selector,
+  limit: z.coerce.number().int().min(1).max(50).default(MEMBER_OPTIONS_LIMIT)
+})
+export type MembersQuery = z.output<typeof reportMembersQuery>
+
+/** A picker option: names and roles only, no email addresses. */
+export type ProgressMemberOption = {
+  userId: string
+  name: string
+  username: string
+  role: 'admin' | 'supervisor' | 'labeller'
+  status: 'active' | 'suspended'
+}
+
+export type ProgressMembers = { members: ProgressMemberOption[]; more: boolean }
+
 /** What every report echoes back: the filters as applied. */
 export type ReportMeta = {
   startDate: string
@@ -95,6 +121,8 @@ export type ProgressPerson = {
   username: string
   role: 'admin' | 'supervisor' | 'labeller'
   status: 'active' | 'suspended'
+  /** Labeled here as a platform admin without a membership (no workload, not selectable). */
+  platformOnly: boolean
   lastSeenAt: string | null
   assigned: number
   complete: number

@@ -26,6 +26,13 @@ describe('mail configuration', () => {
     })
     expect(config.baseUrl).toBe('https://app.example.org')
   })
+
+  it('keeps finished outbox rows 90 days unless told otherwise; 0 keeps them', () => {
+    expect(readMailConfig({}).retentionDays).toBe(90)
+    expect(readMailConfig({ MAIL_RETENTION_DAYS: '30' }).retentionDays).toBe(30)
+    expect(readMailConfig({ MAIL_RETENTION_DAYS: '0' }).retentionDays).toBeNull()
+    expect(readMailConfig({ MAIL_RETENTION_DAYS: 'x' }).retentionDays).toBe(90)
+  })
 })
 
 describe('n8n transport', () => {

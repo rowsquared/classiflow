@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, normalize, relative } from 'node:path'
+import { join, posix } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 // The image runs scripts/*.ts with Node's type stripping (scripts/start.sh,
@@ -15,7 +15,8 @@ function runtimeImports(file: string, seen = new Set<string>()): Set<string> {
   seen.add(file)
   const source = readFileSync(join(root, file), 'utf8')
   for (const match of source.matchAll(IMPORT)) {
-    const target = normalize(join(dirname(file), match[1] ?? ''))
+    // Repository paths with forward slashes on every platform, as in the Dockerfile.
+    const target = posix.normalize(posix.join(posix.dirname(file), match[1] ?? ''))
     if (target.startsWith('lib/generated/')) continue
     runtimeImports(target, seen)
   }
@@ -31,7 +32,7 @@ describe('Dockerfile', () => {
     const needed = new Set<string>()
     for (const script of scripts) {
       for (const file of runtimeImports(script)) {
-        if (!file.startsWith('scripts/')) needed.add(relative(root, join(root, file)))
+        if (!file.startsWith('scripts/')) needed.add(file)
       }
     }
     const missing = [...needed].filter(file => !dockerfile.includes(`/app/${file} ./${file}`))

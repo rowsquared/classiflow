@@ -327,12 +327,34 @@ async function sendCredentialMail(mailId: string, password: string) {
 }
 
 const RECOVERY_INTERVAL_MS = 60_000
+const PRUNE_INTERVAL_MS = 60 * 60_000
 let lastRecovery = 0
+let lastPrune = 0
+
+/**
+ * Deletes finished rows (sent, failed, unknown) older than
+ * MAIL_RETENTION_DAYS (default 90; 0 keeps them). They only serve the recent
+ * mail status on the Team page and the resend cooldown; the audit log keeps
+ * the mail events. Queued and sending rows are never pruned. Returns the
+ * number of rows deleted.
+ */
+export async function pruneOutbox(now = Date.now()): Promise<number> {
+  const days = mailConfig().retentionDays
+  if (days === null) return 0
+  const result = await prisma.outgoingMail.deleteMany({
+    where: {
+      status: { in: ['sent', 'failed', 'unknown'] },
+      createdAt: { lt: new Date(now - days * 24 * 60 * 60_000) }
+    }
+  })
+  return result.count
+}
 
 /**
  * Rows a stopped server left behind: `sending` past the transport timeout
  * becomes `unknown`; unsent credential rows are marked as not sent (the
- * password is gone); other `pending` rows are sent. At most once a minute per
+ * password is gone); other `pending` rows are sent; old finished rows are
+ * pruned (at most hourly, pruneOutbox). At most once a minute per
  * instance unless forced. Called on a timer (instrumentation.ts) and from the
  * Team page's member list.
  */
@@ -350,6 +372,11 @@ export async function recoverOutbox({ force = false } = {}): Promise<void> {
     data: { status: 'failed', detail: 'Not sent: the server stopped before sending. Send a password link instead.' }
   })
   await deleteExpiredAccountLinks(prisma)
+  if (force || now - lastPrune >= PRUNE_INTERVAL_MS) {
+    lastPrune = now
+    const pruned = await pruneOutbox(now)
+    if (pruned > 0) logger.info({ pruned }, 'Pruned old outgoing mail rows')
+  }
   if (!mailEnabled()) return
   const pending = await prisma.outgoingMail.findMany({
     where: { status: 'pending', purpose: { not: 'credentials' }, createdAt: { lt: new Date(now - 60_000) } },

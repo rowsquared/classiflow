@@ -22,7 +22,7 @@ import {
   type TeamMember
 } from '@/lib/team-table'
 import { sortFromUrl, sortToUrl, teamFiltersFromUrl, teamFiltersToUrl, teamParsers } from '@/lib/team-url'
-import { workspaceApi } from '@/lib/workspace/urls'
+import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
 
 export type User = TeamMember
 export type { PendingInvitation }
@@ -60,6 +60,7 @@ const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
 export default function TeamPageClient({ initialUsers, initialInvitations, mailEnabled }: Props) {
   const { data: session } = useSession()
   const workspace = useWorkspaceInfo()
+  const { api } = useWorkspacePaths()
   const [members, setMembers] = useState<User[]>(initialUsers)
   // Search, filters and sort live in the URL (lib/team-url.ts).
   const [url, setUrl] = useQueryStates(teamParsers)
@@ -186,6 +187,13 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
               Clear
             </button>
           )}
+          <a
+            href={api('/users/export')}
+            download
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            Export CSV
+          </a>
           <button
             type="button"
             onClick={() => setImporting(true)}

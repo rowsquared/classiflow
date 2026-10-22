@@ -3,14 +3,19 @@ import { asJson } from '@/lib/server/json'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
 import { logError } from '@/lib/logger'
-import { getProgressActivity, getProgressOverview, getProgressPeople, ReportScopeError } from '@/lib/server/progress'
-import { listVisibleUsers } from '@/lib/server/users'
+import {
+  getProgressActivity,
+  getProgressOverview,
+  getProgressPeople,
+  ReportScopeError,
+  searchReportMembers
+} from '@/lib/server/progress'
 import { reportFilterQuery, reportPeopleQuery, reportTimelineQuery } from '@/lib/contracts/progress'
 import { activityParams, loadProgressUrlState, overviewParams, peopleParams } from '@/lib/progress-url'
-import ProgressDashboard, { type InitialReports, type PickerMember } from '@/components/progress/ProgressDashboard'
+import ProgressDashboard, { type InitialReports } from '@/components/progress/ProgressDashboard'
 
 /**
- * The Progress dashboard (docs/plans/progress-dashboard.md). The server
+ * The Progress dashboard (docs/archive/plans-2026-10/progress-dashboard.md). The server
  * renders the view the URL names with the same report functions and query
  * strings the client uses, so the client's queries start with this data and
  * mounting does not repeat the requests. A section that cannot load here
@@ -56,7 +61,16 @@ export default async function ProgressPage({
           overview: overview.success ? await settle(() => getProgressOverview(user, overview.data)) : null,
           activity: activity.success ? await settle(() => getProgressActivity(user, activity.data)) : null,
           people: staff && people.success ? await settle(() => getProgressPeople(user, people.data)) : null,
-          members: staff ? (await listVisibleUsers(user, { includeSuspended: true })).users : []
+          // Names for the selected team and person; the pickers search the server.
+          selected: staff
+            ? (
+                await Promise.all(
+                  [view.teamId, view.personId]
+                    .filter((id): id is string => !!id)
+                    .map(userId => searchReportMembers(user, { kind: 'person', userId, limit: 1 }))
+                )
+              ).flatMap(result => result.members)
+            : []
         }
       })
     )
@@ -65,15 +79,6 @@ export default async function ProgressPage({
     return <LoadError title="Progress" what="the progress figures" />
   }
 
-  // Pickers need names and roles only (no email addresses).
-  const members: PickerMember[] = data.members.map(m => ({
-    id: m.id,
-    name: m.name,
-    username: m.username,
-    role: m.role,
-    status: m.status,
-    supervisorId: m.supervisorId
-  }))
   const initial: InitialReports = {
     params: query,
     overview: data.overview as InitialReports['overview'],
@@ -84,7 +89,7 @@ export default async function ProgressPage({
   return (
     <ProgressDashboard
       initial={initial}
-      members={members}
+      selected={data.selected}
       viewer={{ id: user.id, role: user.role, canEditTimeZone: user.role === 'admin' && !user.archived }}
     />
   )

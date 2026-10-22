@@ -1,6 +1,6 @@
 # Hardening work: handoff
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../../plans/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
+> **Archived 21 October 2026.** Historical record of the hardening round. Open items moved to the [modernization plan](../plans-2026-10/modernization-2026-10.md) ("Carried over from hardening"). Links to source files point at the current code, which may have changed since.
 
 **Status:** 21 October 2026. All workstreams are done or mostly done in code; what
 is left needs production data, a decision, or its own upgrade plan (table below).
@@ -29,7 +29,7 @@ not all of them.
   label saves, comments or flags (those rows carry author and time).
 - Node 24 LTS and a committed npm lockfile; Next 16 and Prisma 7 are separate
   upgrade plans, not part of hardening: see the
-  [modernization plan](../../plans/modernization-2026-10.md).
+  [modernization plan](../plans-2026-10/modernization-2026-10.md).
 
 ## Where things stand
 
@@ -79,7 +79,7 @@ Suggested next order: the smaller open items in each brief (see the `[ ]` lines)
 
 **Fresh start (decided 21 October 2026):** no staging or production
 deployment exists and no data is kept; both are set up again (see the
-[modernization plan](../../plans/modernization-2026-10.md), M00). Items below about
+[modernization plan](../plans-2026-10/modernization-2026-10.md), M00). Items below about
 existing databases (the backup-table check, the old fallback DB password,
 running the label-integrity report on production) no longer apply. The
 required variables (`POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`,

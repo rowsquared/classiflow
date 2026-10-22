@@ -4,6 +4,7 @@ import { afterCommit, db, scopeWorkspaceId } from '@/lib/workspace/db'
 import { scheduleAIJobs } from '@/lib/ai-job-monitor'
 import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connections'
 import { audit } from '@/lib/audit'
+import { currentRequestId } from '@/lib/request-id'
 
 // POST: queue a sync of this taxonomy to the AI service. The job
 // (AITaxonomySyncJob) is admitted, sent and polled by lib/ai-job-monitor.ts
@@ -39,7 +40,13 @@ export const POST = workspaceRoute<'key'>(['admin'], async (_req, { user: actor,
   }
 
   const job = await db().aITaxonomySyncJob.create({
-    data: { workspaceId, taxonomyId: taxonomy.id, connectionVersionId: connection.id, createdById: actor.id },
+    data: {
+      workspaceId,
+      taxonomyId: taxonomy.id,
+      connectionVersionId: connection.id,
+      createdById: actor.id,
+      requestId: await currentRequestId()
+    },
     select: { id: true, status: true }
   })
   afterCommit(scheduleAIJobs)

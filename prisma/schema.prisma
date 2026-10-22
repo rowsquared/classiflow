@@ -160,36 +160,43 @@ model RateLimit {
 // An independently managed classification exercise: its own records,
 // taxonomies, members, roles and AI learning.
 model Workspace {
-  id                   String          @id @default(cuid())
-  name                 String
-  description          String?
-  status               WorkspaceStatus @default(active)
-  archivedAt           DateTime?
+  id                          String          @id @default(cuid())
+  name                        String
+  description                 String?
+  status                      WorkspaceStatus @default(active)
+  archivedAt                  DateTime?
   // Whether new AI jobs may start (lib/ai-connections.ts); needs a connection.
-  aiEnabled            Boolean         @default(false)
-  createdById          String?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  aiEnabled                   Boolean         @default(false)
+  createdById                 String?
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
   // IANA zone for progress reporting days and weeks; null: REPORTING_TIMEZONE (default UTC).
-  reportingTimezone    String?
+  reportingTimezone           String?
   // Labeling activity (LabelingActivity) is recorded from this moment on;
   // earlier work has no history. Existing workspaces: when the table was added.
-  activityTrackedSince DateTime        @default(now())
+  activityTrackedSince        DateTime        @default(now())
+  // AI batch sizes and learning threshold for this workspace; null: the
+  // deployment setting (AI_LABELING_BATCH_SIZE, AI_LEARNING_BATCH_SIZE,
+  // AI_LEARNING_MIN_NEW_ANNOTATIONS).
+  aiLabelingBatchSize         Int?
+  aiLearningBatchSize         Int?
+  aiLearningMinNewAnnotations Int?
 
-  createdBy      User?                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  memberships    WorkspaceMembership[]
-  taxonomies     Taxonomy[]
-  imports        SentenceImport[]
-  sentences      Sentence[]
-  aiLabelingJobs AILabelingJob[]
-  aiLearningJobs AILearningJob[]
-  aiSyncJobs     AITaxonomySyncJob[]
-  aiConnections  AIConnectionVersion[]
-  auditLogs      AuditLog[]
-  invitations    WorkspaceInvitation[]
-  memberImports  MemberImport[]
-  outgoingMails  OutgoingMail[]
-  labelingEvents LabelingActivity[]
+  createdBy        User?                 @relation("WorkspaceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  memberships      WorkspaceMembership[]
+  taxonomies       Taxonomy[]
+  imports          SentenceImport[]
+  sentences        Sentence[]
+  aiLabelingJobs   AILabelingJob[]
+  aiLearningJobs   AILearningJob[]
+  aiSyncJobs       AITaxonomySyncJob[]
+  aiConnections    AIConnectionVersion[]
+  auditLogs        AuditLog[]
+  invitations      WorkspaceInvitation[]
+  memberImports    MemberImport[]
+  outgoingMails    OutgoingMail[]
+  labelingEvents   LabelingActivity[]
+  aiEndpointGrants AIEndpointGrant[]
 }
 
 // A person's role in one workspace. The supervisor tree links memberships of
@@ -459,6 +466,8 @@ model AILabelingJob {
   // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
   leaseOwner          String?
   leaseExpiresAt      DateTime?
+  // The request that created the job; sent to Taxomind as x-request-id.
+  requestId           String?
 
   workspace  Workspace            @relation(fields: [workspaceId], references: [id])
   createdBy  User                 @relation(fields: [createdById], references: [id])
@@ -492,6 +501,8 @@ model AILearningJob {
   // Which app instance monitors the job, until when (lib/ai-job-monitor.ts).
   leaseOwner          String?
   leaseExpiresAt      DateTime?
+  // The request that created the job; sent to Taxomind as x-request-id.
+  requestId           String?
 
   workspace  Workspace            @relation(fields: [workspaceId], references: [id])
   createdBy  User                 @relation("LearningJobsUser", fields: [createdById], references: [id])
@@ -550,6 +561,8 @@ model AITaxonomySyncJob {
   errorMessage        String?
   leaseOwner          String?
   leaseExpiresAt      DateTime?
+  // The request that created the job; sent to Taxomind as x-request-id.
+  requestId           String?
 
   workspace  Workspace           @relation(fields: [workspaceId], references: [id])
   taxonomy   Taxonomy            @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
@@ -567,14 +580,32 @@ model AITaxonomySyncJob {
 // settings cannot become arbitrary server-side network access. The URL never
 // changes; retire it and approve a new one instead.
 model AIEndpoint {
-  id          String    @id @default(cuid())
-  name        String
-  baseUrl     String    @unique
-  createdById String?
-  createdAt   DateTime  @default(now())
-  retiredAt   DateTime?
+  id            String    @id @default(cuid())
+  name          String
+  baseUrl       String    @unique
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  retiredAt     DateTime?
+  // Open to every workspace, or only to those with an AIEndpointGrant.
+  allWorkspaces Boolean   @default(true)
 
   connections AIConnectionVersion[]
+  grants      AIEndpointGrant[]
+}
+
+// Control plane: a platform admin opened an endpoint (allWorkspaces = false)
+// to one workspace.
+model AIEndpointGrant {
+  endpointId  String
+  workspaceId String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  endpoint  AIEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([endpointId, workspaceId])
+  @@index([workspaceId])
 }
 
 // One immutable version of a workspace's AI connection: an approved endpoint,

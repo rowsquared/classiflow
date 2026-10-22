@@ -28,6 +28,8 @@ export const queryKeys = {
    * when the person and team stay the same.
    */
   progress: (workspaceId: string) => ['ws', workspaceId, 'progress'] as const,
+  /** Team and person picker searches (lib/server/progress.ts searchReportMembers). */
+  progressMembers: (workspaceId: string, params: string) => ['ws', workspaceId, 'progress', 'members', params] as const,
   progressReport: (workspaceId: string, report: 'overview' | 'activity' | 'people', scope: string, params: string) =>
     ['ws', workspaceId, 'progress', report, scope, params] as const,
 

@@ -70,6 +70,7 @@ let allowedAuth = new Set(['Bearer stub-key'])
 let statusReply: StatusReply
 let createdReply: ((resource: Resource) => Reply) | undefined
 let authHeaders: string[] = []
+let requestIdHeaders: Array<string | undefined> = []
 let violations: string[] = []
 
 const now = () => new Date().toISOString()
@@ -119,6 +120,8 @@ function statusBody(resource: Resource, job: StubJob, id: string, fields: Record
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   authHeaders.push(String(req.headers.authorization))
+  const requestId = req.headers['x-request-id']
+  requestIdHeaders.push(Array.isArray(requestId) ? requestId[0] : requestId)
   let raw = ''
   for await (const chunk of req) raw += chunk
   const url = req.url || ''
@@ -197,6 +200,7 @@ beforeEach(async () => {
   cancels.length = 0
   allowedAuth = new Set(['Bearer stub-key'])
   authHeaders = []
+  requestIdHeaders = []
   violations = []
   createdReply = undefined
   admin = await createUser('admin')
@@ -761,6 +765,40 @@ describe('workspace connections', () => {
 
     expect((await settle(job.id)).status).toBe('completed')
     expect(await storedSuggestions()).toEqual([[b.id, 1, '02', 0.4]])
+  })
+
+  it('splits records into batches of the workspace batch size', async () => {
+    const [a, b, c] = await createSentences(3)
+    statusReply = completedWith([])
+    await prisma.workspace.update({ where: { id: wsId() }, data: { aiLabelingBatchSize: 2 } })
+    signInAs(admin)
+
+    expect((await startLabeling([a.id, b.id, c.id])).status).toBe(200)
+    const jobs = await prisma.aILabelingJob.findMany({ orderBy: { totalSentences: 'desc' } })
+    expect(jobs.map(j => [j.totalSentences, j.batchSize])).toEqual([
+      [2, 2],
+      [1, 2]
+    ])
+    for (const job of jobs) await settle(job.id)
+  })
+
+  it("sends the creating request's ID to Taxomind on start and status requests", async () => {
+    const [a] = await createSentences(1)
+    statusReply = completedWith([])
+    const job = await labelingJob([a.id], { requestId: 'req-0123456789abcdef' })
+    await run()
+    expect((await settle(job.id)).status).toBe('completed')
+    expect(requestIdHeaders.length).toBeGreaterThanOrEqual(2)
+    expect(new Set(requestIdHeaders)).toEqual(new Set(['req-0123456789abcdef']))
+  })
+
+  it('sends no request ID for a job created outside a request', async () => {
+    const [a] = await createSentences(1)
+    statusReply = completedWith([])
+    const job = await labelingJob([a.id])
+    await run()
+    await settle(job.id)
+    expect(requestIdHeaders.every(h => h === undefined)).toBe(true)
   })
 
   it('keeps a job on the connection version it started with', async () => {

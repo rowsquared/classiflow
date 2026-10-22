@@ -1,5 +1,8 @@
 # Progress dashboard: implementation plan
 
+**Archived 22 October 2026:** implemented. What is still open (environment,
+maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+
 **Status:** D0–D3 implemented 22 October 2026, D4 verified locally (see below); the staging-host benchmark under concurrent load is open.
 **Priority:** follow-up feature after the existing modernization and feature plans.
 **Reviewed baseline:** `fae270f` plus the in-progress working tree on 21 October.
@@ -191,10 +194,12 @@ and every single report under the 750 ms budget; the largest response is the
 - D4 on a staging-like host with the agreed concurrent load (10 viewers plus
   labeling writes) and the browser timings of the budget table; then release
   through staging.
-- Platform admins without a membership can label; their activity counts in
-  workspace totals but they have no people row.
-- People pickers list the whole visible membership (not paged); fine for
-  hundreds of members, revisit if a workspace grows into thousands.
+- ~~Platform admins without a membership have no people row~~ done 22
+  October 2026: an admin's unrestricted people view also lists them
+  (`platformOnly`, badge "Platform admin", not selectable).
+- ~~People pickers list the whole membership~~ done: the team and person
+  pickers search the server (`/progress/members`, 20 matches, "type a name to
+  find more"); the page no longer loads the member directory.
 
 ## Outcome and place in the roadmap
 

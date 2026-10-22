@@ -80,15 +80,27 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
               people.people.map(person => (
                 <tr key={person.userId} className="border-t border-gray-100">
                   <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelectPerson(person.userId)}
-                      className="text-left font-medium text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
-                      title={`Show ${person.name || person.username} only`}
-                    >
-                      {person.name || person.username}
-                    </button>
+                    {person.platformOnly ? (
+                      <span className="font-medium text-gray-900">{person.name || person.username}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onSelectPerson(person.userId)}
+                        className="text-left font-medium text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                        title={`Show ${person.name || person.username} only`}
+                      >
+                        {person.name || person.username}
+                      </button>
+                    )}
                     <span className="ml-2 text-gray-600">@{person.username}</span>
+                    {person.platformOnly && (
+                      <span
+                        className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700"
+                        title="Labeled here as a platform administrator, without a membership"
+                      >
+                        Platform admin
+                      </span>
+                    )}
                     {person.status === 'suspended' && (
                       <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">Inactive</span>
                     )}

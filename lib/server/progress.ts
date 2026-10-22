@@ -4,9 +4,11 @@ import { Prisma } from '@/lib/generated/prisma/client'
 import type { CurrentUser } from '@/lib/api-auth'
 import { teamMembers, visibleMembers, type MemberRef } from '@/lib/access'
 import type {
+  MembersQuery,
   PeopleQuery,
   PeopleSort,
   ProgressOverview,
+  ProgressMembers,
   ProgressPeople,
   ProgressPerson,
   ProgressTimeline,
@@ -22,7 +24,7 @@ import {
 } from '@/lib/reporting-dates'
 
 // ---------------------------------------------------------------------------
-// Progress reports: overview, timeline and people (docs/plans/progress-dashboard.md).
+// Progress reports: overview, timeline and people (docs/archive/plans-2026-10/progress-dashboard.md).
 //
 // Workload is "now": the records in scope and their current status. Activity
 // is "in the period": distinct records with a successful human label save
@@ -54,17 +56,19 @@ type ReportScope = {
   people: string[] | null
 }
 
+/** The membership of a selected user id, if the viewer may see it; ReportScopeError otherwise. */
+async function selectableMember(user: CurrentUser, visible: MemberRef[] | null, userId: string): Promise<MemberRef> {
+  const membership = await db().workspaceMembership.findUnique({
+    where: { workspaceId_userId: { workspaceId: user.workspaceId, userId } },
+    select: { id: true, userId: true }
+  })
+  if (!membership || (visible !== null && !visible.some(m => m.id === membership.id))) throw new ReportScopeError()
+  return membership
+}
+
 async function resolveReportScope(user: CurrentUser, filter: ReportFilter): Promise<ReportScope> {
   const visible = await visibleMembers(user)
-  const isVisible = (id: string) => visible === null || visible.some(m => m.id === id)
-  const memberOf = async (userId: string) => {
-    const membership = await db().workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId: user.workspaceId, userId } },
-      select: { id: true, userId: true }
-    })
-    if (!membership || !isVisible(membership.id)) throw new ReportScopeError()
-    return membership
-  }
+  const memberOf = (userId: string) => selectableMember(user, visible, userId)
 
   // A selector narrows within the viewer's own scope and never widens it.
   let selected: MemberRef[] | null = null
@@ -194,6 +198,51 @@ export async function getProgressActivity(
   }
 }
 
+/**
+ * Options for the team and person pickers: members the viewer may see whose
+ * name or username matches, at most `limit` (`more` says there are others).
+ * A person search can be limited to a team. Throws ReportScopeError for a
+ * team outside the viewer's scope.
+ */
+export async function searchReportMembers(user: CurrentUser, query: MembersQuery): Promise<ProgressMembers> {
+  const visible = await visibleMembers(user)
+  let within: string[] | null = visible && visible.map(m => m.id)
+  if (query.kind === 'person' && query.teamId) {
+    const root = await selectableMember(user, visible, query.teamId)
+    const team = (await teamMembers(user.workspaceId, root.id)).map(m => m.id)
+    within = within === null ? team : team.filter(id => within!.includes(id))
+  }
+  const rows = await db().workspaceMembership.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      ...(within !== null && { id: { in: within } }),
+      ...(query.kind === 'team' && { role: { in: ['admin' as const, 'supervisor' as const] } }),
+      ...(query.userId && { userId: query.userId }),
+      ...(query.q && {
+        user: {
+          OR: [
+            { name: { contains: query.q, mode: 'insensitive' as const } },
+            { username: { contains: query.q, mode: 'insensitive' as const } }
+          ]
+        }
+      })
+    },
+    select: { role: true, status: true, user: { select: { id: true, name: true, username: true } } },
+    orderBy: [{ user: { name: 'asc' } }, { user: { username: 'asc' } }],
+    take: query.limit + 1
+  })
+  return {
+    members: rows.slice(0, query.limit).map(m => ({
+      userId: m.user.id,
+      name: m.user.name,
+      username: m.user.username,
+      role: m.role,
+      status: m.status
+    })),
+    more: rows.length > query.limit
+  }
+}
+
 const PEOPLE_ORDER: Record<PeopleSort, Prisma.Sql> = {
   name: Prisma.sql`lower(name)`,
   role: Prisma.sql`CASE role WHEN 'admin' THEN 0 WHEN 'supervisor' THEN 1 ELSE 2 END`,
@@ -214,12 +263,29 @@ export async function getProgressPeople(user: CurrentUser, query: PeopleQuery): 
   const direction = Prisma.raw(query.dir === 'desc' ? 'DESC' : 'ASC')
   const order = Prisma.sql`${PEOPLE_ORDER[query.sort]} ${direction} NULLS LAST, username ASC, id ASC`
 
+  const nameMatches =
+    search === null ? Prisma.empty : Prisma.sql`AND (u.name ILIKE ${search} OR u.username ILIKE ${search})`
+  // An unrestricted view (admins, no selector) also lists people who labeled
+  // here in the period without a membership: platform admins. They have no
+  // assignments and cannot be selected; their activity is in the totals.
+  const platformOnly =
+    people !== null
+      ? Prisma.empty
+      : Prisma.sql`
+    UNION ALL
+    SELECT 'platform:' || u.id, u.id, 'admin', 'active', NULL::timestamp(3), u.name, u.username, true
+      FROM "User" u
+     WHERE u.id IN (SELECT e."actorId" FROM "LabelingActivity" e WHERE ${activityWhere(ws, context)})
+       AND NOT EXISTS (SELECT 1 FROM "WorkspaceMembership" x WHERE x."workspaceId" = ${ws} AND x."userId" = u.id)
+       ${nameMatches}`
   const members = Prisma.sql`
-    SELECT wm.id, wm."userId", wm.role::text AS role, wm.status::text AS status, wm."lastSeenAt", u.name, u.username
+    SELECT wm.id, wm."userId", wm.role::text AS role, wm.status::text AS status, wm."lastSeenAt", u.name, u.username,
+           false AS "platformOnly"
       FROM "WorkspaceMembership" wm JOIN "User" u ON u.id = wm."userId"
      WHERE wm."workspaceId" = ${ws}
        ${people === null ? Prisma.empty : Prisma.sql`AND wm.id = ANY(${people}::text[])`}
-       ${search === null ? Prisma.empty : Prisma.sql`AND (u.name ILIKE ${search} OR u.username ILIKE ${search})`}`
+       ${nameMatches}
+    ${platformOnly}`
 
   const rows = await db().$queryRaw<
     Array<Omit<ProgressPerson, 'lastSeenAt'> & { lastSeenAt: Date | null; total: number }>
@@ -266,6 +332,7 @@ export async function getProgressPeople(user: CurrentUser, query: PeopleQuery): 
         username: row.username,
         role: row.role,
         status: row.status,
+        platformOnly: row.platformOnly,
         lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
         assigned: row.assigned,
         complete: row.complete,

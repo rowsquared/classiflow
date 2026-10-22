@@ -2,7 +2,13 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { db, scopeWorkspaceId, withWorkspace } from '@/lib/workspace/db'
-import { AI_SOURCE_SLUG, aiSourceSlug } from '@/lib/constants'
+import {
+  AI_LABELING_BATCH_SIZE,
+  AI_LEARNING_BATCH_SIZE,
+  AI_LEARNING_MIN_NEW_ANNOTATIONS,
+  AI_SOURCE_SLUG,
+  aiSourceSlug
+} from '@/lib/constants'
 import {
   CredentialError,
   credentialAad,
@@ -14,10 +20,11 @@ import { taxomindClient, type TaxomindClient } from '@/lib/ai-labeling'
 import { logger } from '@/lib/logger'
 
 /**
- * Per-workspace AI connections (docs/plans/workspace-isolation.md, "Optional
+ * Per-workspace AI connections (docs/archive/plans-2026-10/workspace-isolation.md, "Optional
  * AI").
  *
- * - Platform admins approve endpoints (AIEndpoint, control plane).
+ * - Platform admins approve endpoints (AIEndpoint, control plane), for every
+ *   workspace or only for chosen ones (AIEndpointGrant).
  * - A workspace admin creates a connection version: an approved endpoint plus
  *   the workspace's own credential, encrypted (lib/ai-credentials.ts). A new
  *   version retires the previous one. Versions never change; a retired
@@ -85,27 +92,101 @@ export function normalizeEndpointUrl(raw: string): string {
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
 }
 
-export type EndpointSummary = { id: string; name: string; baseUrl: string; createdAt: Date; retiredAt: Date | null }
+export type EndpointSummary = {
+  id: string
+  name: string
+  baseUrl: string
+  createdAt: Date
+  retiredAt: Date | null
+  allWorkspaces: boolean
+  /** The workspaces it is open to when not open to all. */
+  workspaceIds: string[]
+}
 
-const endpointSelect = { id: true, name: true, baseUrl: true, createdAt: true, retiredAt: true } as const
+const endpointSelect = {
+  id: true,
+  name: true,
+  baseUrl: true,
+  createdAt: true,
+  retiredAt: true,
+  allWorkspaces: true,
+  grants: { select: { workspaceId: true }, orderBy: { workspaceId: 'asc' } }
+} as const
 
+type EndpointRow = Omit<EndpointSummary, 'workspaceIds'> & { grants: { workspaceId: string }[] }
+
+const endpointSummary = ({ grants, ...row }: EndpointRow): EndpointSummary => ({
+  ...row,
+  workspaceIds: grants.map(g => g.workspaceId)
+})
+
+/** Every approved endpoint with the workspaces it is open to (platform admins). */
 export async function listEndpoints({ includeRetired = false } = {}): Promise<EndpointSummary[]> {
-  return prisma.aIEndpoint.findMany({
+  const rows = await prisma.aIEndpoint.findMany({
     where: includeRetired ? {} : { retiredAt: null },
     select: endpointSelect,
     orderBy: [{ retiredAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }]
+  })
+  return rows.map(endpointSummary)
+}
+
+/** Unretired endpoints open to every workspace or granted to this one. */
+const availableTo = (workspaceId: string) => ({
+  retiredAt: null,
+  OR: [{ allWorkspaces: true }, { grants: { some: { workspaceId } } }]
+})
+
+/** The endpoints one workspace may connect to. */
+export async function endpointsForWorkspace(workspaceId: string) {
+  return prisma.aIEndpoint.findMany({
+    where: availableTo(workspaceId),
+    select: { id: true, name: true, baseUrl: true },
+    orderBy: { name: 'asc' }
+  })
+}
+
+/**
+ * Opens an endpoint to every workspace, or only to the given ones. Workspaces
+ * that lose access cannot start new jobs on it (their connection reports
+ * `endpoint_not_allowed`); jobs already running finish. Returns null for an
+ * unknown endpoint, or the ids that are not workspaces.
+ */
+export async function setEndpointAccess(input: {
+  endpointId: string
+  allWorkspaces: boolean
+  workspaceIds: string[]
+  actorId: string
+}): Promise<EndpointSummary | null | { unknownWorkspaces: string[] }> {
+  const workspaceIds = input.allWorkspaces ? [] : [...new Set(input.workspaceIds)]
+  return prisma.$transaction(async tx => {
+    const endpoint = await tx.aIEndpoint.findUnique({ where: { id: input.endpointId }, select: { id: true } })
+    if (!endpoint) return null
+    const found = await tx.workspace.findMany({ where: { id: { in: workspaceIds } }, select: { id: true } })
+    const unknown = workspaceIds.filter(id => !found.some(w => w.id === id))
+    if (unknown.length > 0) return { unknownWorkspaces: unknown }
+    await tx.aIEndpointGrant.deleteMany({ where: { endpointId: input.endpointId } })
+    await tx.aIEndpointGrant.createMany({
+      data: workspaceIds.map(workspaceId => ({ endpointId: input.endpointId, workspaceId, createdById: input.actorId }))
+    })
+    const row = await tx.aIEndpoint.update({
+      where: { id: input.endpointId },
+      data: { allWorkspaces: input.allWorkspaces },
+      select: endpointSelect
+    })
+    return endpointSummary(row)
   })
 }
 
 /** Approves an endpoint, or approves a retired one again. */
 export async function approveEndpoint(input: { name: string; baseUrl: string; actorId: string }) {
   const baseUrl = normalizeEndpointUrl(input.baseUrl)
-  return prisma.aIEndpoint.upsert({
+  const row = await prisma.aIEndpoint.upsert({
     where: { baseUrl },
     create: { name: input.name, baseUrl, createdById: input.actorId },
     update: { name: input.name, retiredAt: null },
     select: endpointSelect
   })
+  return endpointSummary(row)
 }
 
 /** Retired endpoints take no new connections or jobs; running jobs finish. */
@@ -148,7 +229,7 @@ const versionSelect = {
   createdAt: true,
   retiredAt: true,
   credential: true,
-  endpoint: { select: { id: true, name: true, baseUrl: true, retiredAt: true } }
+  endpoint: { select: { id: true, name: true, baseUrl: true, retiredAt: true, allWorkspaces: true } }
 } as const
 
 type VersionRow = {
@@ -158,11 +239,11 @@ type VersionRow = {
   createdAt: Date
   retiredAt: Date | null
   credential: string | null
-  endpoint: { id: string; name: string; baseUrl: string; retiredAt: Date | null }
+  endpoint: { id: string; name: string; baseUrl: string; retiredAt: Date | null; allWorkspaces: boolean }
 }
 
 /** What the API shows of a connection version: never the credential, only whether one is stored. */
-export function connectionSummary(row: VersionRow) {
+export function connectionSummary(row: VersionRow, endpointAllowed = true) {
   return {
     id: row.id,
     version: row.version,
@@ -171,7 +252,8 @@ export function connectionSummary(row: VersionRow) {
     retiredAt: row.retiredAt,
     credentialStored: row.credential !== null,
     endpoint: { id: row.endpoint.id, name: row.endpoint.name, baseUrl: row.endpoint.baseUrl },
-    endpointRetired: row.endpoint.retiredAt !== null
+    endpointRetired: row.endpoint.retiredAt !== null,
+    endpointAllowed
   }
 }
 export type ConnectionSummary = ReturnType<typeof connectionSummary>
@@ -184,15 +266,94 @@ async function activeVersion(): Promise<VersionRow | null> {
   })
 }
 
+/** Whether the workspace may (still) use an endpoint. */
+async function endpointAllowed(endpoint: { id: string; allWorkspaces: boolean }, workspaceId: string) {
+  if (endpoint.allWorkspaces) return true
+  const grant = await db().aIEndpointGrant.findUnique({
+    where: { endpointId_workspaceId: { endpointId: endpoint.id, workspaceId } },
+    select: { endpointId: true }
+  })
+  return grant !== null
+}
+
+/** Why the active version cannot run new jobs, or null when it can. */
+async function activeVersionProblem(active: VersionRow | null, workspaceId: string): Promise<AIUnavailable | null> {
+  if (!active) return 'no_connection'
+  if (active.endpoint.retiredAt) return 'endpoint_retired'
+  if (!(await endpointAllowed(active.endpoint, workspaceId))) return 'endpoint_not_allowed'
+  if (!active.credential) return 'credential_missing'
+  return null
+}
+
+const jobSettingsSelect = {
+  aiLabelingBatchSize: true,
+  aiLearningBatchSize: true,
+  aiLearningMinNewAnnotations: true
+} as const
+
+type JobSettingsRow = {
+  aiLabelingBatchSize: number | null
+  aiLearningBatchSize: number | null
+  aiLearningMinNewAnnotations: number | null
+}
+
+/** Batch sizes and learning threshold: the workspace's own, else the deployment's. */
+export type AIJobSettings = { labelingBatchSize: number; learningBatchSize: number; learningMinNewAnnotations: number }
+
+export const deploymentJobSettings = (): AIJobSettings => ({
+  labelingBatchSize: AI_LABELING_BATCH_SIZE,
+  learningBatchSize: AI_LEARNING_BATCH_SIZE,
+  learningMinNewAnnotations: AI_LEARNING_MIN_NEW_ANNOTATIONS
+})
+
+const effectiveJobSettings = (row: JobSettingsRow): AIJobSettings => {
+  const fallback = deploymentJobSettings()
+  return {
+    labelingBatchSize: row.aiLabelingBatchSize ?? fallback.labelingBatchSize,
+    learningBatchSize: row.aiLearningBatchSize ?? fallback.learningBatchSize,
+    learningMinNewAnnotations: row.aiLearningMinNewAnnotations ?? fallback.learningMinNewAnnotations
+  }
+}
+
+/** The current workspace's effective job settings (inside withWorkspace). */
+export async function workspaceJobSettings(): Promise<AIJobSettings> {
+  const row = await db().workspace.findUniqueOrThrow({ where: { id: scopeWorkspaceId() }, select: jobSettingsSelect })
+  return effectiveJobSettings(row)
+}
+
+/** Workspace overrides; null returns a setting to the deployment default. */
+export type AIJobSettingsInput = {
+  labelingBatchSize?: number | null
+  learningBatchSize?: number | null
+  learningMinNewAnnotations?: number | null
+}
+
+export async function setWorkspaceJobSettings(input: AIJobSettingsInput): Promise<void> {
+  await db().workspace.update({
+    where: { id: scopeWorkspaceId() },
+    data: {
+      ...(input.labelingBatchSize !== undefined && { aiLabelingBatchSize: input.labelingBatchSize }),
+      ...(input.learningBatchSize !== undefined && { aiLearningBatchSize: input.learningBatchSize }),
+      ...(input.learningMinNewAnnotations !== undefined && {
+        aiLearningMinNewAnnotations: input.learningMinNewAnnotations
+      })
+    }
+  })
+}
+
 /** The workspace's AI settings for its admins (no secrets). */
 export async function workspaceAISettings() {
   const workspaceId = scopeWorkspaceId()
   const [workspace, active, versions] = await Promise.all([
-    db().workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { aiEnabled: true } }),
+    db().workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { aiEnabled: true, ...jobSettingsSelect }
+    }),
     activeVersion(),
     db().aIConnectionVersion.findMany({ orderBy: { version: 'desc' }, take: 20, select: versionSelect })
   ])
   const deployment = aiDeployment()
+  const activeAllowed = active ? await endpointAllowed(active.endpoint, workspaceId) : true
   return {
     deployment: {
       ready: deployment.ready,
@@ -201,21 +362,36 @@ export async function workspaceAISettings() {
     },
     enabled: workspace.aiEnabled,
     namespace: deployment.sourceSlugConfigured ? aiSourceSlug(workspaceId) : null,
-    active: active ? connectionSummary(active) : null,
-    versions: versions.map(connectionSummary),
-    endpoints: (await listEndpoints()).map(e => ({ id: e.id, name: e.name, baseUrl: e.baseUrl }))
+    active: active ? connectionSummary(active, activeAllowed) : null,
+    versions: versions.map(v => connectionSummary(v)),
+    endpoints: await endpointsForWorkspace(workspaceId),
+    jobSettings: {
+      overrides: {
+        labelingBatchSize: workspace.aiLabelingBatchSize,
+        learningBatchSize: workspace.aiLearningBatchSize,
+        learningMinNewAnnotations: workspace.aiLearningMinNewAnnotations
+      },
+      defaults: deploymentJobSettings(),
+      effective: effectiveJobSettings(workspace)
+    }
   }
 }
 
 /** Why the workspace cannot start AI jobs now, or null when it can. */
 export type AIUnavailable =
-  'deployment_not_configured' | 'disabled' | 'no_connection' | 'endpoint_retired' | 'credential_missing'
+  | 'deployment_not_configured'
+  | 'disabled'
+  | 'no_connection'
+  | 'endpoint_retired'
+  | 'endpoint_not_allowed'
+  | 'credential_missing'
 
 export const AI_UNAVAILABLE_MESSAGES: Record<AIUnavailable, string> = {
   deployment_not_configured: 'AI is not available on this deployment (AI_CREDENTIALS_KEYS and AI_SOURCE_SLUG).',
   disabled: 'AI is turned off for this workspace. An admin can turn it on under Admin › AI settings.',
   no_connection: 'This workspace has no AI connection. An admin can add one under Admin › AI settings.',
   endpoint_retired: "The AI service of this workspace's connection is no longer approved. Choose another one.",
+  endpoint_not_allowed: "This workspace may no longer use its connection's AI service. Choose another one.",
   credential_missing: "The AI connection's credential is missing. Add the connection again."
 }
 
@@ -229,9 +405,8 @@ export async function connectionForNewJobs(): Promise<{ id: string } | { unavail
   const workspace = await db().workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { aiEnabled: true } })
   if (!workspace.aiEnabled) return { unavailable: 'disabled' }
   const active = await activeVersion()
-  if (!active) return { unavailable: 'no_connection' }
-  if (active.endpoint.retiredAt) return { unavailable: 'endpoint_retired' }
-  if (!active.credential) return { unavailable: 'credential_missing' }
+  const problem = await activeVersionProblem(active, workspaceId)
+  if (problem || !active) return { unavailable: problem ?? 'no_connection' }
   return { id: active.id }
 }
 
@@ -248,8 +423,11 @@ export async function createConnectionVersion(input: { endpointId: string; crede
   const workspaceId = scopeWorkspaceId()
   const deployment = aiDeployment()
   if (!deployment.ready) throw new ConnectionInputError(AI_UNAVAILABLE_MESSAGES.deployment_not_configured)
-  const endpoint = await db().aIEndpoint.findUnique({ where: { id: input.endpointId }, select: { retiredAt: true } })
-  if (!endpoint || endpoint.retiredAt) throw new ConnectionInputError('Choose an approved AI service')
+  const endpoint = await db().aIEndpoint.findFirst({
+    where: { id: input.endpointId, ...availableTo(workspaceId) },
+    select: { id: true }
+  })
+  if (!endpoint) throw new ConnectionInputError('Choose an approved AI service')
 
   // One version number at a time per workspace.
   await db().$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`classiflow:ai-connection:${workspaceId}`}))`
@@ -278,10 +456,8 @@ export async function setWorkspaceAIEnabled(enabled: boolean): Promise<AIUnavail
   const workspaceId = scopeWorkspaceId()
   if (enabled) {
     if (!aiDeployment().ready) return 'deployment_not_configured'
-    const active = await activeVersion()
-    if (!active) return 'no_connection'
-    if (active.endpoint.retiredAt) return 'endpoint_retired'
-    if (!active.credential) return 'credential_missing'
+    const problem = await activeVersionProblem(await activeVersion(), workspaceId)
+    if (problem) return problem
   }
   await db().workspace.update({ where: { id: workspaceId }, data: { aiEnabled: enabled } })
   return null
@@ -318,12 +494,14 @@ export async function eraseUnusedRetiredCredentials(): Promise<number> {
 
 /**
  * The Taxomind client for one connection version, for the job monitor and
- * cancellation. Opens its own short workspace transaction; the decrypted
+ * cancellation. `requestId` (the request that created the job) is sent as
+ * `x-request-id`, so Taxomind's logs can be matched with ours. Opens its own short workspace transaction; the decrypted
  * credential stays in the returned client's memory.
  */
 export async function connectionClient(
   workspaceId: string,
-  connectionVersionId: string
+  connectionVersionId: string,
+  requestId?: string | null
 ): Promise<{ client: TaxomindClient; namespace: string }> {
   const row = await withWorkspace(workspaceId, () =>
     db().aIConnectionVersion.findUnique({
@@ -334,5 +512,8 @@ export async function connectionClient(
   if (!row) throw new Error('The AI connection of this job no longer exists')
   if (!row.credential) throw new Error("The AI connection's credential was erased")
   const credential = decryptCredential(row.credential, credentialAad(workspaceId, row.id), keyring())
-  return { client: taxomindClient({ baseUrl: row.endpoint.baseUrl, credential }), namespace: row.namespace }
+  return {
+    client: taxomindClient({ baseUrl: row.endpoint.baseUrl, credential, requestId }),
+    namespace: row.namespace
+  }
 }

@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
 import { afterCommit, db, scopeWorkspaceId } from '@/lib/workspace/db'
 import { scheduleAIJobs } from '@/lib/ai-job-monitor'
-import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs } from '@/lib/ai-connections'
-import { AI_LABELING_BATCH_SIZE } from '@/lib/constants'
+import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs, workspaceJobSettings } from '@/lib/ai-connections'
+import { currentRequestId } from '@/lib/request-id'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
 import { logError, requestLogger } from '@/lib/logger'
@@ -68,10 +68,12 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       return NextResponse.json({ error: 'No sentences matched the criteria' }, { status: 400 })
     }
 
-    // Split into batches
+    // Split into batches of the workspace's batch size
+    const { labelingBatchSize: batchSize } = await workspaceJobSettings()
+    const requestId = await currentRequestId()
     const batches: string[][] = []
-    for (let i = 0; i < allSentenceIds.length; i += AI_LABELING_BATCH_SIZE) {
-      batches.push(allSentenceIds.slice(i, i + AI_LABELING_BATCH_SIZE))
+    for (let i = 0; i < allSentenceIds.length; i += batchSize) {
+      batches.push(allSentenceIds.slice(i, i + batchSize))
     }
 
     // Create one job per batch and launch monitors
@@ -84,8 +86,9 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
           taxonomyId: taxonomy.id,
           status: 'pending',
           totalSentences: batchIds.length,
-          batchSize: AI_LABELING_BATCH_SIZE,
+          batchSize,
           connectionVersionId: connection.id,
+          requestId,
           // How the records were chosen; the records are the job's input rows.
           filterCriteria: {
             importIds: input.importIds ?? [],
@@ -114,7 +117,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     afterCommit(scheduleAIJobs)
 
     ;(await requestLogger()).info(
-      { jobs: jobs.length, taxonomy: taxonomy.key, records: allSentenceIds.length, batchSize: AI_LABELING_BATCH_SIZE },
+      { jobs: jobs.length, taxonomy: taxonomy.key, records: allSentenceIds.length, batchSize },
       'Created AI labeling jobs'
     )
 

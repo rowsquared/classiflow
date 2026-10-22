@@ -44,6 +44,7 @@ export type AuditAction =
   | 'member.invited'
   | 'member.invitation_revoked'
   | 'members.imported'
+  | 'members.exported'
   | 'mail.password_link_requested'
   | 'mail.invitation_requested'
   | 'mail.sent'
@@ -70,6 +71,8 @@ export type AuditAction =
   | 'ai.connection_removed'
   | 'ai.endpoint_approved'
   | 'ai.endpoint_retired'
+  | 'ai.endpoint_access_changed'
+  | 'ai.job_settings_changed'
   | 'access.denied'
 
 export type AuditEntry = {

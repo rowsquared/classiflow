@@ -1,6 +1,7 @@
 import 'server-only'
 import { db } from '@/lib/workspace/db'
 import { latestSyncByTaxonomy, NEVER_SYNCED } from '@/lib/server/ai-jobs'
+import { workspaceJobSettings } from '@/lib/ai-connections'
 
 // Taxonomy data for the admin page, the queue page and
 // /api/workspaces/[workspaceId]/taxonomies. Every member of the workspace sees them.
@@ -62,7 +63,7 @@ export async function listTaxonomiesWithStats(workspaceId: string) {
 
   return {
     ok: true as const,
-    learningThreshold: parseInt(process.env.AI_LEARNING_MIN_NEW_ANNOTATIONS || '500', 10),
+    learningThreshold: (await workspaceJobSettings()).learningMinNewAnnotations,
     taxonomies: taxonomiesWithStats
   }
 }

@@ -1,5 +1,8 @@
 # Modernization plan (October 2026)
 
+**Archived 22 October 2026:** implemented. What is still open (environment,
+maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+
 **Status:** decided 21 October 2026; phases 1 and 2 implemented the same day
 (see "Implementation status" below). **Baseline:** `staging` at `58bb4c2`.
 
@@ -42,10 +45,9 @@ production build, and `npm audit --omit=dev` (0 findings):
   `instrumentation.ts` only then; checked against the standalone build with a
   local collector), trace IDs on log lines, read-only root filesystem in
   Compose. Server code no longer uses `console.*` (scripts and client
-  components still do, on purpose). Not done: passing the request ID to
-  Taxomind (most calls come from background monitors, outside any request;
-  it would need the ID stored on the job), alerts (need a log/trace backend),
-  memory/CPU limits (need production numbers).
+  components still do, on purpose). The request ID is stored on each AI job
+  and sent to Taxomind as `x-request-id` (22 October 2026). Not done: alerts
+  (need a log/trace backend), memory/CPU limits (need production numbers).
 - **M09** Taxomind contract: types generated from Taxomind's OpenAPI document,
   calls through `openapi-fetch`, every response parsed in
   `lib/contracts/taxomind.ts`; the stub service checks requests and replies
@@ -118,8 +120,8 @@ Still open from this plan:
 
 This plan answers one question: which parts of the stack should be upgraded or
 replaced before feature work continues? It picks up where the hardening round
-stopped ([handoff](../archive/hardening-2026-10/hardening-handoff.md), [review](../archive/hardening-2026-10/2026-10-21-review.md),
-[briefs](../archive/hardening-2026-10/hardening-workstreams.md), all archived). That round already moved to
+stopped ([handoff](../../archive/hardening-2026-10/hardening-handoff.md), [review](../../archive/hardening-2026-10/2026-10-21-review.md),
+[briefs](../../archive/hardening-2026-10/hardening-workstreams.md), all archived). That round already moved to
 Node 24, a committed lockfile with `npm ci`, Dependabot, a pinned base image,
 Playwright journeys, database leases for AI jobs and a streamed export. This
 plan does not repeat those. Where an item closes an open hardening line, it

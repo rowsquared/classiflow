@@ -20,6 +20,8 @@ export type MailConfig = {
   baseUrl: string | null
   invitationHours: number
   passwordLinkMinutes: number
+  /** Days sent, failed and unknown outbox rows are kept; null: forever. */
+  retentionDays: number | null
 }
 
 const DEFAULT_WEBHOOK_URL = 'https://n8n.rowsquared.com/webhook/send-email'
@@ -54,8 +56,16 @@ export function readMailConfig(env: Env = process.env): MailConfig {
     timeoutMs: positive(env.N8N_EMAIL_WEBHOOK_TIMEOUT, 15) * 1000,
     baseUrl,
     invitationHours: positive(env.INVITATION_LINK_HOURS, 72),
-    passwordLinkMinutes: positive(env.PASSWORD_RESET_LINK_MINUTES, 60)
+    passwordLinkMinutes: positive(env.PASSWORD_RESET_LINK_MINUTES, 60),
+    retentionDays: retentionDays(env.MAIL_RETENTION_DAYS)
   }
+}
+
+/** Days finished outbox rows are kept; `0` keeps them forever (null). */
+function retentionDays(raw: string | undefined): number | null {
+  const value = raw?.trim()
+  if (value === '0') return null
+  return positive(value, 90)
 }
 
 let cached: MailConfig | null = null

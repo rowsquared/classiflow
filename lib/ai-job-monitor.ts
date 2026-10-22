@@ -117,6 +117,7 @@ type JobRecord = {
   status: string
   externalJobId: string | null
   connectionVersionId: string
+  requestId: string | null
   totalSentences: number | null
   taxonomy: { id: string; key: string }
 }
@@ -130,6 +131,7 @@ async function loadJobRecord(workspaceId: string, jobId: string, kind: JobKind):
       status: true,
       externalJobId: true,
       connectionVersionId: true,
+      requestId: true,
       taxonomy: { select: { id: true, key: true } }
     } as const
     if (kind === 'sync') {
@@ -301,15 +303,19 @@ function installShutdownHandler() {
   process.once('SIGINT', onSignal)
 }
 
-/** Cancels a job on the AI service, best effort, with the job's own connection. */
+/**
+ * Cancels a job on the AI service, best effort, with the job's own
+ * connection. `requestId` is the cancelling request's.
+ */
 export async function cancelExternalJob(
   workspaceId: string,
   kind: JobKind,
   externalJobId: string,
-  connectionVersionId: string
+  connectionVersionId: string,
+  requestId?: string | null
 ): Promise<void> {
   try {
-    const { client } = await connectionClient(workspaceId, connectionVersionId)
+    const { client } = await connectionClient(workspaceId, connectionVersionId, requestId)
     await client.cancelJob(API_RESOURCE[kind], externalJobId)
   } catch (error) {
     logger.warn({ kind, externalJobId, err: error }, 'Could not cancel external AI job')
@@ -472,7 +478,7 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       const job = await loadJobRecord(workspaceId, jobId, kind)
       if (!job || job.status !== 'processing') return
 
-      const { client, namespace } = await connectionClient(workspaceId, job.connectionVersionId)
+      const { client, namespace } = await connectionClient(workspaceId, job.connectionVersionId, job.requestId)
       const externalJobId = job.externalJobId ?? (await startExternal(kind, job, client, namespace))
 
       await pollUntilComplete(job, externalJobId, client, kind)

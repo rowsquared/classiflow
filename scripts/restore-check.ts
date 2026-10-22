@@ -23,8 +23,9 @@ import { ensureRole, runtimeUrl } from './db-runtime-role.ts'
 // Control-plane tables that carry a workspaceId but are deliberately not
 // row-secured: membership discovery happens before a workspace is chosen
 // (lib/api-auth.ts), invitations are accepted by people who are not members
-// yet, and the mail outbox is sent across workspaces (lib/mail/outbox.ts).
-const CONTROL_PLANE_TABLES = new Set(['WorkspaceMembership', 'WorkspaceInvitation', 'OutgoingMail'])
+// yet, the mail outbox is sent across workspaces (lib/mail/outbox.ts), and
+// platform admins open AI endpoints to workspaces (AIEndpointGrant).
+const CONTROL_PLANE_TABLES = new Set(['WorkspaceMembership', 'WorkspaceInvitation', 'OutgoingMail', 'AIEndpointGrant'])
 
 type Failure = string
 const failures: Failure[] = []

@@ -3,7 +3,7 @@ import { ADMIN } from './fixtures'
 import { api, failOnCspViolations, pagePath, signIn } from './helpers'
 import { expectAccessible } from './a11y'
 
-// The Progress dashboard (docs/plans/progress-dashboard.md): the view lives in
+// The Progress dashboard (docs/archive/plans-2026-10/progress-dashboard.md): the view lives in
 // the URL, sections load and fail independently, filters narrow the scope.
 // Runs after journeys.spec.ts and labelling-bulk.spec.ts, so the admin has
 // labeled records today. Adds a supervisor with one labeller (no records),
@@ -105,6 +105,9 @@ test('person and team filters narrow the scope; a person outside the team is cle
   const person = page.getByRole('combobox', { name: 'Person' })
   await person.focus()
   await person.fill('E2E Admin')
+  // The pickers search the server: wait for the match before choosing it.
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await expect(page.getByRole('option', { name: /E2E Admin/ })).toBeVisible()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`personId=${ids.admin}`))

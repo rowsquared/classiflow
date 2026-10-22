@@ -57,7 +57,11 @@ export default async function WorkspacesPage() {
 
         {user.platformRole === 'admin' && <CreateWorkspaceForm />}
         {user.platformRole === 'admin' && (
-          <AIEndpointsPanel initialEndpoints={endpoints as ApprovedEndpoint[]} deployment={aiDeployment()} />
+          <AIEndpointsPanel
+            initialEndpoints={endpoints as ApprovedEndpoint[]}
+            deployment={aiDeployment()}
+            workspaces={workspaces.map(w => ({ id: w.id, name: w.name }))}
+          />
         )}
       </div>
     </div>

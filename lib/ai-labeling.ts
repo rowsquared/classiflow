@@ -11,6 +11,7 @@ import {
   type TaxonomyRequest
 } from '@/lib/contracts/taxomind'
 import { logger } from '@/lib/logger'
+import { isWellFormedRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
 
 // The HTTP boundary to Taxomind. Requests and responses follow its OpenAPI
 // contract (lib/contracts/taxomind.ts); every response is parsed there.
@@ -26,8 +27,11 @@ import { logger } from '@/lib/logger'
 const AI_REQUEST_TIMEOUT_POST_MS = 3 * 60 * 1000 // 3 minutes
 const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
 
-/** Where and how to reach Taxomind for one connection version. The credential is plaintext, in memory only. */
-export type TaxomindConnection = { baseUrl: string; credential: string }
+/**
+ * Where and how to reach Taxomind for one connection version. The credential
+ * is plaintext, in memory only. `requestId` is sent as `x-request-id`.
+ */
+export type TaxomindConnection = { baseUrl: string; credential: string; requestId?: string | null }
 
 type Sent = { data?: unknown; error?: unknown; response: Response }
 
@@ -76,10 +80,13 @@ async function send(
 
 export type TaxomindClient = ReturnType<typeof taxomindClient>
 
-export function taxomindClient({ baseUrl, credential }: TaxomindConnection) {
+export function taxomindClient({ baseUrl, credential, requestId }: TaxomindConnection) {
   const api = createClient<paths>({
     baseUrl,
-    headers: { Authorization: `Bearer ${credential}` },
+    headers: {
+      Authorization: `Bearer ${credential}`,
+      ...(isWellFormedRequestId(requestId) && { [REQUEST_ID_HEADER]: requestId })
+    },
     fetch: noRedirects
   })
 

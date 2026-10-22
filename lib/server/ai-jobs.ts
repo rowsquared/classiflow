@@ -1,6 +1,7 @@
 import 'server-only'
 import { afterCommit, db } from '@/lib/workspace/db'
 import { cancelExternalJob, type JobKind } from '@/lib/ai-job-monitor'
+import { currentRequestId } from '@/lib/request-id'
 import type { AILabelingJobStatus } from '@/lib/generated/prisma/client'
 import { z } from 'zod'
 
@@ -140,7 +141,8 @@ export async function cancelAIJob(
 
   const { externalJobId, connectionVersionId, workspaceId } = job
   if (externalJobId) {
-    afterCommit(() => void cancelExternalJob(workspaceId, kind, externalJobId, connectionVersionId))
+    const requestId = await currentRequestId()
+    afterCommit(() => void cancelExternalJob(workspaceId, kind, externalJobId, connectionVersionId, requestId))
   }
   return { status, changed: true }
 }

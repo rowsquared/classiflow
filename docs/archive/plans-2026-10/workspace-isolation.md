@@ -1,5 +1,8 @@
 # Isolated classification workspaces
 
+**Archived 22 October 2026:** implemented. What is still open (environment,
+maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+
 **Status:** implementation proposal, 21 October 2026. No workspace feature changes
 implemented. **Reviewed baseline:** classiflow `fae270f`; SurveyHub `4bfe9bc`.
 The modernization work is concurrent: recheck its landed code before starting
@@ -116,10 +119,14 @@ landed modernization (Next 16, Prisma 7, Better Auth, `lib/server/*`).
    - Ceilings: `app_admit_ai_jobs()` admits queued jobs under
      `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` (3) and `AI_MAX_ACTIVE_JOBS` (10) with
      an advisory lock, round-robin across workspaces.
-   - Not done: approving endpoints per workspace (any approved endpoint is
-     open to every workspace), per-workspace thresholds/batch sizes (still
-     deployment settings), and restore-with-key rehearsal on a real backup
-     (procedure in DEPLOYMENT.md, belongs to the W12 backup work).
+   - Done 22 October 2026: endpoints open to every workspace or only to
+     granted ones (`AIEndpoint.allWorkspaces`, `AIEndpointGrant`, "Access" on
+     the Workspaces page; a connection that loses access reports
+     `endpoint_not_allowed`), and per-workspace batch sizes and learning
+     threshold (`Workspace.ai*`, Admin › AI Settings › Job settings; empty
+     means the deployment default).
+   - Not done: restore-with-key rehearsal on a real backup (procedure in
+     DEPLOYMENT.md, belongs to the W12 backup work).
 6. ~~P7 restore check~~ done (lane E): `scripts/restore-check.ts`, run by
    `scripts/restore-drill.sh`, checks row security on every workspace table,
    the runtime role's attributes and grants, and every workspace's rows
@@ -208,14 +215,14 @@ in particular, single and bulk labeling already share completion rules through
 | AI | Module-level URL/key in `lib/ai-labeling.ts`; deployment-wide `AI_SOURCE_SLUG` | Separate teams do not establish separate AI connections or learning namespaces |
 | Presentation | Global sidebar, queue, progress and administration routes | There is no explicit exercise context in links or settings |
 
-Evidence: [schema](../../prisma/schema.prisma),
-[record access](../../lib/access.ts), [session authorization](../../lib/api-auth.ts),
-[security matrix](../security.md), [imports](../../app/api/imports/route.ts),
-[taxonomy creation](../../app/api/taxonomies/route.ts),
-[completion rules](../../lib/annotation-status.ts),
-[record import](../../app/api/sentences/import/route.ts),
-[CSV export](../../lib/export-csv.ts), [AI requests](../../lib/ai-labeling.ts),
-[AI monitors](../../lib/ai-job-monitor.ts).
+Evidence: [schema](../../../prisma/schema.prisma),
+[record access](../../../lib/access.ts), [session authorization](../../../lib/api-auth.ts),
+[security matrix](../../security.md), [imports](../../../app/api/imports/route.ts),
+[taxonomy creation](../../../app/api/taxonomies/route.ts),
+[completion rules](../../../lib/annotation-status.ts),
+[record import](../../../app/api/sentences/import/route.ts),
+[CSV export](../../../lib/export-csv.ts), [AI requests](../../../lib/ai-labeling.ts),
+[AI monitors](../../../lib/ai-job-monitor.ts).
 
 An import is an upload batch, not a workspace: it has no membership,
 administration, taxonomy selection or AI settings. Renaming imports or making

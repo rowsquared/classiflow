@@ -18,16 +18,21 @@ import {
   type ProgressUrlState
 } from '@/lib/progress-url'
 import { MAX_BUCKETS } from '@/lib/reporting-dates'
-import type { PeopleSort, ProgressOverview, ProgressPeople, ProgressTimeline } from '@/lib/contracts/progress'
+import type {
+  PeopleSort,
+  ProgressMemberOption,
+  ProgressOverview,
+  ProgressPeople,
+  ProgressTimeline
+} from '@/lib/contracts/progress'
 import Section from './Section'
 import WorkloadCards from './WorkloadCards'
 import ActivityChart from './ActivityChart'
 import PeopleTable from './PeopleTable'
-import ProgressFilters, { subtreeOf, type PickerMember } from './ProgressFilters'
+import ProgressFilters from './ProgressFilters'
+import { memberName, personInTeam, useSelectedMember } from './MemberPicker'
 import TimeZoneDialog from './TimeZoneDialog'
 import { formatDay, formatRange, formatTime, localDate } from './format'
-
-export type { PickerMember }
 
 export type InitialReports = {
   /** The query strings the server loaded; initial data applies only while they match. */
@@ -55,11 +60,12 @@ const errorText = (error: Error | null, what: string) => (error ? `Could not loa
 
 export default function ProgressDashboard({
   initial,
-  members,
+  selected,
   viewer
 }: {
   initial: InitialReports
-  members: PickerMember[]
+  /** The team and person the URL selects, as the server resolved them. */
+  selected: ProgressMemberOption[]
   viewer: Viewer
 }) {
   const { workspaceId, api } = useWorkspacePaths()
@@ -111,15 +117,18 @@ export default function ProgressDashboard({
   const [now] = useState(() => Date.now())
   const [timeZoneOpen, setTimeZoneOpen] = useState(false)
 
-  const change = (patch: Partial<ProgressUrlState>) => {
+  const selectedPerson = useSelectedMember(url.personId, selected)
+  const selectedTeam = useSelectedMember(url.teamId, selected)
+
+  const change = async (patch: Partial<ProgressUrlState>) => {
     const next = { ...url, ...patch }
     // A person outside a newly chosen team would make an empty report; clear it.
     if (patch.teamId !== undefined && next.teamId && next.personId) {
-      if (!subtreeOf(members, next.teamId).has(next.personId)) {
-        const person = members.find(m => m.id === next.personId)
+      const inTeam = await personInTeam(api, next.personId, next.teamId).catch(() => true)
+      if (!inTeam) {
         patch = { ...patch, personId: null }
         setAnnouncement(
-          `Person filter cleared: ${person?.name || person?.username || 'that person'} is not in this team.`
+          `Person filter cleared: ${selectedPerson ? memberName(selectedPerson) : 'that person'} is not in this team.`
         )
       }
     }
@@ -156,11 +165,9 @@ export default function ProgressDashboard({
   const coverage = meta ? localDate(meta.activityCoverageStart, meta.timeZone) : null
   const granularity = effectiveGranularity(url)
   const [activityView, setActivityView] = useState<'chart' | 'table'>('chart')
-  const selectedPerson = url.personId ? members.find(m => m.id === url.personId) : null
-  const selectedTeam = url.teamId ? members.find(m => m.id === url.teamId) : null
   const scopeLabel = [
-    selectedTeam && `team of ${selectedTeam.name || selectedTeam.username}`,
-    selectedPerson && (selectedPerson.name || selectedPerson.username)
+    selectedTeam && `team of ${memberName(selectedTeam)}`,
+    selectedPerson && memberName(selectedPerson)
   ]
     .filter(Boolean)
     .join(', ')
@@ -193,9 +200,9 @@ export default function ProgressDashboard({
           key={`${url.days}|${url.startDate}|${url.endDate}`}
           state={url}
           range={meta}
-          members={members}
+          known={selected}
           showPickers={staff}
-          onChange={change}
+          onChange={patch => void change(patch)}
         />
 
         <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700">

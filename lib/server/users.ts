@@ -3,6 +3,7 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { getVisibleMembershipIds } from '@/lib/access'
 import { db } from '@/lib/workspace/db'
 import { validateSupervisor } from '@/lib/user-rules'
+import type { MemberExportRow } from '@/lib/member-export'
 
 // Members of one workspace for its Team page, the queue's assignment controls
 // and /api/workspaces/[workspaceId]/users. Admins see every member,
@@ -161,4 +162,45 @@ export async function mayManageAccount(actor: CurrentUser, userId: string): Prom
     select: { lastLogin: true, role: true, _count: { select: { memberships: true } } }
   })
   return !!account && account.role !== 'admin' && account.lastLogin === null && account._count.memberships === 1
+}
+
+/** Every member of the workspace, suspended ones included, for the admin's CSV export. */
+export async function membersForExport(workspaceId: string): Promise<MemberExportRow[]> {
+  const rows = await db().workspaceMembership.findMany({
+    where: { workspaceId },
+    select: {
+      role: true,
+      status: true,
+      createdAt: true,
+      lastSeenAt: true,
+      user: {
+        select: {
+          username: true,
+          email: true,
+          name: true,
+          mustResetPassword: true,
+          lastLogin: true,
+          invitedAt: true,
+          invitationAcceptedAt: true
+        }
+      },
+      supervisor: { select: { user: { select: { username: true } } } },
+      _count: { select: { assignments: { where: { sentence: { status: { not: 'submitted' as const } } } } } }
+    },
+    orderBy: [{ role: 'asc' }, { user: { username: 'asc' } }]
+  })
+  return rows.map(m => ({
+    username: m.user.username,
+    email: m.user.email,
+    name: m.user.name,
+    role: m.role,
+    supervisorUsername: m.supervisor?.user.username ?? null,
+    status: m.status,
+    invitationPending: !!m.user.invitedAt && !m.user.invitationAcceptedAt,
+    mustResetPassword: m.user.mustResetPassword,
+    addedAt: m.createdAt,
+    lastSeenAt: m.lastSeenAt,
+    lastLogin: m.user.lastLogin,
+    openAssignments: m._count.assignments
+  }))
 }

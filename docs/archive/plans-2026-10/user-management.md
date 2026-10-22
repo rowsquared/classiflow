@@ -1,5 +1,8 @@
 # User management: implementation plan
 
+**Archived 22 October 2026:** implemented. What is still open (environment,
+maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+
 **Status:** proposed 21 October 2026; revised the same day for workspaces and
 Better Auth (next section, which takes precedence over the original text below).
 
@@ -158,10 +161,13 @@ U7/U4 behavior, not a statement that email is implemented.
   once with copy and a browser-built CSV download). Rows are created with
   per-row inserts in one transaction after hashing outside it; 500 rows is the
   cap.
-- **Not done:** an SMTP fallback (decision 8: n8n only), automatic retention of
-  `OutgoingMail`, locked-out badges (moot, see U5), an "Export users" CSV.
-  Verify against the live n8n workflow when staging exists (only the mock and
-  the test stand-in have been used).
+- **Done 22 October 2026:** automatic retention of `OutgoingMail` (finished
+  rows older than `MAIL_RETENTION_DAYS`, default 90, are deleted hourly) and
+  "Export CSV" on the Team page (`/users/export`: the import's columns first,
+  then status, invitation, last seen/login and open assignments; no secrets).
+- **Not done:** an SMTP fallback (decision 8: n8n only), locked-out badges
+  (moot, see U5). Verify against the live n8n workflow when staging exists
+  (only the mock and the test stand-in have been used).
 
 **Scope:** the admin **Team** page (`/admin/team`), the user APIs behind it,
 and outgoing email for accounts (invitations, forgotten passwords, notices).
@@ -182,8 +188,8 @@ and outgoing email for accounts (invitations, forgotten passwords, notices).
 Borrow the rules and the reasoning, not the code: survey-hub is Django/Nuxt
 with a Celery worker; classiflow is a single Next.js/Prisma app without one.
 
-Read [AGENTS.md](../../AGENTS.md) and the
-[hardening handoff](../archive/hardening-2026-10/hardening-handoff.md) (archived) first. This plan builds on what the
+Read [AGENTS.md](../../../AGENTS.md) and the
+[hardening handoff](../../archive/hardening-2026-10/hardening-handoff.md) (archived) first. This plan builds on what the
 hardening round finished (W02 sessions, audit log, login throttle) and must not
 undo any of its decisions.
 
@@ -195,7 +201,7 @@ undo any of its decisions.
 | Activity | `User.lastLogin`, written in `lib/auth.config.ts` `authorize()` | JWT sessions last 30 days, so `lastLogin` means "last typed a password", not "last used the app". Its `prisma.user.update` also bumps `updatedAt` |
 | Email | None. No transport, no templates, no env vars | Credentials are handed over by hand; no forgotten-password flow; a locked-out user needs an admin |
 | Creating users | One at a time; admin types a temporary password; `mustResetPassword` forced | No bulk path, no invitations, no generated password, no "show once / copy" |
-| Leaving users | Delete only; 409 if the user wrote comments or started AI jobs | No reversible revocation. [ideas.md](../ideas.md) already asks for deactivation |
+| Leaving users | Delete only; 409 if the user wrote comments or started AI jobs | No reversible revocation. [ideas.md](../../ideas.md) already asks for deactivation |
 | Identity | `username` and `email` unique, case-sensitive; login matches either exactly | `Jane@x.org` and `jane@x.org` can both exist; login is case-sensitive on email |
 | Passwords | `min(8).max(256)` in three zod schemas | No shared policy; bcrypt silently ignores bytes past 72; nothing stops `password = username` |
 | Last admin | `isLastAdmin()` check, then a separate write | Two admins demoting each other at once can both pass (survey-hub H03) |
@@ -318,7 +324,7 @@ component + client component pattern and `serverFetchJSON`.
 Everything the single form and the CSV import must agree on, in one place:
 a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
 
-- **Deactivation** (moves the [ideas.md](../ideas.md) item into this plan):
+- **Deactivation** (moves the [ideas.md](../../ideas.md) item into this plan):
   - `User.deactivatedAt DateTime?` (+ `deactivatedById String?` optional).
   - `authorize()` refuses a deactivated user with the same generic failure as
     a wrong password; `checkSession()` returns 401 for them. Deactivating bumps
@@ -374,7 +380,7 @@ a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
   - Generated passwords use `crypto.randomInt` on the server and the same
     alphabet as the client generator.
 - **Tests:** integration tests for each rule above and for every listing
-  that must hide deactivated users. Update [security.md](../security.md) (the
+  that must hide deactivated users. Update [security.md](../../security.md) (the
   access matrix and "Sessions" section) in the same commit.
 
 ### U4. Bulk user import (CSV)
@@ -497,7 +503,7 @@ Small items, each borrowed from survey-hub or left open by W02:
   to admins. Do **not** log every login; `lastLogin`/`lastSeenAt` cover that.
 - **Show locked-out users** on the Team page (badge from the throttle state)
   with an **Unlock** action. The throttle is in-process; say so in the UI
-  tooltip and keep the limit documented in [security.md](../security.md).
+  tooltip and keep the limit documented in [security.md](../../security.md).
 - **Login page:** "Forgot password?" appears only when mail is on (U7c).
 - Admin MFA/SSO stays the open W02 product decision.
 
@@ -696,7 +702,7 @@ password, sign in.
 **Documentation:** a "Mail" section in `DEPLOYMENT.md` and
 `COOLIFY_DEPLOYMENT.md` (which secrets to set, how to test with the mock
 webhook), the new variables in `ENV_SETUP.md`, the public pages and endpoints
-in [security.md](../security.md), and the outbox in AGENTS.md's architecture
+in [security.md](../../security.md), and the outbox in AGENTS.md's architecture
 section.
 
 ## Order and size
@@ -718,8 +724,8 @@ Steps 1, 2 and 4/5 can run in parallel. Each step: typecheck, lint, unit
 tests, the integration suite, and for UI steps `npm run build` +
 `npm run test:e2e` (see the handoff for commands). For every behaviour
 change, show that the new integration test fails on the old code. Update
-[security.md](../security.md) and the "Authentication and authorization"
-section of [AGENTS.md](../../AGENTS.md) when the rules change.
+[security.md](../../security.md) and the "Authentication and authorization"
+section of [AGENTS.md](../../../AGENTS.md) when the rules change.
 
 ## Decisions for the maintainer
 
@@ -757,4 +763,4 @@ section of [AGENTS.md](../../AGENTS.md) when the rules change.
   opt-out.
 - Organisation/project multi-tenancy or per-taxonomy permissions.
 - Survey-hub's per-survey page permissions: classiflow's roles plus the
-  supervisor tree are the access model ([security.md](../security.md)).
+  supervisor tree are the access model ([security.md](../../security.md)).
