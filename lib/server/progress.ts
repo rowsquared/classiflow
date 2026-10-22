@@ -16,13 +16,7 @@ import type {
   ReportFilter,
   ReportMeta
 } from '@/lib/contracts/progress'
-import {
-  bucketsFor,
-  normalizeRange,
-  resolveTimeZone,
-  type Granularity,
-  type ReportingRange
-} from '@/lib/reporting-dates'
+import { bucketsFor, normalizeRange, type Granularity, type ReportingRange } from '@/lib/reporting-dates'
 
 // ---------------------------------------------------------------------------
 // Progress reports: overview, timeline and people (docs/archive/plans-2026-10/progress-dashboard.md).
@@ -103,9 +97,9 @@ type ReportContext = { meta: ReportMeta; range: ReportingRange; scope: ReportSco
 async function reportContext(user: CurrentUser, filter: ReportFilter): Promise<Report<ReportContext>> {
   const workspace = await db().workspace.findUniqueOrThrow({
     where: { id: user.workspaceId },
-    select: { reportingTimezone: true, activityTrackedSince: true }
+    select: { activityTrackedSince: true }
   })
-  const timeZone = resolveTimeZone(workspace.reportingTimezone, process.env.REPORTING_TIMEZONE)
+  const timeZone = 'UTC'
   const { range, error } = normalizeRange(filter, timeZone)
   if (error !== undefined) return { error }
   const scope = await resolveReportScope(user, filter)

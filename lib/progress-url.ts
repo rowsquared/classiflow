@@ -6,7 +6,7 @@ import { daysBetween, MAX_BUCKETS, parseCalendarDate } from '@/lib/reporting-dat
 // shared links reproduce it and the server page renders the same view the
 // client then keeps up to date. Parameter names are the report API's
 // (lib/contracts/progress.ts): a preset range is `days` (the last N days in
-// the workspace's reporting time zone, so a shared link keeps meaning "the
+// UTC, so a shared link keeps meaning "the
 // last 30 days"); a custom range is `startDate` + `endDate`.
 
 export const RANGE_PRESETS = [7, 30, 90, 365] as const

@@ -242,21 +242,6 @@ test('member import reports a failed request and cannot close while receiving ge
   await expect(dialog.getByRole('button', { name: 'Download passwords (CSV)' })).toBeVisible()
 })
 
-test('a failed time-zone save can be retried', async ({ page }) => {
-  await page.goto(view('/progress'))
-  await page.getByRole('button', { name: 'Change time zone' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Reporting time zone' })
-  await dialog.getByLabel('Time zone', { exact: true }).selectOption('Europe/Berlin')
-  await page.route(`**${api('')}`, route => route.abort())
-  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toContainText('Could not save the time zone')
-  await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
-  await page.unrouteAll({ behavior: 'wait' })
-  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByText('Days in Europe/Berlin', { exact: false })).toBeVisible()
-})
-
 test('mixed assignments can be completed for the whole selection', async ({ page }) => {
   await taxonomy(page, 'A')
   const selected = await records(page, 2)
