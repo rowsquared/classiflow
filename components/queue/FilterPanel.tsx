@@ -7,7 +7,13 @@ import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
-import { EMPTY_QUEUE_FILTERS, countActiveFilters, type QueueFilterValues } from '@/lib/queue-url'
+import {
+  EMPTY_QUEUE_FILTERS,
+  countActiveFilters,
+  type QueueFilterValues,
+  DOUBLE_FILTERS,
+  DOUBLE_FILTER_LABELS
+} from '@/lib/queue-url'
 import Combobox, { type ComboboxOption } from '@/components/ui/Combobox'
 import { badgeClass, buttonClass } from '@/components/ui/styles'
 
@@ -217,6 +223,28 @@ export default function FilterPanel({
             </label>
           </div>
         </fieldset>
+
+        {/* Double annotation (managers) */}
+        {showAssignedToFilter && (
+          <div>
+            <label htmlFor={`${id}-double`} className={`block ${sectionHeading}`}>
+              Double annotation
+            </label>
+            <select
+              id={`${id}-double`}
+              value={draft.double || ''}
+              onChange={e => set('double', (e.target.value || null) as QueueFilterValues['double'])}
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus-visible:ring-2 ${getFieldClasses(Boolean(draft.double))}`}
+            >
+              <option value="">All records</option>
+              {DOUBLE_FILTERS.map(value => (
+                <option key={value} value={value}>
+                  {DOUBLE_FILTER_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Assigned To */}
         {showAssignedToFilter && (

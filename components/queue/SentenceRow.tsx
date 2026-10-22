@@ -7,6 +7,8 @@ import { recordPath } from '@/lib/record-links'
 import { useWorkspaceId } from '@/lib/workspace/urls'
 import { MessageSquare } from 'lucide-react'
 import { badgeClass } from '@/components/ui/styles'
+import type { DoubleRowSummary } from '@/lib/double-annotation'
+import DoubleBadge from './DoubleBadge'
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -70,6 +72,8 @@ type Sentence = {
   _count?: {
     comments: number
   }
+  /** Managers: double annotation of this record (lib/server/double-queue.ts). */
+  double?: DoubleRowSummary | null
 }
 
 interface SentenceRowProps {
@@ -347,6 +351,7 @@ export default function SentenceRow({
           ) : (
             <span className="text-gray-500 text-sm">—</span>
           )}
+          {sentence.double && <DoubleBadge summary={sentence.double} />}
         </td>
       )}
 

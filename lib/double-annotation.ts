@@ -55,6 +55,16 @@ export function summarizeOutcomes(states: OutcomeState[]): RoundSummary {
   return 'waiting'
 }
 
+/** A queue row's double annotation, for managers (lib/server/double-queue.ts). */
+export type DoubleRowSummary = {
+  state: 'waiting' | 'review' | 'agreed' | 'resolved' | 'accepted'
+  /** Parts submitted, of two. */
+  done: number
+  /** A part was skipped or its person no longer exists: someone must take it over. */
+  gap: boolean
+  people: Array<{ name: string; status: string }>
+}
+
 /** Labels for queue badges and the record screen (sentence case, no colour needed to read them). */
 export const OUTCOME_LABELS: Record<OutcomeState, string> = {
   waiting: 'Waiting for labels',
@@ -94,3 +104,36 @@ export function recordStatus(statuses: TaxonomyAnnotationStatus[]): RecordAnnota
   if (statuses.includes('provisional')) return 'provisional'
   return 'confirmed'
 }
+
+type PathView = Array<{ level: number; nodeCode: string; nodeLabel: string | null }>
+
+/** The record screen's view of an active round (record GET `double`; lib/server/double-annotation.ts recordView). */
+export type DoubleRecordView =
+  | {
+      mode: 'task'
+      taskStatus: 'pending' | 'submitted' | 'skipped'
+      /** Taxonomy keys the round requires and those this person answered. */
+      required: string[]
+      answered: string[]
+    }
+  | { mode: 'hidden' }
+  | {
+      mode: 'manager'
+      roundId: string
+      canReview: boolean
+      tasks: Array<{
+        position: number
+        status: string
+        fromBaseline: boolean
+        assignee: { id: string; name: string } | null
+      }>
+      outcomes: Array<{
+        taxonomyKey: string
+        state: OutcomeState
+        matched: boolean | null
+        sourcePosition: number | null
+        reviewedBy: string | null
+        note: string | null
+        answers: Array<{ position: number; labels: PathView }>
+      }>
+    }

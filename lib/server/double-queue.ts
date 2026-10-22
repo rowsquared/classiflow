@@ -1,5 +1,8 @@
 import 'server-only'
 import { db } from '@/lib/workspace/db'
+import type { DoubleRowSummary } from '@/lib/double-annotation'
+
+export type { DoubleRowSummary }
 
 /**
  * Double annotation per queue row, for supervisors and admins: the latest
@@ -12,13 +15,6 @@ import { db } from '@/lib/workspace/db'
  * - agreed / resolved / accepted: confirmed (resolved: after a review;
  *   accepted: the second label was waived).
  */
-export type DoubleRowSummary = {
-  state: 'waiting' | 'review' | 'agreed' | 'resolved' | 'accepted'
-  done: number
-  gap: boolean
-  people: Array<{ name: string; status: string }>
-}
-
 export async function doubleRowSummaries(
   sentenceIds: string[],
   blind: Set<string>

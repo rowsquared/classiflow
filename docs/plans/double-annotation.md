@@ -1,7 +1,7 @@
 # Independent double annotation: implementation plan
 
 **Status:** v1 in progress on branch `feature/double-annotation` (backend
-done and tested; UI next). Section 0 is the simplified v1 contract and the
+and first UI done; see the checklist). Section 0 is the simplified v1 contract and the
 handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
@@ -81,13 +81,16 @@ viewers simply see only their own comments), kappa.
 - [x] Queue `double` filter (`any | review | waiting | gap | done`) and `needsReview` stat
 - [x] Export status columns, confirmed-only, details CSV
 - [x] Integration tests `tests/integration/double-annotation.test.ts` (5 journeys) + export header test updated
-- [ ] UI: assignment dialog mode "Two people (double annotation)" with preview counts
-- [ ] UI: queue badge per row, `double` filter in URL (`lib/queue-url.ts`), "Needs review · N" shortcut
-- [ ] UI: record screen review card (both answers, Use first/second, choose another, accept single, stop, reassign)
-- [ ] UI: labeller notice "Independent labelling" + locked submitted taxonomies
-- [ ] UI: export page selector (all / confirmed) + details download
+- [x] UI: assignment dialog mode "Two independent labels" with preview counts (`components/queue/DoubleAnnotationPanel.tsx`)
+- [x] UI: queue badge per row (`DoubleBadge`), `double` filter in URL and filter panel, "Needs review · N" shortcut
+- [x] UI: record screen panel (`components/labeling/DoublePanel.tsx`): both answers, first difference marked, use an answer, choose another, accept single, stop
+- [ ] UI: reassign a part from the record screen (API exists: `action: 'reassign'`)
+- [x] UI: labeller notice "Independent labelling" + locked submitted taxonomies
+- [x] UI: export page selector (all / confirmed) + details download
 - [ ] Progress dashboard: small double section (needs review, waiting, confirmed, agreement % with n)
-- [ ] Unit tests for `lib/double-annotation.ts`; e2e journey + axe for new dialogs
+- [x] Unit tests for `lib/double-annotation.ts`
+- [ ] e2e journey (`tests/e2e/double-annotation.spec.ts`) + axe for the assignment dialog's new mode and the record panel
+- [ ] Manual check in the browser of all journeys (not yet done)
 - [ ] Docs: AGENTS.md, docs/security.md access matrix, README feature line
 - [ ] lint, format, build; benchmark queue filters at scale
 

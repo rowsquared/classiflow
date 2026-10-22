@@ -8,6 +8,7 @@ import {
   compareAnswers,
   isConfirmed,
   summarizeOutcomes,
+  type DoubleRecordView,
   type OutcomeState,
   type RoundSummary
 } from '@/lib/double-annotation'
@@ -649,38 +650,6 @@ export async function ownAnswers(user: CurrentUser, sentenceIds: string[]) {
 
 // ---------------------------------------------------------------------------
 // The record screen's view of a round.
-
-type PathView = Array<{ level: number; nodeCode: string; nodeLabel: string | null }>
-
-export type DoubleRecordView =
-  | {
-      mode: 'task'
-      taskStatus: 'pending' | 'submitted' | 'skipped'
-      /** Taxonomy keys the round requires and those this person answered. */
-      required: string[]
-      answered: string[]
-    }
-  | { mode: 'hidden' }
-  | {
-      mode: 'manager'
-      roundId: string
-      canReview: boolean
-      tasks: Array<{
-        position: number
-        status: string
-        fromBaseline: boolean
-        assignee: { id: string; name: string } | null
-      }>
-      outcomes: Array<{
-        taxonomyKey: string
-        state: OutcomeState
-        matched: boolean | null
-        sourcePosition: number | null
-        reviewedBy: string | null
-        note: string | null
-        answers: Array<{ position: number; labels: PathView }>
-      }>
-    }
 
 async function nodeLabels(rows: Array<{ taxonomyId: string; nodeCode: string }>) {
   if (rows.length === 0) return new Map<string, string>()

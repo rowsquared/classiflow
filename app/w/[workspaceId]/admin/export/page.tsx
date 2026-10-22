@@ -7,9 +7,11 @@ import { buttonClass, panelClass } from '@/components/ui/styles'
 export default function ExportAdminPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  // all: every record with its current labels (double annotation may still be provisional); confirmed: final labels only.
+  const [labels, setLabels] = useState<'all' | 'confirmed'>('all')
   const [exporting, setExporting] = useState(false)
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'records' | 'details' = 'records') => {
     try {
       setExporting(true)
       setMessage(null)
@@ -18,6 +20,8 @@ export default function ExportAdminPage() {
       if (statusFilter !== 'all') {
         params.append('status', statusFilter)
       }
+      if (labels === 'confirmed') params.append('labels', 'confirmed')
+      if (format === 'details') params.append('format', 'details')
 
       const url = workspaceApi(`/export${params.toString() ? '?' + params.toString() : ''}`)
       const res = await fetch(url)
@@ -27,7 +31,7 @@ export default function ExportAdminPage() {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `export-${new Date().toISOString()}.csv`
+        a.download = `${format === 'details' ? 'double-annotation' : 'export'}-${new Date().toISOString()}.csv`
         a.click()
         // Revoking at once can leave the browser saving an empty file.
         setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
@@ -91,7 +95,22 @@ export default function ExportAdminPage() {
                 </select>
               </div>
 
-              <button onClick={handleExport} disabled={exporting} className={buttonClass('primary')}>
+              <div className="w-64">
+                <label htmlFor="export-labels" className="block text-sm font-medium text-gray-700 mb-2">
+                  Labels
+                </label>
+                <select
+                  id="export-labels"
+                  value={labels}
+                  onChange={e => setLabels(e.target.value === 'confirmed' ? 'confirmed' : 'all')}
+                  className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                >
+                  <option value="all">All available labels</option>
+                  <option value="confirmed">Confirmed records only</option>
+                </select>
+              </div>
+
+              <button onClick={() => handleExport()} disabled={exporting} className={buttonClass('primary')}>
                 {exporting ? 'Exporting…' : 'Export CSV'}
               </button>
             </div>
@@ -103,8 +122,21 @@ export default function ExportAdminPage() {
               The exported CSV includes: sentence ID, original field columns (field_FIELD_NAME format), support columns,
               labeled taxonomies ({'{taxonomyKey}'}_1, {'{taxonomyKey}'}_2, etc.), AI suggestions ({'{taxonomyKey}'}
               _ai1, {'{taxonomyKey}'}_ai2 with confidence scores), status, flagged, last_editor, last_edited, and
-              comments.
+              comments, then annotation_mode, annotation_status and {'{taxonomyKey}'}_annotation_status. With double
+              annotation the label columns hold the current result: the first answer while the second is missing or the
+              two disagree (status provisional or disagreed), then the agreed or reviewed label.
             </p>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Double annotation details</h3>
+            <p className="text-xs text-gray-600 mb-3">
+              One row per record, labeller and taxonomy with each person&apos;s own answer, whether the two answers
+              originally matched, and the review decision. Uses the filters above.
+            </p>
+            <button onClick={() => handleExport('details')} disabled={exporting} className={buttonClass('secondary')}>
+              Export details CSV
+            </button>
           </div>
         </div>
       </div>
