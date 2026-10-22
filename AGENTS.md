@@ -102,8 +102,14 @@ The user editor manages workspace roles and supervisors through the existing
 workspace member APIs; `components/team/WorkspaceAccess.tsx` is the global
 membership editor and `lib/server/memberships.ts` owns attaching existing users.
 New global users can be created with email and name (a legacy username is generated).
+The directory is filtered and paged by the server (`lib/server/global-users.ts`,
+query in `lib/contracts/users.ts`, view in the URL with nuqs). New workspaces
+take a chosen first admin (`/workspaces`, enabled accounts only).
 Workspace invitations support token-gated new-account setup at
 `/api/invitations/setup`; public unrestricted sign-up remains disabled.
+The CSV member import reuses an account when the email has one
+(`lib/server/member-import.ts`: add for platform admins, invitation for
+workspace admins, restore only when confirmed, members unchanged).
 
 ## Where to look
 

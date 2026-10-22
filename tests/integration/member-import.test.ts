@@ -45,10 +45,14 @@ beforeEach(async () => {
   signInAs(admin)
 })
 
-function upload(csv: string, { dryRun, importKey }: { dryRun: boolean; importKey?: string }) {
+function upload(
+  csv: string,
+  { dryRun, importKey, confirmRestore }: { dryRun: boolean; importKey?: string; confirmRestore?: boolean }
+) {
   const form = new FormData()
   form.set('file', new File([csv], 'members.csv', { type: 'text/csv' }))
   if (importKey) form.set('importKey', importKey)
+  if (confirmRestore) form.set('confirmRestore', 'true')
   return importRoute.POST(
     new NextRequest(new URL(`/x?dryRun=${dryRun}`, 'http://localhost:3000'), { method: 'POST', body: form }),
     params()
@@ -180,6 +184,117 @@ describe('member CSV import', () => {
     } finally {
       enableMail(webhook.url)
     }
+  })
+})
+
+describe('member CSV import with existing accounts', () => {
+  type Row = { line: number; outcome: string; note: string | null }
+  const outcomes = (rows: Row[]) => rows.map(r => [r.line, r.outcome])
+
+  it('keeps members, restores removed ones only when confirmed, and invites outside accounts for workspace admins', async () => {
+    const home = wsId()
+    const elsewhere = await createWorkspace()
+    const outsider = await createUser('labeller', { workspaceId: elsewhere.id })
+    selectWorkspace(home)
+    const member = await createUser('labeller')
+    const removed = await createUser('labeller')
+    await prisma.workspaceMembership.update({
+      where: { workspaceId_userId: { workspaceId: home, userId: removed.id } },
+      data: { status: 'suspended' }
+    })
+    const passwordBefore = await prisma.account.findMany({ where: { userId: outsider.id } })
+    const csv = [
+      HEADER,
+      `,${member.email},,supervisor,,,`,
+      `,${removed.email},,labeller,${supervisor.username},,`,
+      `,${outsider.email},,labeller,,,`,
+      `,${outsider.email.replace('@', '+pw@')},,labeller,,,`
+    ].join('\n')
+    const preview = await (await upload(csv, { dryRun: true })).json()
+    expect(outcomes(preview.rows)).toEqual([
+      [2, 'unchanged'],
+      [3, 'restore'],
+      [4, 'invitation'],
+      [5, 'create']
+    ])
+    expect(preview.rows[0].note).toBe('Already a member; stays labeller')
+    // A new account still needs username, name and access.
+    expect(preview.errors.map((e: { line: number; field: string }) => [e.line, e.field])).toEqual([
+      [5, 'username'],
+      [5, 'name'],
+      [5, 'access']
+    ])
+
+    const valid = csv.split('\n').slice(0, 4).join('\n')
+    const refused = await upload(valid, { dryRun: false, importKey: key() })
+    expect(refused.status).toBe(409)
+    expect((await refused.json()).errors[0]).toMatchObject({ line: 3, message: 'Confirm restoring removed members' })
+    expect(await prisma.workspaceInvitation.count({ where: { workspaceId: home, email: outsider.email } })).toBe(0)
+
+    const res = await upload(valid, { dryRun: false, importKey: key(), confirmRestore: true })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.rows.map((r: { access: string }) => r.access)).toEqual(['unchanged', 'restore', 'invitation'])
+    // The outside account's id is not revealed to a workspace admin.
+    expect(body.rows[2]).toMatchObject({ username: outsider.email, userId: null })
+    const memberships = await prisma.workspaceMembership.findMany({
+      where: { workspaceId: home, userId: { in: [member.id, removed.id, outsider.id] } },
+      include: { supervisor: true }
+    })
+    expect(memberships.find(m => m.userId === member.id)).toMatchObject({ role: 'labeller', status: 'active' })
+    const restored = memberships.find(m => m.userId === removed.id)!
+    expect(restored.status).toBe('active')
+    expect(restored.supervisor?.userId).toBe(supervisor.id)
+    expect(memberships.some(m => m.userId === outsider.id)).toBe(false)
+    expect(await prisma.workspaceInvitation.count({ where: { workspaceId: home, email: outsider.email } })).toBe(1)
+    await settleBackgroundTasks()
+    expect(webhook.mails.map(m => m.to)).toEqual([outsider.email])
+    expect(await prisma.account.findMany({ where: { userId: outsider.id } })).toEqual(passwordBefore)
+  })
+
+  it('adds existing accounts directly for platform admins and leaves their profile and password alone', async () => {
+    const home = wsId()
+    const elsewhere = await createWorkspace()
+    const platform = await createUser('admin', { platformAdmin: true, workspaceId: elsewhere.id })
+    const outsider = await createUser('labeller', { workspaceId: elsewhere.id })
+    const disabled = await createUser('labeller', { workspaceId: elsewhere.id })
+    await prisma.user.update({ where: { id: disabled.id }, data: { banned: true } })
+    selectWorkspace(home)
+    signInAs(platform)
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: outsider.id }, include: { accounts: true } })
+
+    const withProblems = [
+      HEADER,
+      `${outsider.username},${outsider.email},Another name,supervisor,${supervisor.username},,`,
+      `,${disabled.email},,labeller,,,`,
+      `other-name,${outsider.email.replace('@', '+x@')},X,labeller,,,`,
+      `,${admin.email},,labeller,,,secret-password-123`
+    ].join('\n')
+    const preview = await (await upload(withProblems, { dryRun: true })).json()
+    expect(preview.rows[0]).toMatchObject({ outcome: 'add', note: 'Existing account' })
+    expect(preview.errors.map((e: { line: number; field: string }) => [e.line, e.field])).toEqual([
+      [3, 'email'],
+      [4, 'access'],
+      [5, 'password']
+    ])
+
+    const csv = withProblems.split('\n').slice(0, 2).join('\n')
+    const res = await upload(csv, { dryRun: false, importKey: key() })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.rows[0]).toMatchObject({ access: 'add', userId: outsider.id, username: outsider.username })
+    const membership = await prisma.workspaceMembership.findUniqueOrThrow({
+      where: { workspaceId_userId: { workspaceId: home, userId: outsider.id } },
+      include: { supervisor: true }
+    })
+    expect(membership).toMatchObject({ role: 'supervisor', status: 'active' })
+    expect(membership.supervisor?.userId).toBe(supervisor.id)
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: outsider.id }, include: { accounts: true } })
+    expect(after).toEqual(before)
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { action: 'members.imported', entityId: body.importId }
+    })
+    expect(audit.payload).toMatchObject({ count: 1, outcomes: { add: 1 }, authority: 'platform' })
   })
 })
 

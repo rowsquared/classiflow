@@ -48,7 +48,7 @@ export async function listAccessibleWorkspaces(user: SessionUser): Promise<Works
 /**
  * A new workspace with its first admin membership and both audit entries
  * (platform: workspace.created; workspace: member.added), in one transaction.
- * Null when the admin user does not exist.
+ * Null when the admin user does not exist or is disabled.
  */
 export async function createWorkspace(input: {
   name: string
@@ -57,8 +57,11 @@ export async function createWorkspace(input: {
   createdById: string
 }) {
   return prisma.$transaction(async tx => {
-    const admin = await tx.user.findUnique({ where: { id: input.adminUserId }, select: { id: true, username: true } })
-    if (!admin) return null
+    const admin = await tx.user.findUnique({
+      where: { id: input.adminUserId },
+      select: { id: true, username: true, banned: true }
+    })
+    if (!admin || admin.banned) return null
     const workspace = await tx.workspace.create({
       data: { name: input.name, description: input.description, createdById: input.createdById },
       select: { id: true, name: true, description: true, status: true }

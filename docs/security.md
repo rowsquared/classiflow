@@ -187,7 +187,7 @@ admin) with a valid session who does not have to reset their password.
 | `/api/invitations/accept` | POST | signed in as the invited address |
 | `/api/system/mail` | GET | platform admin (mail on/off, base URL; no secrets) |
 | `/api/workspaces` | GET | signed in; lists only workspaces the caller may enter |
-| `/api/workspaces` | POST | platform admin (creates the workspace and its first admin) |
+| `/api/workspaces` | POST | platform admin (creates the workspace and its first admin, who must be an enabled account) |
 | `/api/workspaces/[workspaceId]` | GET | member |
 | `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
@@ -204,7 +204,7 @@ admin) with a valid session who does not have to reset their password.
 | `/taxonomies` and `/taxonomies/[key]/*` writes | POST, PUT, DELETE | admin |
 | `/users` | GET | admin (all members), supervisor (own team) |
 | `/users` | POST | admin (new account + membership; access by handed-over password, invitation link or emailed password); adding an existing account directly: platform admin |
-| `/users/import`, `/users/import/[id]`, `/users/import/template` | POST, GET | admin (CSV member import: new accounts only) |
+| `/users/import`, `/users/import/[id]`, `/users/import/template` | POST, GET | admin (CSV member import: new accounts; an existing email is added directly by platform admins, invited by workspace admins, restored only when confirmed, unchanged when already a member; profiles and passwords are never changed) |
 | `/users/export` | GET | admin (every member of this workspace as CSV; no secrets) |
 | `/users/[id]/mail` | POST | admin (not supervisors); password link or invitation resend, local-account rule |
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
@@ -233,3 +233,12 @@ browse global accounts. New account forms may omit username; a random unique
 legacy alias is generated and email sign-in works as before. Adding an existing
 active member again is idempotent and never changes their role or password.
 Removed memberships must be explicitly restored; their IDs and history remain.
+`GET /api/users` filters and pages in the database (`page`, `pageSize` up to
+100) and `GET /api/users/[userId]` returns one account, both platform-admin
+only. Creating a user with an email in use answers 409 with that account's ID
+so the form opens it instead.
+
+The CSV member import tells a workspace admin whether an email belongs to an
+account outside the workspace (the row becomes an invitation), as the import
+and the add-member form already did by refusing a used email; it never returns
+that account's ID or username to a workspace admin.

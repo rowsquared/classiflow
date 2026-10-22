@@ -223,7 +223,7 @@ test('member import reports a failed request and cannot close while receiving ge
   await expect(dialog.getByRole('alert')).toContainText('Could not reach the server')
   await page.unrouteAll({ behavior: 'wait' })
   await dialog.getByRole('button', { name: 'Preview', exact: true }).click()
-  await expect(dialog.getByRole('button', { name: 'Create 1 members' })).toBeEnabled()
+  await expect(dialog.getByRole('button', { name: 'Import 1 row' })).toBeEnabled()
   let release!: () => void
   const held = new Promise<void>(resolve => {
     release = resolve
@@ -233,7 +233,7 @@ test('member import reports a failed request and cannot close while receiving ge
     await held
     await route.continue()
   })
-  await dialog.getByRole('button', { name: 'Create 1 members' }).click()
+  await dialog.getByRole('button', { name: 'Import 1 row' }).click()
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   await page.keyboard.press('Escape')
   await expect(dialog).toBeVisible()

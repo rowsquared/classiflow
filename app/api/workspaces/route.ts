@@ -33,6 +33,6 @@ export async function POST(req: Request) {
     createdById: actor.id
   })
   // The audit entries are written in the same transaction (lib/server/workspaces.ts).
-  if (!workspace) return NextResponse.json({ error: 'Admin user not found' }, { status: 400 })
+  if (!workspace) return NextResponse.json({ error: 'The first admin was not found or is disabled' }, { status: 400 })
   return NextResponse.json({ workspace }, { status: 201 })
 }

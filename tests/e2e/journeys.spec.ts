@@ -263,3 +263,50 @@ test('global user profile manages workspace access independently of credentials'
   await page.keyboard.press('Escape')
   await page.request.put(`/api/workspaces/${workspace.id}`, { data: { status: 'archived' } })
 })
+
+test('the global directory keeps its search and filters in the URL', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  await page.goto('/team')
+  await page.getByLabel('Search users').fill(ADMIN.username)
+  await expect(page).toHaveURL(new RegExp(`q=${ADMIN.username}`))
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption('labeller')
+  await expect(page).toHaveURL(/role=labeller/)
+  await expect(page.getByText('No users match these filters.')).toBeVisible()
+  await page.goBack()
+  await expect(page.getByRole('combobox', { name: 'Role', exact: true })).toHaveValue('')
+  await page.reload()
+  await expect(page.getByLabel('Search users')).toHaveValue(ADMIN.username)
+  await expect(page.locator('tbody tr', { hasText: ADMIN.username })).toBeVisible()
+  await expect(page.getByText(/^1–1 of 1 users$/)).toBeVisible()
+})
+
+test('a new workspace gets the first admin chosen in the picker', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  const stamp = Date.now()
+  const created = await page.request.post('/api/users', {
+    data: {
+      email: `first-admin-${stamp}@test.local`,
+      name: `First Admin ${stamp}`,
+      tempPassword: 'copper-meadow-lantern-73'
+    }
+  })
+  expect(created.ok()).toBe(true)
+  const { user } = await created.json()
+  await page.goto('/workspaces')
+  const form = page.locator('form', { has: page.getByRole('heading', { name: 'New workspace' }) })
+  await form.getByLabel('Name', { exact: true }).fill(`Picker workspace ${stamp}`)
+  await page.getByRole('combobox', { name: 'First admin' }).fill(`First Admin ${stamp}`)
+  await page.getByRole('option', { name: new RegExp(`First Admin ${stamp}`) }).click()
+  await expect(
+    page.getByText(`First Admin ${stamp} (first-admin-${stamp}@test.local) becomes the workspace admin`)
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Create workspace' }).click()
+  await expect(page).toHaveURL(/\/w\/[^/]+\/admin\/taxonomy$/)
+  const workspaceId = new URL(page.url()).pathname.split('/')[2]!
+  const members = await (await page.request.get(`/api/workspaces/${workspaceId}/users`)).json()
+  expect(members.users.map((m: { id: string; role: string }) => [m.id, m.role])).toEqual([[user.id, 'admin']])
+  await page.request.put(`/api/workspaces/${workspaceId}`, { data: { status: 'archived' } })
+})

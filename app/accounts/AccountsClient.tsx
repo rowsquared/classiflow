@@ -2,12 +2,16 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { NuqsAdapter } from 'nuqs/adapters/next/app'
+import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs'
 import WorkspaceAccess from '@/components/team/WorkspaceAccess'
 import Modal from '@/components/Modal'
 import QueryProvider from '@/components/QueryProvider'
-import { fetchJson } from '@/lib/query/fetch'
+import { fetchJson, HttpError } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
+import { USER_ROLE_FILTERS, USER_STATE_FILTERS, USERS_PAGE_SIZE } from '@/lib/contracts/users'
 import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 
 type Account = {
@@ -21,16 +25,41 @@ type Account = {
   lastLogin: string | null
   memberships: Array<{ role: string; status: string; workspace: { id: string; name: string } }>
 }
+type Page = { users: Account[]; total: number; page: number; pageSize: number }
 
 const input =
   'w-full px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
 
-// /accounts is outside any workspace, so it has its own query cache.
+// The directory's view lives in the URL with the API's parameter names
+// (lib/contracts/users.ts); the server filters and pages.
+const directoryParsers = {
+  q: parseAsString.withDefault(''),
+  workspace: parseAsString.withDefault(''),
+  role: parseAsStringLiteral(USER_ROLE_FILTERS),
+  state: parseAsStringLiteral(USER_STATE_FILTERS),
+  page: parseAsInteger.withDefault(1)
+}
+
+const ROLE_LABEL: Record<(typeof USER_ROLE_FILTERS)[number], string> = {
+  platform_admin: 'Platform admin',
+  admin: 'Workspace admin',
+  supervisor: 'Supervisor',
+  labeller: 'Labeller'
+}
+const STATE_LABEL: Record<(typeof USER_STATE_FILTERS)[number], string> = {
+  active: 'Enabled',
+  disabled: 'Disabled',
+  must_reset: 'Must change password'
+}
+
+// /team is outside any workspace, so it has its own query cache and URL adapter.
 export default function AccountsClient({ currentUserId }: { currentUserId: string }) {
   return (
-    <QueryProvider>
-      <Accounts currentUserId={currentUserId} />
-    </QueryProvider>
+    <NuqsAdapter>
+      <QueryProvider>
+        <Accounts currentUserId={currentUserId} />
+      </QueryProvider>
+    </NuqsAdapter>
   )
 }
 
@@ -38,34 +67,47 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [workspaceFilter, setWorkspaceFilter] = useState('')
+  const [view, setView] = useQueryStates(directoryParsers)
+  const q = useDebouncedValue(view.q.trim(), 300)
+  const params = new URLSearchParams(
+    Object.entries({ q, workspace: view.workspace, role: view.role ?? '', state: view.state ?? '' }).filter(
+      ([, value]) => value
+    )
+  )
+  params.set('page', String(view.page))
+  params.set('pageSize', String(USERS_PAGE_SIZE))
 
   const {
     data,
     isPending: loading,
+    isFetching,
     isError
   } = useQuery({
-    queryKey: queryKeys.accounts(),
-    queryFn: ({ signal }) => fetchJson<{ users: Account[] }>('/api/users', { signal })
+    queryKey: queryKeys.accountsPage(params.toString()),
+    queryFn: ({ signal }) => fetchJson<Page>(`/api/users?${params}`, { signal }),
+    placeholderData: keepPreviousData
+  })
+  const workspaces = useQuery({
+    queryKey: queryKeys.workspaces(),
+    queryFn: ({ signal }) =>
+      fetchJson<{ workspaces: Array<{ id: string; name: string }> }>('/api/workspaces', { signal })
+  })
+  const editing = useQuery({
+    queryKey: queryKeys.account(editingId ?? ''),
+    queryFn: ({ signal }) => fetchJson<{ user: Account }>(`/api/users/${editingId}`, { signal }),
+    enabled: !!editingId
   })
   const accounts = data?.users ?? []
-  const editing = accounts.find(a => a.id === editingId) ?? null
-  const shown = accounts.filter(
-    a =>
-      (!search || [a.name, a.email, a.username].some(v => v.toLowerCase().includes(search.toLowerCase()))) &&
-      (!workspaceFilter ||
-        (workspaceFilter === 'none'
-          ? a.platformRole !== 'admin' && !a.memberships.some(m => m.status === 'active')
-          : a.platformRole === 'admin' ||
-            a.memberships.some(m => m.workspace.id === workspaceFilter && m.status === 'active')))
-  )
-  const workspaceOptions = [
-    ...new Map(accounts.flatMap(a => a.memberships.map(m => [m.workspace.id, m.workspace] as const))).values()
-  ]
+  const total = data?.total ?? 0
+  const pageSize = data?.pageSize ?? USERS_PAGE_SIZE
+  const first = total === 0 ? 0 : (view.page - 1) * pageSize + 1
+  const last = Math.min(total, view.page * pageSize)
+  const filtered = !!(view.q || view.workspace || view.role || view.state)
 
   const error = isError ? 'Could not load the accounts.' : null
   const load = () => queryClient.invalidateQueries({ queryKey: queryKeys.accounts() })
+  // A filter change starts again at the first page.
+  const filter = (change: Partial<typeof view>) => setView({ ...change, page: null }, { history: 'push' })
 
   const send = async (url: string, method: string, body?: unknown) => {
     const res = await fetch(url, {
@@ -74,7 +116,7 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
       body: body ? JSON.stringify(body) : undefined
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error || 'The change was refused')
+    if (!res.ok) throw new HttpError(res.status, { ...data, error: data.error || 'The change was refused' })
     await load()
     return data
   }
@@ -112,26 +154,61 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
           <span aria-current="page">Users</span>
           <Link href="/workspaces">Workspaces</Link>
         </nav>
-        <div className="flex gap-3 mb-4">
-          <label className="flex-1 text-sm text-gray-700">
+        <div className="flex flex-wrap gap-3 mb-4">
+          <label className="flex-1 min-w-48 text-sm text-gray-700">
             Search users
-            <input className={input} value={search} onChange={e => setSearch(e.target.value)} type="search" />
+            <input
+              className={input}
+              value={view.q}
+              onChange={e => setView({ q: e.target.value || null, page: null })}
+              type="search"
+            />
           </label>
           <label className="text-sm text-gray-700">
             Workspace access
-            <select className={input} value={workspaceFilter} onChange={e => setWorkspaceFilter(e.target.value)}>
+            <select className={input} value={view.workspace} onChange={e => filter({ workspace: e.target.value })}>
               <option value="">All users</option>
               <option value="none">No workspace access</option>
-              {workspaceOptions.map(w => (
+              {workspaces.data?.workspaces.map(w => (
                 <option key={w.id} value={w.id}>
                   {w.name}
                 </option>
               ))}
             </select>
           </label>
+          <label className="text-sm text-gray-700">
+            Role
+            <select
+              className={input}
+              value={view.role ?? ''}
+              onChange={e => filter({ role: (e.target.value || null) as typeof view.role })}
+            >
+              <option value="">Any role</option>
+              {USER_ROLE_FILTERS.map(role => (
+                <option key={role} value={role}>
+                  {ROLE_LABEL[role]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-gray-700">
+            Account
+            <select
+              className={input}
+              value={view.state ?? ''}
+              onChange={e => filter({ state: (e.target.value || null) as typeof view.state })}
+            >
+              <option value="">Any state</option>
+              {USER_STATE_FILTERS.map(state => (
+                <option key={state} value={state}>
+                  {STATE_LABEL[state]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        {loading && <p role="status">Loading users - </p>}
-        <div className={`${panelClass} overflow-x-auto`}>
+        {loading && <p role="status">Loading users…</p>}
+        <div className={`${panelClass} overflow-x-auto ${isFetching && !loading ? 'opacity-60' : ''}`}>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200 text-left text-sm font-medium text-gray-600">
               <tr>
@@ -145,11 +222,11 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-900">
-              {shown.map(a => (
+              {accounts.map(a => (
                 <tr key={a.id} className={a.banned ? 'opacity-60' : ''}>
                   <td className="px-4 py-3">
                     {a.username}
-                    {a.banned ? ' (banned)' : ''}
+                    {a.banned ? ' (disabled)' : ''}
                   </td>
                   <td className="px-4 py-3">{a.name}</td>
                   <td className="px-4 py-3 text-gray-600">{a.email}</td>
@@ -177,48 +254,82 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
                   </td>
                 </tr>
               ))}
-              {!loading && shown.length === 0 && (
+              {!loading && accounts.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-gray-600">
-                    No users match these filters.
+                    {filtered ? 'No users match these filters.' : 'No users yet.'}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {total > 0 && (
+          <nav aria-label="Pages" className="mt-4 flex items-center justify-between text-sm text-gray-700">
+            <p>
+              {first}–{last} of {total} users
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={buttonClass('secondary', 'sm')}
+                disabled={view.page <= 1}
+                onClick={() => setView({ page: view.page - 1 }, { history: 'push' })}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className={buttonClass('secondary', 'sm')}
+                disabled={last >= total}
+                onClick={() => setView({ page: view.page + 1 }, { history: 'push' })}
+              >
+                Next
+              </button>
+            </div>
+          </nav>
+        )}
       </div>
 
       {creating && (
         <CreateAccount
           onClose={() => setCreating(false)}
           onSave={async body => {
-            const email = (body as { email: string }).email.trim().toLowerCase()
-            const existing = accounts.find(a => a.email === email)
-            if (existing) {
+            try {
+              const result = await send('/api/users', 'POST', body)
               setCreating(false)
-              setEditingId(existing.id)
-              return
+              setEditingId(result.user.id)
+            } catch (caught) {
+              // The email belongs to an account already: open that account instead.
+              const existing =
+                caught instanceof HttpError ? (caught.body as { existingUserId?: string }).existingUserId : undefined
+              if (!existing) throw caught
+              setCreating(false)
+              setEditingId(existing)
             }
-            const result = await send('/api/users', 'POST', body)
-            setCreating(false)
-            setEditingId(result.user.id)
           }}
         />
       )}
-      {editing && (
+      {editingId && editing.isError && (
+        <Modal label="User" onClose={() => setEditingId(null)}>
+          <div role="alert" className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 text-sm text-red-700`}>
+            Could not load this user.
+          </div>
+        </Modal>
+      )}
+      {editing.data?.user.id === editingId && editing.data && (
         <EditAccount
-          key={editing.id}
-          account={editing}
+          key={editing.data.user.id}
+          account={editing.data.user}
           onMembershipChanged={load}
-          isSelf={editing.id === currentUserId}
+          isSelf={editing.data.user.id === currentUserId}
           onClose={() => setEditingId(null)}
           onSave={async body => {
-            await send(`/api/users/${editing.id}`, 'PUT', body)
+            await send(`/api/users/${editingId}`, 'PUT', body)
             setEditingId(null)
           }}
           onDelete={async () => {
-            await send(`/api/users/${editing.id}`, 'DELETE')
+            await send(`/api/users/${editingId}`, 'DELETE')
             setEditingId(null)
           }}
         />

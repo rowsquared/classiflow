@@ -3,9 +3,11 @@ import { passwordProblem } from '@/lib/password-policy'
 
 /**
  * CSV member import (U4): parsing and the checks that need no database. Pure,
- * unit tested in member-import.test.ts. The route adds the database checks
- * (existing usernames/emails, supervisors who are already members) and
- * creates everything in one transaction.
+ * unit tested in member-import.test.ts. The server (lib/server/member-import.ts)
+ * matches each email against existing accounts and decides the row's outcome:
+ * a new account, an existing account added or restored, an invitation, or no
+ * change. Username, name and access are needed only for new accounts, so
+ * this parser accepts them empty and the server asks for them.
  *
  * Every header is required; unknown and duplicate headers are errors, so a
  * misspelled column never vanishes silently. All row errors are reported with
@@ -22,7 +24,8 @@ export const MEMBER_IMPORT_TEMPLATE =
   '\n' +
   'maria,maria@example.org,Maria Rossi,supervisor,,invite,\n' +
   'ahmed,ahmed@example.org,Ahmed Ali,labeller,maria,email_password,\n' +
-  'wei,wei@example.org,Li Wei,labeller,maria,generate,\n'
+  'wei,wei@example.org,Li Wei,labeller,maria,generate,\n' +
+  ',someone.existing@example.org,,labeller,maria,,\n'
 
 /**
  * invite: a link to choose a password (mail). email_password: a generated
@@ -44,7 +47,8 @@ export type ImportRow = {
   role: 'admin' | 'supervisor' | 'labeller'
   /** Lower-case username of the supervisor (a member, or a row of this file). */
   supervisor: string | null
-  access: ImportAccess
+  /** Null when the column is empty (allowed for existing accounts). */
+  access: ImportAccess | null
   password: string | null
 }
 
@@ -106,20 +110,18 @@ export function parseMemberCsv(text: string, opts: { mailEnabled: boolean }): Pa
     const name = cell('name').trim()
     const role = cell('role').trim().toLowerCase()
     const supervisor = cell('supervisor').trim().toLowerCase() || null
-    const access = cell('access').trim().toLowerCase() as ImportAccess
+    const access = (cell('access').trim().toLowerCase() || null) as ImportAccess | null
     // Passwords are never trimmed.
     const password = cell('password')
 
-    if (!displayUsername) add('username', 'Username is required')
-    else if (!USERNAME.test(displayUsername)) {
+    if (displayUsername && !USERNAME.test(displayUsername)) {
       add('username', '3 to 100 letters, digits, dot, underscore or hyphen')
     }
     if (!email) add('email', 'Email is required')
     else if (email.length > 254 || !EMAIL.test(email)) add('email', 'Not a valid email address')
-    if (!name) add('name', 'Name is required')
-    else if (name.length > 200) add('name', 'At most 200 characters')
+    if (name.length > 200) add('name', 'At most 200 characters')
     if (!ROLES.has(role)) add('role', 'Use labeller, supervisor or admin')
-    if (!ACCESS.has(access)) add('access', 'Use invite, email_password, generate or password')
+    if (access && !ACCESS.has(access)) add('access', 'Use invite, email_password, generate or password')
     else if ((access === 'invite' || access === 'email_password') && !opts.mailEnabled) {
       add('access', `"${access}" needs email, which is not configured`)
     }
@@ -130,7 +132,7 @@ export function parseMemberCsv(text: string, opts: { mailEnabled: boolean }): Pa
     } else if (password) {
       add('password', 'Leave the password empty unless access is "password"')
     }
-    if (supervisor && supervisor === displayUsername.toLowerCase()) {
+    if (supervisor && displayUsername && supervisor === displayUsername.toLowerCase()) {
       add('supervisor', 'A member cannot supervise themselves')
     }
 
@@ -159,14 +161,14 @@ export function parseMemberCsv(text: string, opts: { mailEnabled: boolean }): Pa
   }
 
   // Supervisors named in the file must be admins or supervisors there; no cycles.
-  const byUsername = new Map(rows.map(r => [r.username, r]))
+  const byUsername = new Map(rows.filter(r => r.username).map(r => [r.username, r]))
   for (const row of rows) {
     const target = row.supervisor ? byUsername.get(row.supervisor) : undefined
     if (target && target.role === 'labeller') {
       errors.push({ line: row.line, field: 'supervisor', message: 'The supervisor must be an admin or supervisor' })
     }
   }
-  for (const row of rows) {
+  for (const row of rows.filter(r => r.username)) {
     const seen = new Set<string>([row.username])
     let next = row.supervisor ? byUsername.get(row.supervisor) : undefined
     while (next) {
@@ -184,15 +186,15 @@ export function parseMemberCsv(text: string, opts: { mailEnabled: boolean }): Pa
 }
 
 /** Rows ordered so that every in-file supervisor comes before their reports. */
-export function creationOrder(rows: ImportRow[]): ImportRow[] {
-  const byUsername = new Map(rows.map(r => [r.username, r]))
-  const done = new Set<string>()
-  const ordered: ImportRow[] = []
-  const visit = (row: ImportRow, depth = 0) => {
-    if (done.has(row.username) || depth > rows.length) return
+export function creationOrder<R extends Pick<ImportRow, 'line' | 'username' | 'supervisor'>>(rows: R[]): R[] {
+  const byUsername = new Map(rows.filter(r => r.username).map(r => [r.username, r]))
+  const done = new Set<number>()
+  const ordered: R[] = []
+  const visit = (row: R, depth = 0) => {
+    if (done.has(row.line) || depth > rows.length) return
     const parent = row.supervisor ? byUsername.get(row.supervisor) : undefined
     if (parent) visit(parent, depth + 1)
-    done.add(row.username)
+    done.add(row.line)
     ordered.push(row)
   }
   rows.forEach(row => visit(row))

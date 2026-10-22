@@ -51,6 +51,8 @@ export const queryKeys = {
 
   /** The caller's workspace directory (control plane, not workspace data). */
   workspaces: () => ['workspaces'] as const,
-  /** Platform accounts (/accounts; control plane, its own cache). */
-  accounts: () => ['accounts'] as const
+  /** Platform accounts (/team; control plane, its own cache). Invalidate after any account change. */
+  accounts: () => ['accounts'] as const,
+  accountsPage: (params: string) => ['accounts', 'list', params] as const,
+  account: (userId: string) => ['accounts', 'user', userId] as const
 }
