@@ -1,33 +1,47 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Modal from '@/components/Modal'
-import type { RecordComment } from './data'
+import { CopyRecordLink } from '@/components/CopyRecordLink'
 import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
+import { useUnsavedChanges } from '@/lib/unsaved-changes'
+import type { RecordComment } from './data'
 import { X } from 'lucide-react'
 
+const mobileQuery = '(max-width: 767px)'
+function subscribe(listener: () => void) {
+  const query = window.matchMedia(mobileQuery)
+  query.addEventListener('change', listener)
+  return () => query.removeEventListener('change', listener)
+}
+
 type CommentsDialogProps = {
+  open: boolean
+  workspaceId: string
+  sentenceId: string
   comments: RecordComment[]
   showResolved: boolean
   hasResolved: boolean
-  loading?: boolean
-  error?: boolean
-  onRetry?: () => void
+  loading: boolean
+  error: boolean
+  onRetry: () => void
   onToggleShowResolved: () => void
-  onResolve: (commentId: string, resolved: boolean) => void
-  onDelete: (commentId: string) => void
-  /** Saves a new comment; resolves true when it was saved. */
+  onResolve: (commentId: string, resolved: boolean) => Promise<boolean>
+  onDelete: (commentId: string) => Promise<boolean>
   onAdd: (body: string) => Promise<boolean>
   onClose: () => void
 }
 
-/** The record's comments: list, resolve/reopen, delete, add. */
+/** One discussion, inline on desktop and in a dialog on small screens. */
 export default function CommentsDialog({
+  open,
+  workspaceId,
+  sentenceId,
   comments,
   showResolved,
   hasResolved,
-  loading = false,
-  error = false,
+  loading,
+  error,
   onRetry,
   onToggleShowResolved,
   onResolve,
@@ -37,133 +51,177 @@ export default function CommentsDialog({
 }: CommentsDialogProps) {
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const save = async () => {
-    if (saving || !comment.trim()) return
-    // The new comment appears in the list above; the dialog stays open.
+  const busy = useRef(false)
+  const composer = useRef<HTMLTextAreaElement>(null)
+  const mobile = useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(mobileQuery).matches,
+    () => false
+  )
+  useUnsavedChanges(Boolean(comment.trim()))
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    composer.current?.focus()
+    return () => {
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
+    }
+  }, [open, mobile])
+  // Saving disables the focused control, which can leave focus on the document.
+  // Escape still closes the inline discussion; nested dialogs handle their own Escape.
+  useEffect(() => {
+    if (!open || mobile) return
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || busy.current) return
+      if (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]')) return
+      event.preventDefault()
+      onClose()
+    }
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [open, mobile, onClose])
+  const run = async (operation: () => Promise<boolean>) => {
+    if (busy.current) return false
+    busy.current = true
     setSaving(true)
     try {
-      if (await onAdd(comment)) setComment('')
+      return await operation()
     } finally {
+      busy.current = false
       setSaving(false)
     }
   }
-
-  return (
-    <Modal
-      label="Comments"
-      onClose={() => {
-        if (!saving) onClose()
+  const close = () => {
+    if (!busy.current) onClose()
+  }
+  if (!open) return null
+  const content = (
+    <section
+      id="record-comments"
+      aria-label="Comments"
+      data-record-comments
+      className={
+        mobile
+          ? `${dialogPanelClass} p-5 w-[32rem] max-w-full max-h-[85dvh] overflow-y-auto`
+          : 'border-b border-gray-200 bg-indigo-50/40 p-5'
+      }
+      onKeyDown={e => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          close()
+        }
       }}
     >
-      <div className={`${dialogPanelClass} p-6 w-[32rem] max-h-[80vh] flex flex-col`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium text-gray-900">Comments</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 className="text-base font-medium text-gray-900">Comments</h2>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={close}
+          className={buttonClass('ghost', 'sm')}
+          aria-label="Close comments"
+        >
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <CopyRecordLink workspaceId={workspaceId} sentenceId={sentenceId} discussion />
+        {(hasResolved || showResolved) && (
           <button
-            onClick={onClose}
-            disabled={saving}
-            className="text-gray-500 hover:text-gray-700 transition-colors"
-            aria-label="Close comments"
-          >
-            <X className="w-5 h-5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Existing comments</span>
-          <button
+            type="button"
             onClick={onToggleShowResolved}
-            className="text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
+            disabled={saving}
+            className={buttonClass('ghost', 'sm')}
+            aria-pressed={showResolved}
           >
             {showResolved ? 'Hide resolved' : 'Show resolved'}
           </button>
-        </div>
-        {!showResolved && hasResolved && (
-          <p className="text-xs text-gray-600 mb-3">
-            Resolved comments are hidden. Click &quot;Show resolved&quot; to view them.
-          </p>
         )}
-
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            Could not load comments.{' '}
-            <button className={buttonClass('secondary', 'sm')} onClick={onRetry}>
-              Retry
-            </button>
-          </p>
-        )}
-        {loading ? (
-          <p role="status" className="mb-4 text-sm text-gray-600">
-            Loading comments…
-          </p>
-        ) : comments.length > 0 ? (
-          <ul className="mb-4 space-y-3 max-h-60 overflow-y-auto pr-1">
-            {comments.map(c => (
-              <li
-                key={c.id}
-                className={`p-3 rounded-lg border ${
-                  c.resolved ? 'bg-gray-100 border-gray-300' : 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3 mb-1">
-                  <div>
-                    <span className="text-xs font-medium text-gray-700">{c.author.name || 'Unknown'}</span>
-                    {c.resolved && <span className="ml-2 text-xs font-semibold text-green-700">Resolved</span>}
-                  </div>
-                  <span className="text-xs text-gray-600">{new Date(c.createdAt).toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-gray-900 whitespace-pre-wrap">{c.body}</p>
-                <div className="flex justify-end gap-2 mt-3">
-                  <button
-                    onClick={() => onResolve(c.id, !c.resolved)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                      c.resolved
-                        ? 'border-indigo-200 text-indigo-700 hover:bg-indigo-50'
-                        : 'border-green-200 text-green-700 hover:bg-green-50'
-                    }`}
-                  >
-                    {c.resolved ? 'Reopen' : 'Mark resolved'}
-                  </button>
-                  <button
-                    onClick={() => onDelete(c.id)}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : !error ? (
-          <p className="text-sm text-gray-600 mb-4">
-            {showResolved ? 'No comments found.' : 'No unresolved comments yet.'}
-          </p>
-        ) : null}
-
-        <div className="mb-4">
-          <label htmlFor="new-comment" className="block text-sm font-medium text-gray-700 mb-2">
-            Add new comment:
-          </label>
-          <textarea
-            id="new-comment"
-            disabled={saving}
-            maxLength={10000}
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            placeholder="Enter your comment..."
-            className="w-full p-3 border border-gray-500 rounded-md h-24 text-gray-900 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving} className={buttonClass('secondary')}>
-            Close
-          </button>
-          <button onClick={save} disabled={saving || !comment.trim()} className={buttonClass('primary')}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
       </div>
+      {loading ? (
+        <p role="status" className="text-sm text-gray-600 mb-3">
+          Loading comments…
+        </p>
+      ) : error ? (
+        <div role="alert" className="text-sm text-red-700 mb-3">
+          Could not load comments.{' '}
+          <button type="button" className={buttonClass('secondary', 'sm')} onClick={onRetry}>
+            Retry
+          </button>
+        </div>
+      ) : comments.length ? (
+        <ul className="space-y-3 mb-4">
+          {comments.map(c => (
+            <li key={c.id} className="border border-gray-200 bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-2 text-xs text-gray-600">
+                <span className="font-medium text-gray-900">{c.author.name || 'Unknown'}</span>
+                <time dateTime={c.createdAt}>{new Date(c.createdAt).toLocaleString()}</time>
+                {c.resolved && <span className="text-green-700">Resolved</span>}
+              </div>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{c.body}</p>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  className={buttonClass('secondary', 'sm')}
+                  onClick={() => run(() => onResolve(c.id, !c.resolved))}
+                >
+                  {c.resolved ? 'Reopen' : 'Mark resolved'}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  className={buttonClass('ghost', 'sm', 'text-red-700')}
+                  onClick={() => run(() => onDelete(c.id))}
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-600 mb-4">
+          {showResolved
+            ? 'No comments found.'
+            : hasResolved
+              ? 'All comments are resolved. Choose “Show resolved” to view them.'
+              : 'No unresolved comments yet.'}
+        </p>
+      )}
+      <form
+        onSubmit={async e => {
+          e.preventDefault()
+          if (!comment.trim()) return
+          if (await run(() => onAdd(comment))) setComment('')
+        }}
+      >
+        <label htmlFor="new-comment" className="block text-sm font-medium text-gray-900 mb-2">
+          Add new comment
+        </label>
+        <textarea
+          ref={composer}
+          id="new-comment"
+          maxLength={10000}
+          disabled={saving}
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          placeholder="Enter your comment..."
+          className="w-full p-3 border border-gray-500 h-24 text-sm text-gray-900 bg-white placeholder-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+        />
+        <div className="mt-3 flex justify-end">
+          <button type="submit" disabled={saving || !comment.trim()} className={buttonClass('primary', 'sm')}>
+            {saving ? 'Saving…' : 'Save comment'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+  return mobile ? (
+    <Modal label="Comments" onClose={close}>
+      {content}
     </Modal>
+  ) : (
+    content
   )
 }

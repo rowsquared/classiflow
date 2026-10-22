@@ -1,3 +1,4 @@
+import { commentSummaries } from '@/lib/server/comment-summaries'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
@@ -60,7 +61,7 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
     const { searchParams } = new URL(req.url)
     const includeResolved = searchParams.get('includeResolved') === 'true'
 
-    const [comments, resolvedCount] = await Promise.all([
+    const [comments, summaries] = await Promise.all([
       db().comment.findMany({
         where: {
           sentenceId,
@@ -76,15 +77,16 @@ export const GET = workspaceRoute<'sentenceId'>([], async (req, { user, params: 
         },
         orderBy: { createdAt: 'desc' }
       }),
-      db().comment.count({
-        where: {
-          sentenceId,
-          resolved: true
-        }
-      })
+      commentSummaries([sentenceId])
     ])
 
-    return NextResponse.json({ ok: true, comments, hasResolved: resolvedCount > 0 })
+    const commentSummary = summaries.get(sentenceId) ?? { total: 0, unresolved: 0 }
+    return NextResponse.json({
+      ok: true,
+      comments,
+      commentSummary,
+      hasResolved: commentSummary.total > commentSummary.unresolved
+    })
   } catch (error) {
     await logError('Failed to fetch comments', error)
     return NextResponse.json({ ok: false, error: 'Failed to fetch comments' }, { status: 500 })

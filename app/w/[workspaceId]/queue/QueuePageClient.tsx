@@ -65,6 +65,7 @@ export type Sentence = {
     createdAt: string
     author: { name: string | null }
   }>
+  commentSummary?: { total: number; unresolved: number }
   _count?: {
     comments: number
   }
@@ -448,6 +449,10 @@ export default function QueuePageClient({
                       </th>
                       <th className={`pl-0 pr-4 py-3 text-left text-sm font-medium text-gray-700 ${contentWidthClass}`}>
                         <span className="block pl-7">Content</span>
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Comments</th>
+                      <th className="px-2 py-3 text-left text-sm font-medium text-gray-700">
+                        <span className="sr-only">Record link</span>
                       </th>
                       <th className={`px-4 py-3 text-left text-sm font-medium text-gray-700 ${labelWidthClass}`}>
                         Labels

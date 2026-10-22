@@ -163,14 +163,13 @@ test('a comment can be added from the labelling page without triggering shortcut
   const recordId = new URL(page.url()).pathname.split('/').pop()!
 
   await page.keyboard.press('c')
-  const dialog = page.getByRole('dialog', { name: 'Comments' })
+  const dialog = page.getByRole('region', { name: 'Comments', exact: true })
   await expect(dialog).toBeVisible()
   // "s" (skip) and "f" (flag) are shortcuts outside the dialog; typing them here must not fire.
   await dialog.getByPlaceholder('Enter your comment...').fill('needs a second look: senior or junior?')
-  await dialog.getByRole('button', { name: 'Save' }).click()
+  await dialog.getByRole('button', { name: 'Save comment' }).click()
   await expect(dialog.getByText('needs a second look: senior or junior?')).toBeVisible()
-  // The refreshed list can render just before the save's pending guard clears.
-  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeEnabled()
+  await expect(dialog.getByRole('button', { name: 'Close comments' })).toBeEnabled()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 

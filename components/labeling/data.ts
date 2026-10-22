@@ -29,6 +29,7 @@ export type LabelingRecord = {
   lastEditedAt: string | null
   annotations: RecordAnnotation[]
   comments?: unknown[]
+  commentSummary?: { total: number; unresolved: number }
   _count?: { comments: number }
 }
 
@@ -41,7 +42,11 @@ export type RecordComment = {
   author: { name: string | null }
 }
 
-export type CommentsResponse = { comments?: RecordComment[]; hasResolved?: boolean }
+export type CommentsResponse = {
+  comments?: RecordComment[]
+  hasResolved?: boolean
+  commentSummary?: { total: number; unresolved: number }
+}
 
 /** The record; refetched whenever the screen opens it, since others may have labelled it. */
 export function useRecord(sentenceId: string) {
@@ -68,7 +73,7 @@ export function useActiveTaxonomies() {
   })
 }
 
-/** Comments, loaded once the dialog has been opened (fresh on every opening). */
+/** Comments, loaded while the discussion is open (fresh on every opening). */
 export function useComments(sentenceId: string, includeResolved: boolean, enabled: boolean) {
   const { workspaceId, api } = useWorkspacePaths()
   return useQuery({

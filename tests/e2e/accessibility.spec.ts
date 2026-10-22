@@ -54,13 +54,13 @@ test('queue, with the filter panel and the workspace switcher open', async ({ pa
   await expectAccessible(page, 'workspace switcher')
 })
 
-test('labelling screen and its comments dialog', async ({ page }) => {
+test('labelling screen and its inline comments', async ({ page }) => {
   await page.locator('tbody tr').filter({ hasText: RECORDS[1]! }).click()
   await expect(page.getByRole('button', { name: /^01\b/ })).toBeVisible()
   await expectAccessible(page, 'labelling')
 
   await page.keyboard.press('c')
-  await expect(page.getByRole('dialog', { name: 'Comments' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Comments', exact: true })).toBeVisible()
   await expectAccessible(page, 'comments')
 })
 

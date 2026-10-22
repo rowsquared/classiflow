@@ -1,3 +1,4 @@
+import { commentSummaries } from '@/lib/server/comment-summaries'
 import 'server-only'
 import { db } from '@/lib/workspace/db'
 import type { CurrentUser } from '@/lib/api-auth'
@@ -318,16 +319,6 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
           }
         }
       },
-      comments: {
-        select: {
-          id: true,
-          body: true,
-          createdAt: true,
-          author: {
-            select: { name: true }
-          }
-        }
-      },
       lastEditor: {
         select: {
           name: true,
@@ -432,12 +423,17 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     )
   })()
 
-  const [annotationNodes, aiSuggestionsBySentence] = await Promise.all([annotationNodesPromise, aiSuggestionsPromise])
+  const [annotationNodes, aiSuggestionsBySentence, summaries] = await Promise.all([
+    annotationNodesPromise,
+    aiSuggestionsPromise,
+    commentSummaries(sentences.map(s => s.id))
+  ])
 
   const nodeLabels = new Map(annotationNodes.map(n => [`${n.taxonomyId}-${n.code}`, n.label]))
 
   const sentencesWithLabels = sentences.map(({ assignments, ...s }) => ({
     ...s,
+    commentSummary: summaries.get(s.id) ?? { total: 0, unresolved: 0 },
     assignments: assignments.map(a => ({ user: a.membership.user })),
     annotations: [
       ...s.annotations.map(a => ({ ...a, nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null })),

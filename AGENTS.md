@@ -169,6 +169,12 @@ Read `prisma/schema.prisma` before changing data behavior.
   `newAnnotationsSinceLastLearning` counter.
 - `AuditLog` exists in the schema; do not assume every mutation writes one.
 
+The queue and labeling screen show unresolved comment counts, with resolved
+counts shown separately. Record links use `/w/[workspaceId]/queue/[sentenceId]`;
+`?comments=open` opens the discussion (nuqs). Copy links never include the
+browser-local `list` navigation key. Discussion content is inline in the record
+panel on desktop and uses `Modal` on narrow screens.
+
 ### CSV boundaries
 
 - Record import accepts an optional `id`, one to five `field_*` columns, and up

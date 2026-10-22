@@ -3,7 +3,11 @@ import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { storeNavigationList } from '@/lib/labeling-navigation'
 import { useRouter } from 'next/navigation'
-import { badgeClass } from '@/components/ui/styles'
+import { CopyRecordLink } from '@/components/CopyRecordLink'
+import { recordPath } from '@/lib/record-links'
+import { useWorkspaceId } from '@/lib/workspace/urls'
+import { MessageSquare } from 'lucide-react'
+import { badgeClass, buttonClass } from '@/components/ui/styles'
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -63,6 +67,7 @@ type Sentence = {
   }>
   annotations: Annotation[]
   comments?: Comment[]
+  commentSummary?: { total: number; unresolved: number }
   _count?: {
     comments: number
   }
@@ -96,6 +101,7 @@ export default function SentenceRow({
   currentIndex = 0
 }: SentenceRowProps) {
   const router = useRouter()
+  const workspaceId = useWorkspaceId() ?? ''
 
   const handleRowClick = (e: React.MouseEvent) => {
     // Don't navigate if clicking checkbox
@@ -199,7 +205,7 @@ export default function SentenceRow({
     return taxonomyColors[index % taxonomyColors.length] || 'bg-gray-100 text-gray-700'
   }
 
-  const commentCount = sentence._count?.comments || sentence.comments?.length || 0
+  const summary = sentence.commentSummary ?? { total: 0, unresolved: 0 }
 
   return (
     <tr
@@ -238,20 +244,6 @@ export default function SentenceRow({
                 </svg>
               </span>
             )}
-            {commentCount > 0 && (
-              <span
-                className="text-[#A7ACD9] cursor-help"
-                title={
-                  sentence.comments && sentence.comments.length > 0
-                    ? sentence.comments.map(c => `${c.author.name || 'Unknown'}: ${c.body}`).join('\n---\n')
-                    : `${commentCount} comment(s)`
-                }
-              >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M3 3h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-3 3v-9a1 1 0 0 1 1-1z" />
-                </svg>
-              </span>
-            )}
           </div>
 
           {/* Field values with "Name Value" format */}
@@ -266,6 +258,28 @@ export default function SentenceRow({
             </div>
           </div>
         </div>
+      </td>
+
+      <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+        <button
+          type="button"
+          className={buttonClass(summary.unresolved > 0 ? 'accent' : 'secondary', 'sm')}
+          title={`${summary.unresolved} unresolved; ${summary.total - summary.unresolved} resolved comments`}
+          onClick={() => {
+            const params = new URLSearchParams({ comments: 'open' })
+            if (sentenceIds.length) params.set('list', storeNavigationList(sentenceIds, currentIndex))
+            router.push(`${recordPath(workspaceId, sentence.id)}?${params}`)
+          }}
+        >
+          <MessageSquare className="w-4 h-4" aria-hidden="true" />
+          Comments{summary.total > 0 ? ` · ${summary.unresolved}` : ''}
+        </button>
+        {summary.total > summary.unresolved && (
+          <span className="block mt-1 text-xs text-gray-600">{summary.total - summary.unresolved} resolved</span>
+        )}
+      </td>
+      <td className="px-2 py-3" onClick={e => e.stopPropagation()}>
+        <CopyRecordLink workspaceId={workspaceId} sentenceId={sentence.id} compact />
       </td>
 
       {/* Labels */}
