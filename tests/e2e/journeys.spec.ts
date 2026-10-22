@@ -88,7 +88,7 @@ test.describe('queue', () => {
 
   test('the assignment dialog keeps focus inside and closes on Escape', async ({ page }) => {
     await page.getByRole('checkbox', { name: `Select record: ${RECORDS[0]}` }).check()
-    const open = page.getByRole('button', { name: /Assign \/ Unassign/ })
+    const open = page.getByRole('button', { name: /Assign \/ unassign/ })
     await open.click()
 
     const dialog = page.getByRole('dialog', { name: 'Manage assignments' })
@@ -144,7 +144,7 @@ test('the export contains the human label with its leading zero', async ({ page 
 test('the audit log lists the export and can be filtered', async ({ page }) => {
   await signIn(page)
   await expect(page).toHaveURL(/\/queue$/)
-  await page.getByRole('link', { name: 'Audit Log' }).click()
+  await page.getByRole('link', { name: 'Audit log' }).click()
 
   await expect(page.getByRole('cell', { name: 'export.downloaded' })).toBeVisible()
   await page.getByLabel('Show').selectOption({ label: 'Users' })

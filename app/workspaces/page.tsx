@@ -38,7 +38,7 @@ export default async function WorkspacesPage() {
               <li key={w.id}>
                 <Link
                   href={`/w/${w.id}/queue`}
-                  className="block p-5 rounded-lg bg-white border border-gray-200 hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="block p-5 rounded-lg bg-white border border-gray-200 hover:border-indigo-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-medium text-gray-900">{w.name}</span>

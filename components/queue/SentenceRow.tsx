@@ -3,6 +3,7 @@ import { workspaceHref } from '@/lib/workspace/urls'
 import { formatFieldName, formatRelativeTime, formatDateTime } from '@/lib/utils'
 import { storeNavigationList } from '@/lib/labeling-navigation'
 import { useRouter } from 'next/navigation'
+import { badgeClass } from '@/components/ui/styles'
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -114,31 +115,28 @@ export default function SentenceRow({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-gray-100 text-gray-800'
+        return badgeClass('neutral')
       case 'submitted':
-        return 'bg-[#E3EBFB] text-[#28498c]'
+        return badgeClass('info')
       case 'skipped':
-        return 'bg-[#F7F3B3] text-[#4d470b]'
+        return badgeClass('warn')
       default:
-        return 'bg-gray-100 text-gray-800'
+        return badgeClass('neutral')
     }
   }
 
-  // Generate consistent color based on username
+  // Consistent colour per username, from the rowsquared pastels (black text on each)
   const getUserColor = (username: string) => {
     const colors = [
-      'bg-indigo-100 text-indigo-700',
-      'bg-purple-100 text-purple-700',
-      'bg-pink-100 text-pink-700',
-      'bg-rose-100 text-rose-700',
-      'bg-orange-100 text-orange-700',
-      'bg-amber-100 text-amber-700',
-      'bg-lime-100 text-lime-700',
-      'bg-emerald-100 text-emerald-700',
-      'bg-teal-100 text-teal-700',
-      'bg-cyan-100 text-cyan-700',
-      'bg-sky-100 text-sky-700',
-      'bg-blue-100 text-blue-700'
+      'bg-[#75b8be] text-black',
+      'bg-[#c997af] text-black',
+      'bg-[#f4cf97] text-black',
+      'bg-[#b9b0d3] text-black',
+      'bg-[#65a6be] text-black',
+      'bg-[#97b9a0] text-black',
+      'bg-[#ecae5d] text-black',
+      'bg-[#83a7b4] text-black',
+      'bg-[#f6ddcd] text-black'
     ]
 
     // Simple hash function to get consistent color for each username
@@ -213,7 +211,7 @@ export default function SentenceRow({
           checked={selected}
           onChange={e => onSelect(e.target.checked)}
           aria-label={`Select record: ${sentence.field1}`}
-          className="w-4 h-4 rounded border-gray-300 text-[#008080] focus:ring-2 focus:ring-[#008080] focus:ring-offset-0 cursor-pointer"
+          className="w-4 h-4 rounded border-gray-500 text-[#008080] focus-visible:ring-2 focus-visible:ring-[#008080] focus-visible:ring-offset-0 cursor-pointer"
         />
       </td>
 
@@ -288,7 +286,7 @@ export default function SentenceRow({
               </div>
             ))
           ) : (
-            <span className="text-gray-400 text-xs">—</span>
+            <span className="text-gray-500 text-xs">—</span>
           )}
         </div>
       </td>
@@ -302,13 +300,13 @@ export default function SentenceRow({
       <td className="px-4 py-3 whitespace-nowrap">
         {sentence.lastEditor?.username ? (
           <span
-            className={`text-xs px-2 py-0.5 rounded ${getUserColor(sentence.lastEditor.username)}`}
+            className={badgeClass('plain', getUserColor(sentence.lastEditor.username))}
             title={sentence.lastEditor.username}
           >
             {sentence.lastEditor.username}
           </span>
         ) : (
-          <span className="text-gray-400 text-sm">—</span>
+          <span className="text-gray-500 text-sm">—</span>
         )}
       </td>
 
@@ -320,7 +318,7 @@ export default function SentenceRow({
               {sentence.assignments.map((assignment, idx) => (
                 <span
                   key={idx}
-                  className={`text-xs px-2 py-0.5 rounded ${getUserColor(assignment.user.username)}`}
+                  className={badgeClass('plain', getUserColor(assignment.user.username))}
                   title={assignment.user.name || assignment.user.username}
                 >
                   {assignment.user.username}
@@ -328,7 +326,7 @@ export default function SentenceRow({
               ))}
             </div>
           ) : (
-            <span className="text-gray-400 text-sm">—</span>
+            <span className="text-gray-500 text-sm">—</span>
           )}
         </td>
       )}
@@ -336,7 +334,7 @@ export default function SentenceRow({
       {/* Status */}
       {showStatus && (
         <td className="px-4 py-3 whitespace-nowrap">
-          <span className={`text-xs px-2 py-0.5 rounded ${getStatusColor(sentence.status)}`}>{sentence.status}</span>
+          <span className={getStatusColor(sentence.status)}>{sentence.status}</span>
         </td>
       )}
     </tr>

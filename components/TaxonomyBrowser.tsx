@@ -387,7 +387,7 @@ export default function TaxonomyBrowser({
                           : `${label.nodeCode} - ${label.label || 'Loading...'}`}
                       </span>
                       {(label.definition || label.examples) && (
-                        <Info className="ml-1 w-3.5 h-3.5 text-gray-400 flex-shrink-0" strokeWidth={2.5} />
+                        <Info className="ml-1 w-3.5 h-3.5 text-gray-500 flex-shrink-0" strokeWidth={2.5} />
                       )}
                       {label.source === 'ai' && (
                         <>
@@ -402,7 +402,7 @@ export default function TaxonomyBrowser({
                           e.stopPropagation()
                           handleChipDelete(label)
                         }}
-                        className={`ml-2 rounded-full w-4 h-4 flex items-center justify-center ${colors.chipDelete}`}
+                        className={`ml-2 w-4 h-4 flex items-center justify-center ${colors.chipDelete}`}
                         aria-label={`Remove label ${label.nodeCode}`}
                       >
                         ×
@@ -433,12 +433,12 @@ export default function TaxonomyBrowser({
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={`Search ${taxonomy?.key || 'taxonomy'}`}
             aria-label={`Search ${taxonomy?.key || 'taxonomy'}`}
-            className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+            className="w-full px-4 py-2 pr-10 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 w-5 h-5 flex items-center justify-center"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 w-5 h-5 flex items-center justify-center"
               title="Clear search"
               aria-label="Clear search"
             >
@@ -488,7 +488,7 @@ export default function TaxonomyBrowser({
         {/* Taxonomy Nodes */}
         <div className="space-y-0 flex-1 overflow-y-auto border-t border-gray-200">
           {isLoadingNodes ? (
-            <div className="text-center py-8 text-gray-400">
+            <div className="text-center py-8 text-gray-500">
               <div className="text-sm">Loading...</div>
             </div>
           ) : taxonomyNodes.length === 0 ? (
@@ -549,14 +549,14 @@ export default function TaxonomyBrowser({
                             </span>
                           )}
                           {(node.definition || node.examples) && (
-                            <Info className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" strokeWidth={2.5} />
+                            <Info className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" strokeWidth={2.5} />
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Arrow/Indicator */}
-                    <div className={`flex-shrink-0 text-sm ${isSelected ? colors.indicatorSelected : 'text-gray-400'}`}>
+                    <div className={`flex-shrink-0 text-sm ${isSelected ? colors.indicatorSelected : 'text-gray-500'}`}>
                       {isSelected ? '✓' : node.isLeaf ? '•' : '→'}
                     </div>
                   </div>

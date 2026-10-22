@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatDateTime } from '@/lib/utils'
 import Modal from '@/components/Modal'
+import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 
 export type SentenceImport = {
   id: string
@@ -148,10 +149,10 @@ export default function SentenceAdminClient({ initialImports }: Props) {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <div className={`${panelClass} p-6 mb-6`}>
           <div className="flex items-center gap-2 mb-4">
             <span className="text-2xl">📊</span>
-            <h2 className="text-lg font-semibold text-gray-900">Import Sentences</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Import records</h2>
           </div>
 
           <div className="max-w-xl space-y-4">
@@ -190,24 +191,21 @@ export default function SentenceAdminClient({ initialImports }: Props) {
               <button
                 onClick={handleSentenceUpload}
                 disabled={!sentenceFile || uploading}
-                className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={buttonClass('primary')}
               >
                 {uploading ? 'Uploading...' : 'Upload'}
               </button>
-              <button
-                onClick={() => setSentenceFile(null)}
-                className="px-6 py-2.5 border border-gray-300 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => setSentenceFile(null)} className={buttonClass('secondary')}>
                 Clear
               </button>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className={`${panelClass} p-6`}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Import History</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Import history</h2>
               <p className="text-sm text-gray-600 mt-1">Track and manage your previous sentence imports</p>
             </div>
             <button
@@ -262,10 +260,9 @@ export default function SentenceAdminClient({ initialImports }: Props) {
             setConfirmText('')
             setSelectedImport(null)
           }}
-          className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
         >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Import</h3>
+          <div className={`${dialogPanelClass} max-w-lg w-full p-8`}>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete import</h3>
             <p className="text-sm text-gray-600 mb-4">
               Deleting the import <strong>{selectedImport.fileName}</strong> will permanently remove this import record
               and <strong>all {selectedImport.sentenceCount.toLocaleString()} sentences</strong> associated with it.
@@ -283,7 +280,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
               value={confirmText}
               onChange={e => setConfirmText(e.target.value)}
               placeholder='Type "DELETE" to confirm'
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              className="w-full px-4 py-2 border border-gray-500 rounded-lg mb-4 focus-visible:ring-2 focus-visible:ring-red-500 focus:border-red-500"
             />
 
             <div className="flex justify-end gap-3">
@@ -293,14 +290,14 @@ export default function SentenceAdminClient({ initialImports }: Props) {
                   setConfirmText('')
                   setSelectedImport(null)
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                className={buttonClass('secondary')}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteImport}
                 disabled={confirmText !== 'DELETE' || deleting}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50"
+                className={buttonClass('danger')}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>

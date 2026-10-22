@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Modal from '@/components/Modal'
 import { workspaceApi } from '@/lib/workspace/urls'
 import type { Message, Taxonomy } from './types'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 /** Deletes a taxonomy and everything attached to it, after typing DELETE. */
 export default function DeleteTaxonomyDialog({
@@ -48,11 +49,10 @@ export default function DeleteTaxonomyDialog({
       onClose={() => {
         if (!submitting) onClose()
       }}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
     >
-      <div className="bg-white rounded-lg max-w-md w-full shadow-xl">
+      <div className={`${dialogPanelClass} max-w-md w-full`}>
         <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-red-700">⚠️ Danger Zone</h2>
+          <h2 className="text-lg font-semibold text-red-700">Delete taxonomy</h2>
         </div>
 
         <div className="p-6 space-y-4">
@@ -81,26 +81,22 @@ export default function DeleteTaxonomyDialog({
               value={confirmText}
               onChange={e => setConfirmText(e.target.value)}
               placeholder="DELETE"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-gray-900"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-gray-900"
               autoFocus
             />
           </div>
         </div>
 
         <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
-          >
+          <button onClick={onClose} disabled={submitting} className={buttonClass('secondary')}>
             Cancel
           </button>
           <button
             onClick={handleDelete}
             disabled={confirmText !== 'DELETE' || submitting}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={buttonClass('danger')}
           >
-            {submitting ? 'Deleting...' : 'Delete Taxonomy'}
+            {submitting ? 'Deleting…' : 'Delete taxonomy'}
           </button>
         </div>
       </div>

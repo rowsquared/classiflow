@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Modal from '@/components/Modal'
+import { buttonClass } from '@/components/ui/styles'
 
 type TimeZoneDialogProps = {
   current: string
@@ -34,12 +35,7 @@ export default function TimeZoneDialog({ current, onSave, onClose }: TimeZoneDia
   }
 
   return (
-    <Modal
-      label="Reporting time zone"
-      onClose={onClose}
-      closeOnOverlayClick
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
+    <Modal label="Reporting time zone" onClose={onClose} closeOnOverlayClick>
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <h2 className="text-lg font-semibold text-gray-900">Reporting time zone</h2>
         <p className="mt-1 text-sm text-gray-600">
@@ -51,7 +47,7 @@ export default function TimeZoneDialog({ current, onSave, onClose }: TimeZoneDia
           <select
             value={zone}
             onChange={e => setZone(e.target.value)}
-            className="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+            className="mt-1 block w-full rounded border border-gray-500 px-2 py-1.5 text-sm text-gray-900"
           >
             {!options.includes(current) && <option value={current}>{current}</option>}
             {options.map(z => (
@@ -75,19 +71,10 @@ export default function TimeZoneDialog({ current, onSave, onClose }: TimeZoneDia
           >
             Use the deployment default
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onClose} className={buttonClass('secondary', 'sm')}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => save(zone)}
-            disabled={saving}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
+          <button type="button" onClick={() => save(zone)} disabled={saving} className={buttonClass('primary', 'sm')}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

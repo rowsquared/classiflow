@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { mailStatusLabel } from '@/components/team/mail-status'
+import { panelClass } from '@/components/ui/styles'
 
 export type PendingInvitation = {
   id: string
@@ -46,7 +47,7 @@ export default function PendingInvitations({ invitations, mailEnabled, onChanged
       <h2 id="pending-invitations" className="text-sm font-medium text-gray-900">
         Open invitations
       </h2>
-      <ul className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+      <ul className={`${panelClass} divide-y divide-gray-100 text-sm`}>
         {invitations.map(invitation => (
           <li key={invitation.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <span className="flex-1 min-w-48 text-gray-900">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { buttonClass } from '@/components/ui/styles'
 
 /** Platform admins: a new workspace with themselves as its first admin. */
 export default function CreateWorkspaceForm() {
@@ -50,7 +51,7 @@ export default function CreateWorkspaceForm() {
           maxLength={200}
           value={name}
           onChange={e => setName(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         />
       </div>
       <div>
@@ -62,14 +63,10 @@ export default function CreateWorkspaceForm() {
           maxLength={2000}
           value={description}
           onChange={e => setDescription(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         />
       </div>
-      <button
-        type="submit"
-        disabled={saving}
-        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-      >
+      <button type="submit" disabled={saving} className={buttonClass('primary')}>
         {saving ? 'Creating…' : 'Create workspace'}
       </button>
     </form>

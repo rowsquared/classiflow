@@ -5,6 +5,7 @@ import Modal from '@/components/Modal'
 import { workspaceApi } from '@/lib/workspace/urls'
 import { csvLine } from '@/lib/csv'
 import { mailStatusLabel } from '@/components/team/mail-status'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 type Props = {
   mailEnabled: boolean
@@ -127,13 +128,9 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
   for (const e of preview?.errors ?? []) errorsByLine.set(e.line, [...(errorsByLine.get(e.line) ?? []), e])
 
   return (
-    <Modal
-      label="Import members"
-      onClose={close}
-      className="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50"
-    >
-      <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-bold text-gray-900">Import members</h2>
+    <Modal label="Import members" onClose={close}>
+      <div className={`${dialogPanelClass} p-6 max-w-3xl w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto`}>
+        <h2 className="text-xl font-semibold text-gray-900">Import members</h2>
 
         {result ? (
           <>
@@ -150,7 +147,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
             )}
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                <thead className="bg-gray-50 text-left text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2">Line</th>
                     <th className="px-3 py-2">Username</th>
@@ -181,20 +178,16 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                       await navigator.clipboard.writeText(credentialsText)
                       setCopied(true)
                     }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    className={buttonClass('secondary')}
                   >
                     {copied ? 'Copied' : 'Copy passwords'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={downloadCredentials}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                  >
+                  <button type="button" onClick={downloadCredentials} className={buttonClass('secondary')}>
                     Download passwords (CSV)
                   </button>
                 </>
               )}
-              <button type="button" onClick={close} className="ml-auto px-4 py-2 bg-indigo-600 text-white rounded-lg">
+              <button type="button" onClick={close} className={buttonClass('primary', 'md', 'ml-auto')}>
                 Done
               </button>
             </div>
@@ -263,7 +256,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                 </p>
                 <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-80">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <thead className="bg-gray-50 text-left text-xs text-gray-500">
                       <tr>
                         <th className="px-3 py-2">Line</th>
                         <th className="px-3 py-2">Username</th>
@@ -308,7 +301,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                   type="button"
                   disabled={busy}
                   onClick={() => send(false)}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+                  className={buttonClass('primary', 'md', 'flex-1')}
                 >
                   Create {preview.rows.length} members
                 </button>
@@ -317,7 +310,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                   type="button"
                   disabled={busy || !file}
                   onClick={() => send(true)}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+                  className={buttonClass('primary', 'md', 'flex-1')}
                 >
                   Preview
                 </button>

@@ -7,6 +7,7 @@ import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import { formatRelativeTime } from '@/lib/utils'
+import { buttonClass, panelClass } from '@/components/ui/styles'
 
 type AuditEntry = {
   id: string
@@ -81,7 +82,7 @@ export default function AuditLogPage() {
 
   return (
     <>
-      <PageHeader title="Audit Log" />
+      <PageHeader title="Audit log" />
       <div className="px-8 py-8 space-y-4">
         <p className="text-sm text-gray-600">
           Changes to users, members, taxonomies, imports, assignments, bulk labels, exports and AI jobs, mail sent, and
@@ -97,7 +98,7 @@ export default function AuditLogPage() {
               id="audit-action"
               value={action}
               onChange={e => void setFilters({ action: e.target.value || null })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               {ACTION_FILTERS.map(f => (
                 <option key={f.value} value={f.value}>
@@ -135,9 +136,9 @@ export default function AuditLogPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+        <div className={`${panelClass} overflow-x-auto`}>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+            <thead className="bg-gray-50 border-b border-gray-200 text-left text-sm font-medium text-gray-700">
               <tr>
                 <th className="px-4 py-3">When</th>
                 <th className="px-4 py-3">Who</th>
@@ -179,7 +180,7 @@ export default function AuditLogPage() {
               type="button"
               onClick={() => void fetchNextPage()}
               disabled={isFetchingNextPage}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClass('secondary')}
             >
               Load older events
             </button>

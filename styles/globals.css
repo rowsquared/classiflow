@@ -16,6 +16,25 @@
   --color-indigo-700: #006666;
   --color-indigo-800: #004d4d;
   --color-indigo-900: #003333;
+
+  /* rowsquared design system: square corners (2px, the brand's input radius,
+     everywhere), flat static surfaces, shadow only on floating layers. */
+  --radius: 2px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+  --radius-4xl: 2px;
+
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-xl: 0 24px 64px rgb(0 0 0 / 0.18);
+  --shadow-2xl: 0 24px 64px rgb(0 0 0 / 0.18);
 }
 
 :root {
@@ -41,9 +60,29 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
-input[type='checkbox']:focus {
+input[type='checkbox']:focus-visible {
   outline: 2px solid #009090; /* indigo-500 - custom teal */
   outline-offset: 2px;
+}
+
+/* Headings: semibold with slightly tight tracking, as on rowsquared.com. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.01em;
+}
+
+/* Restrained motion: colour and opacity only. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-in {
+    animation: fade-in 200ms cubic-bezier(0.2, 0.6, 0.2, 1);
+  }
 }
 
 /* Sidebar initial state - set by blocking script before React hydrates */

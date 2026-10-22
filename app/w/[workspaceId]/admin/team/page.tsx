@@ -24,7 +24,7 @@ export default async function TeamPage({ params }: { params: Promise<{ workspace
     )
   } catch (error) {
     await logError('Team page failed to load', error)
-    return <LoadError title="Team Management" what="the team" />
+    return <LoadError title="Team" what="the team" />
   }
 
   return (

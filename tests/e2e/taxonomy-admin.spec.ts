@@ -25,11 +25,14 @@ async function openTaxonomyAdmin(page: Page) {
 }
 
 const card = (page: Page) =>
-  page.locator('div.rounded-lg', { has: page.getByRole('heading', { name: KEY, exact: true }) }).first()
+  page
+    .getByTestId('taxonomy-card')
+    .filter({ has: page.getByRole('heading', { name: KEY, exact: true }) })
+    .first()
 
 test('a taxonomy is created from a CSV, keeps its leading zeros and can be browsed', async ({ page }) => {
   await openTaxonomyAdmin(page)
-  await page.getByRole('button', { name: 'Add New Taxonomy' }).click()
+  await page.getByRole('button', { name: 'Add new taxonomy' }).click()
   const dialog = page.getByRole('dialog', { name: 'Create new taxonomy' })
   await dialog.getByPlaceholder('e.g. ISCO').fill(KEY.toLowerCase())
   await expect(dialog.getByPlaceholder('e.g. ISCO')).toHaveValue(KEY)
@@ -39,8 +42,8 @@ test('a taxonomy is created from a CSV, keeps its leading zeros and can be brows
     buffer: Buffer.from(CSV)
   })
   await expect(dialog.getByText('Detected maximum depth: 3 levels')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Validate File' }).click()
-  await expect(dialog.getByText('Validation Passed')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Validate file' }).click()
+  await expect(dialog.getByText('Validation passed')).toBeVisible()
   await dialog.getByRole('button', { name: 'Create & Import' }).click()
 
   await expect(page.getByText(`Successfully created taxonomy "${KEY}" with 5 nodes!`)).toBeVisible()
@@ -89,13 +92,13 @@ test('the description can be edited, and the taxonomy deleted after typing DELET
   await card(page).getByRole('button', { name: 'Edit' }).click()
   const edit = page.getByRole('dialog', { name: `Edit taxonomy ${KEY}` })
   await edit.locator('textarea').fill('Household consumption by purpose')
-  await edit.getByRole('button', { name: 'Save Changes' }).click()
+  await edit.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText(`Successfully updated taxonomy "${KEY}"!`)).toBeVisible()
   await expect(card(page)).toContainText('Household consumption by purpose')
 
   await card(page).getByRole('button', { name: 'Delete' }).click()
   const confirm = page.getByRole('dialog', { name: 'Delete taxonomy' })
-  const remove = confirm.getByRole('button', { name: 'Delete Taxonomy' })
+  const remove = confirm.getByRole('button', { name: 'Delete taxonomy' })
   await expect(remove).toBeDisabled()
   await confirm.getByPlaceholder('DELETE').fill('DELETE')
   await remove.click()

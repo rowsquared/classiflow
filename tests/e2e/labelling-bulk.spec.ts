@@ -18,7 +18,7 @@ test('bulk labelling: select records in the queue, label them at once, export sh
   }
   await expect(page.getByText('2 sentences selected')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Bulk Label' }).click()
+  await page.getByRole('button', { name: 'Bulk label' }).click()
   const panel = page.getByRole('dialog', { name: 'Bulk label' })
   await expect(panel.getByText('Labeling 2 sentences')).toBeVisible()
   // "02 Technicians" is a leaf at level 1, so it completes the path.

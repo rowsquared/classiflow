@@ -15,7 +15,7 @@ export default async function AISettingsPage({ params }: { params: Promise<{ wor
     settings = asJson(await withWorkspace(workspaceId, () => workspaceAISettings()))
   } catch (error) {
     await logError('AI settings page failed to load', error)
-    return <LoadError title="AI Settings" what="the AI settings" />
+    return <LoadError title="AI settings" what="the AI settings" />
   }
 
   return <AISettingsClient initial={settings as AISettings} archived={user.archived} />

@@ -7,6 +7,8 @@ import { workspaceApi } from '@/lib/workspace/urls'
 import FileChooser from './FileChooser'
 import LevelNameInputs from './LevelNameInputs'
 import type { Message, Taxonomy } from './types'
+import { X } from 'lucide-react'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 /**
  * Edits a taxonomy's description and level names, and optionally replaces
@@ -67,16 +69,12 @@ export default function EditTaxonomyDialog({
   }
 
   return (
-    <Modal
-      label={`Edit taxonomy ${taxonomy.key}`}
-      onClose={onClose}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-    >
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <Modal label={`Edit taxonomy ${taxonomy.key}`} onClose={onClose}>
+      <div className={`${dialogPanelClass} max-w-2xl w-full max-h-[90vh] overflow-y-auto`}>
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Edit Taxonomy: {taxonomy.key}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl" aria-label="Close">
-            ×
+          <h2 className="text-xl font-semibold text-gray-900">Edit taxonomy {taxonomy.key}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900" aria-label="Close">
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -90,7 +88,7 @@ export default function EditTaxonomyDialog({
               type="text"
               value={taxonomy.key}
               disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
             />
           </div>
 
@@ -103,7 +101,7 @@ export default function EditTaxonomyDialog({
               value={description}
               onChange={e => setDescription(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
             />
           </div>
 
@@ -115,7 +113,7 @@ export default function EditTaxonomyDialog({
               id="edit-taxonomy-depth"
               value={maxDepth}
               onChange={e => setMaxDepth(parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
             >
               {[1, 2, 3, 4, 5].map(d => (
                 <option key={d} value={d}>
@@ -126,35 +124,25 @@ export default function EditTaxonomyDialog({
           </div>
 
           <div>
-            <p className="block text-sm font-medium text-gray-700 mb-2">Level Names</p>
+            <p className="block text-sm font-medium text-gray-700 mb-2">Level names</p>
             <LevelNameInputs depth={maxDepth} levelNames={levelNames} onChange={setLevelNames} />
           </div>
 
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-orange-800 mb-2">⚠️ Update Nodes (optional)</h3>
+            <h3 className="text-sm font-semibold text-orange-800 mb-2">Update nodes (optional)</h3>
             <div className="mb-2">
               <FileChooser id="edit-file-input" file={file} onChange={setFile} />
             </div>
-            <p className="text-xs text-orange-800">
-              ⚠️ WARNING: This will REPLACE all existing nodes with the uploaded CSV
-            </p>
+            <p className="text-xs text-orange-800">This replaces all existing nodes with the uploaded CSV.</p>
           </div>
         </div>
 
         <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
-          >
+          <button onClick={onClose} disabled={submitting} className={buttonClass('secondary')}>
             Cancel
           </button>
-          <button
-            onClick={() => handleEdit()}
-            disabled={submitting}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {submitting ? 'Saving...' : 'Save Changes'}
+          <button onClick={() => handleEdit()} disabled={submitting} className={buttonClass('primary')}>
+            {submitting ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>

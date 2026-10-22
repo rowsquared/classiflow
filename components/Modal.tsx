@@ -71,15 +71,24 @@ type ModalProps = {
   /** Accessible name, usually the dialog's heading. */
   label: string
   onClose: () => void
-  /** Classes of the full-screen overlay, which is also the dialog element. */
-  className: string
+  /** Classes of the full-screen overlay, which is also the dialog element. Defaults to a centred dialog. */
+  className?: string
   /** Clicking the overlay outside the content closes the dialog. */
   closeOnOverlayClick?: boolean
   children: ReactNode
 }
 
+/** The brand's one scrim: flat 50% black, content centred. */
+export const DIALOG_OVERLAY = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+
 /** Full-screen modal: overlay + dialog behaviour from useDialog. */
-export default function Modal({ label, onClose, className, closeOnOverlayClick = false, children }: ModalProps) {
+export default function Modal({
+  label,
+  onClose,
+  className = DIALOG_OVERLAY,
+  closeOnOverlayClick = false,
+  children
+}: ModalProps) {
   const dialog = useDialog(onClose, label)
   return (
     <div

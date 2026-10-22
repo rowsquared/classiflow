@@ -5,6 +5,7 @@ import { RANGE_PRESETS, isCustomRange, type ProgressUrlState } from '@/lib/progr
 import { MAX_RANGE_DAYS, daysBetween, parseCalendarDate } from '@/lib/reporting-dates'
 import type { ProgressMemberOption } from '@/lib/contracts/progress'
 import MemberPicker from './MemberPicker'
+import { buttonClass } from '@/components/ui/styles'
 
 const PRESET_LABEL: Record<(typeof RANGE_PRESETS)[number], string> = {
   7: 'Last 7 days',
@@ -47,7 +48,7 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
   const showCustomForm = editing || custom
 
   return (
-    <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+    <div className="mb-6 border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
         <fieldset>
           <legend className="mb-1 block text-xs text-gray-600">Period</legend>
@@ -64,7 +65,7 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
                     setRangeError(null)
                     onChange({ days, startDate: null, endDate: null, page: 1 })
                   }}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     active ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -80,7 +81,7 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
                 setTo(state.endDate ?? range?.endDate ?? '')
                 setEditing(true)
               }}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              className={`rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 showCustomForm ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
               }`}
             >
@@ -97,7 +98,7 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
                 type="date"
                 value={from}
                 onChange={e => setFrom(e.target.value)}
-                className="mt-1 block rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+                className="mt-1 block rounded border border-gray-500 px-2 py-1 text-sm text-gray-900"
               />
             </label>
             <label className="text-xs text-gray-600">
@@ -106,13 +107,10 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
                 type="date"
                 value={to}
                 onChange={e => setTo(e.target.value)}
-                className="mt-1 block rounded border border-gray-300 px-2 py-1 text-sm text-gray-900"
+                className="mt-1 block rounded border border-gray-500 px-2 py-1 text-sm text-gray-900"
               />
             </label>
-            <button
-              type="submit"
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
-            >
+            <button type="submit" className={buttonClass('primary', 'sm')}>
               Apply
             </button>
             {rangeError && (

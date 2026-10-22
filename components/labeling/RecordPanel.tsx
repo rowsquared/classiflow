@@ -4,6 +4,7 @@ import ResizablePanel from '@/components/ResizablePanel'
 import { formatFieldName } from '@/lib/utils'
 import type { NavigationList } from '@/lib/labeling-navigation'
 import type { LabelingRecord } from './data'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 type RecordPanelProps = {
   record: LabelingRecord
@@ -43,7 +44,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
           {/* Support Columns */}
           {record.supportMapping && Object.keys(record.supportMapping).length > 0 && (
             <div className="pt-6 border-t border-gray-200">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Support Information</h2>
+              <h2 className="text-base font-semibold text-gray-900 mb-4">Support information</h2>
               <div className="space-y-4">
                 {Object.entries(record.supportMapping).map(([num, name]) => {
                   const value = record[`support${num}` as keyof LabelingRecord] as string | null
@@ -71,7 +72,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
                 Sentence {currentIndex + 1} of {sentenceIds.length}
               </span>
               <div
-                className="w-32 h-1.5 rounded-full bg-gray-200"
+                className="w-32 h-1.5 bg-gray-200"
                 role="progressbar"
                 aria-label="Position in the list"
                 aria-valuemin={1}
@@ -79,7 +80,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
                 aria-valuenow={currentIndex + 1}
               >
                 <div
-                  className="h-full rounded-full bg-teal-500 transition-all"
+                  className="h-full bg-indigo-600 transition-all"
                   style={{ width: `${((currentIndex + 1) / sentenceIds.length) * 100}%` }}
                 />
               </div>
@@ -95,9 +96,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
             title="Previous sentence"
             aria-label="Previous sentence"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="w-5 h-5" aria-hidden="true" />
           </button>
           <button
             onClick={onNext}
@@ -105,9 +104,7 @@ export default function RecordPanel({ record, navigation, onPrevious, onNext }: 
             title="Next sentence"
             aria-label="Next sentence"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
+            <ChevronRight className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
       </div>

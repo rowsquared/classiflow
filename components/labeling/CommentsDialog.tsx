@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Modal from '@/components/Modal'
 import type { RecordComment } from './data'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
+import { X } from 'lucide-react'
 
 type CommentsDialogProps = {
   comments: RecordComment[]
@@ -39,12 +41,8 @@ export default function CommentsDialog({
   }
 
   return (
-    <Modal
-      label="Comments"
-      onClose={onClose}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-    >
-      <div className="bg-white rounded-lg p-6 w-[32rem] max-h-[80vh] flex flex-col">
+    <Modal label="Comments" onClose={onClose}>
+      <div className={`${dialogPanelClass} p-6 w-[32rem] max-h-[80vh] flex flex-col`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-gray-900">Comments</h2>
           <button
@@ -52,9 +50,7 @@ export default function CommentsDialog({
             className="text-gray-500 hover:text-gray-700 transition-colors"
             aria-label="Close comments"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -126,21 +122,15 @@ export default function CommentsDialog({
             value={comment}
             onChange={e => setComment(e.target.value)}
             placeholder="Enter your comment..."
-            className="w-full p-3 border border-gray-300 rounded-md h-24 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full p-3 border border-gray-500 rounded-md h-24 text-gray-900 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className={buttonClass('secondary')}>
             Close
           </button>
-          <button
-            onClick={save}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
+          <button onClick={save} className={buttonClass('primary')}>
             Save
           </button>
         </div>

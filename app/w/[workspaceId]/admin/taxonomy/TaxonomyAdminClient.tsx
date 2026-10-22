@@ -8,6 +8,8 @@ import EditTaxonomyDialog from '@/components/taxonomy-admin/EditTaxonomyDialog'
 import TaxonomyCard from '@/components/taxonomy-admin/TaxonomyCard'
 import { MAX_ACTIVE_TAXONOMIES, type Message, type Taxonomy } from '@/components/taxonomy-admin/types'
 import { useTaxonomyAdmin } from '@/components/taxonomy-admin/useTaxonomyAdmin'
+import { buttonClass } from '@/components/ui/styles'
+import { Plus } from 'lucide-react'
 
 export type { Taxonomy } from '@/components/taxonomy-admin/types'
 
@@ -53,19 +55,17 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
               </p>
               {!canAddNew && (
                 <p className="text-sm text-orange-700 mt-2">
-                  ⚠️ Maximum active taxonomies reached. Delete one to add a new taxonomy.
+                  Maximum active taxonomies reached. Delete one to add a new taxonomy.
                 </p>
               )}
             </div>
             <button
               onClick={() => setDialog({ kind: 'create' })}
               disabled={!canAddNew}
-              className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className={buttonClass('primary', 'md', 'flex-shrink-0')}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add New Taxonomy
+              <Plus className="w-5 h-5" aria-hidden="true" />
+              Add new taxonomy
             </button>
           </div>
         </div>
@@ -91,7 +91,7 @@ export default function TaxonomyAdminClient({ initialTaxonomies, initialLearning
         <div className="space-y-6 mb-12">
           {taxonomies.length === 0 ? (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-              <p className="text-gray-600">No active taxonomies. Click &quot;Add New Taxonomy&quot; to create one.</p>
+              <p className="text-gray-600">No active taxonomies. Click &quot;Add new taxonomy&quot; to create one.</p>
             </div>
           ) : (
             taxonomies.map(taxonomy => (

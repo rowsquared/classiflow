@@ -76,6 +76,15 @@ Browser: React client components
   pickers; Radix `DropdownMenu` for menus; `components/Modal.tsx` for dialogs;
   native `<select>` with a `<label>` where search is not needed. Keep the teal
   theme (`indigo-*` is teal; white text needs `indigo-600` or darker).
+- **Look (rowsquared design system):** square corners (the theme sets every
+  radius to 2px), flat panels with a hairline and no shadow, shadow only on
+  floating layers, Inter at 400/500/600 (no bold), sentence case everywhere
+  including buttons, headings and table headers. Use the class helpers in
+  `components/ui/styles.ts` (`buttonClass`, `panelClass`, `dialogPanelClass`,
+  `badgeClass`) instead of long class strings; one primary button per view.
+  Dialogs use `Modal`'s default overlay (`bg-black/50`); `bg-opacity-*` does
+  not exist in Tailwind v4. Icons come from `lucide-react`. Form controls use
+  `border-gray-500` (3:1 on white) and focus rings are `focus-visible:`.
 - **Effects:** the React Compiler lint rules flag state synced in effects and
   refs read during render. Derive values while rendering, key a component to
   reset its state (the labelling screen is keyed by record, the filter panel

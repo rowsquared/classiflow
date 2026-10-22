@@ -11,8 +11,8 @@ const inter = Inter({
 })
 
 export const metadata = {
-  title: 'classiflow - Labeling Tool',
-  description: 'Modern annotation tool for hierarchical taxonomies',
+  title: 'classiflow – labeling tool',
+  description: 'complex classifications made easy',
   icons: {
     icon: [
       // ICO format for maximum compatibility (browsers will use this first)

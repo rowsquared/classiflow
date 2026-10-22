@@ -93,7 +93,7 @@ test('taxonomy administration and its create dialog', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'ISCO', exact: true })).toBeVisible()
   await expectAccessible(page, 'taxonomy admin')
 
-  await page.getByRole('button', { name: 'Add New Taxonomy' }).click()
+  await page.getByRole('button', { name: 'Add new taxonomy' }).click()
   await expect(page.getByRole('dialog', { name: 'Create new taxonomy' })).toBeVisible()
   await expectAccessible(page, 'create taxonomy')
 })

@@ -163,7 +163,7 @@ export default function Combobox({
               onFocus={() => setOpen(true)}
               onClick={() => setOpen(true)}
               onKeyDown={onKeyDown}
-              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${
+              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${
                 value ? 'pr-7' : ''
               } ${inputClassName}`}
             />

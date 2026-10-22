@@ -1,5 +1,7 @@
 'use client'
 
+import { ChevronsRight, CircleHelp, Flag, MessageSquare } from 'lucide-react'
+
 type ActionBarProps = {
   hasComment: boolean
   flagged: boolean
@@ -46,17 +48,10 @@ export default function ActionBar({
           <button
             onClick={onComment}
             className={`${actionButtonBaseClass} ${hasComment ? commentActiveClasses : primaryActionClasses}`}
-            title="Add Comment (C)"
+            title="Add comment (C)"
             aria-keyshortcuts="C"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-              />
-            </svg>
+            <MessageSquare className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Comment</span>
             <span className={`${hasComment ? shortcutClasses.light : shortcutClasses.dark}`}>C</span>
           </button>
@@ -67,14 +62,7 @@ export default function ActionBar({
             aria-pressed={flagged}
             aria-keyshortcuts="F"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
-              />
-            </svg>
+            <Flag className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Flag</span>
             <span className={`${flagged ? shortcutClasses.light : shortcutClasses.dark}`}>F</span>
           </button>
@@ -84,14 +72,7 @@ export default function ActionBar({
             title="Unknown (U)"
             aria-keyshortcuts="U"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <CircleHelp className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Unknown</span>
             <span className={shortcutClasses.dark}>U</span>
           </button>
@@ -101,9 +82,7 @@ export default function ActionBar({
             title="Skip (S)"
             aria-keyshortcuts="S"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-            </svg>
+            <ChevronsRight className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Skip</span>
             <span className={`${skipped ? shortcutClasses.light : shortcutClasses.dark}`}>S</span>
           </button>

@@ -22,7 +22,7 @@ export default function Tooltip({ content, children, side = 'top', delayDuration
           <TooltipPrimitive.Content
             side={side}
             sideOffset={8}
-            className="z-50 max-w-sm bg-gray-900 text-white text-sm rounded-lg shadow-lg p-3"
+            className="z-50 max-w-sm bg-black text-white text-sm shadow-lg p-3"
           >
             <div className="prose prose-invert prose-sm max-w-none">
               <ReactMarkdown
@@ -39,7 +39,7 @@ export default function Tooltip({ content, children, side = 'top', delayDuration
                   a: ({ children, href }) => (
                     <a
                       href={href}
-                      className="text-blue-300 underline hover:text-blue-200"
+                      className="text-white underline underline-offset-2 hover:text-indigo-200"
                       target="_blank"
                       rel="noopener noreferrer"
                     >

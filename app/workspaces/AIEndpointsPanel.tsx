@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { buttonClass } from '@/components/ui/styles'
 
 export type ApprovedEndpoint = {
   id: string
@@ -222,12 +223,7 @@ export default function AIEndpointsPanel({
                     Workspaces that lose access start no new jobs on this service; running jobs finish.
                   </p>
                   <div className="flex gap-3">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={saveAccess}
-                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                    >
+                    <button type="button" disabled={busy} onClick={saveAccess} className={buttonClass('primary', 'sm')}>
                       Save access
                     </button>
                     <button
@@ -255,7 +251,7 @@ export default function AIEndpointsPanel({
             maxLength={200}
             value={name}
             onChange={e => setName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           />
         </div>
         <div>
@@ -269,14 +265,10 @@ export default function AIEndpointsPanel({
             placeholder="https://taxomind.example.org/api"
             value={baseUrl}
             onChange={e => setBaseUrl(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           />
         </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-        >
+        <button type="submit" disabled={busy} className={buttonClass('primary')}>
           Approve
         </button>
       </form>

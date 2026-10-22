@@ -5,9 +5,10 @@ import Modal from '@/components/Modal'
 import Combobox from '@/components/ui/Combobox'
 import { generatePassword, type MemberRole, type TeamMember } from '@/lib/team-table'
 import { workspaceApi } from '@/lib/workspace/urls'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 const input =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900'
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
 
 type Props = {
   supervisors: TeamMember[]
@@ -101,13 +102,9 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
 
   if (created) {
     return (
-      <Modal
-        label="Member created"
-        onClose={() => onCreated(`${created.username} created`)}
-        className="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50"
-      >
-        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Member created</h2>
+      <Modal label="Member created" onClose={() => onCreated(`${created.username} created`)}>
+        <div className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}>
+          <h2 className="text-xl font-semibold text-gray-900">Member created</h2>
           <p className="text-sm text-gray-700">
             Give these sign-in details to the person. The password is shown only now; they must change it at first
             sign-in.
@@ -120,14 +117,14 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
                 await navigator.clipboard.writeText(`Username: ${created.username}\nPassword: ${created.password}`)
                 setCopied(true)
               }}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              className={buttonClass('secondary', 'md', 'flex-1')}
             >
               {copied ? 'Copied' : 'Copy'}
             </button>
             <button
               type="button"
               onClick={() => onCreated(`${created.username} created`)}
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg"
+              className={buttonClass('primary', 'md', 'flex-1')}
             >
               Done
             </button>
@@ -138,13 +135,9 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
   }
 
   return (
-    <Modal
-      label="Add member"
-      onClose={onClose}
-      className="fixed inset-0 bg-gray-900/50 flex items-center justify-center z-50"
-    >
-      <form onSubmit={submit} className="bg-white rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
-        <h2 className="text-xl font-bold text-gray-900">Add member</h2>
+    <Modal label="Add member" onClose={onClose}>
+      <form onSubmit={submit} className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}>
+        <h2 className="text-xl font-semibold text-gray-900">Add member</h2>
         {error && (
           <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm border border-red-200">
             {error}
@@ -352,11 +345,7 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'flex-1')}>
             {mode === 'existing' ? 'Add' : mode === 'invite' ? 'Send invitation' : 'Create'}
           </button>
         </div>

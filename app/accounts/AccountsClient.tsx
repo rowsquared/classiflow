@@ -7,6 +7,7 @@ import Modal from '@/components/Modal'
 import QueryProvider from '@/components/QueryProvider'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
+import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 
 type Account = {
   id: string
@@ -21,7 +22,7 @@ type Account = {
 }
 
 const input =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900'
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
 
 // /accounts is outside any workspace, so it has its own query cache.
 export default function AccountsClient({ currentUserId }: { currentUserId: string }) {
@@ -77,10 +78,7 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
             >
               Workspaces
             </Link>
-            <button
-              onClick={() => setCreating(true)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-            >
+            <button onClick={() => setCreating(true)} className={buttonClass('primary')}>
               New account
             </button>
           </div>
@@ -92,9 +90,9 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
           </div>
         )}
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className={`${panelClass} overflow-x-auto`}>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-medium text-gray-600 uppercase">
+            <thead className="bg-gray-50 border-b border-gray-200 text-left text-sm font-medium text-gray-600">
               <tr>
                 <th className="px-4 py-3">Username</th>
                 <th className="px-4 py-3">Name</th>
@@ -211,19 +209,15 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
     </div>
   )
   return (
-    <Modal
-      label="New account"
-      onClose={onClose}
-      className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
-    >
+    <Modal label="New account" onClose={onClose}>
       <form
         onSubmit={e => {
           e.preventDefault()
           run()
         }}
-        className="bg-white rounded-lg p-6 max-w-md w-full mx-4 space-y-4"
+        className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}
       >
-        <h2 className="text-xl font-bold text-gray-900">New account</h2>
+        <h2 className="text-xl font-semibold text-gray-900">New account</h2>
         {error && (
           <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm">
             {error}
@@ -256,11 +250,7 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'flex-1')}>
             Create
           </button>
         </div>
@@ -299,13 +289,9 @@ function EditAccount({
   })
   const error = save.error || ban.error || remove.error || signOutEverywhere.error
   return (
-    <Modal
-      label={`Edit ${account.username}`}
-      onClose={onClose}
-      className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
-    >
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
-        <h2 className="text-xl font-bold text-gray-900">{account.username}</h2>
+    <Modal label={`Edit ${account.username}`} onClose={onClose}>
+      <div className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}>
+        <h2 className="text-xl font-semibold text-gray-900">{account.username}</h2>
         {error && (
           <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm">
             {error}
@@ -363,11 +349,7 @@ function EditAccount({
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={save.busy}
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-            >
+            <button type="submit" disabled={save.busy} className={buttonClass('primary', 'md', 'flex-1')}>
               Save
             </button>
           </div>
@@ -377,7 +359,7 @@ function EditAccount({
             <button
               onClick={signOutEverywhere.run}
               disabled={signOutEverywhere.busy}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              className={buttonClass('secondary', 'md', 'flex-1')}
             >
               Sign out everywhere
             </button>

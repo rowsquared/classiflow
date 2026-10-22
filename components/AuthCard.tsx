@@ -17,7 +17,7 @@ export default function AuthCard({
         <div className="flex justify-center mb-6">
           <Image src="/logo.svg" alt="classiflow" width={120} height={32} className="h-8 w-auto" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2 text-center">{title}</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 mb-2 text-center">{title}</h1>
         {subtitle && <p className="text-sm text-gray-600 mb-6 text-center">{subtitle}</p>}
         {children}
       </main>
@@ -26,7 +26,7 @@ export default function AuthCard({
 }
 
 export const authInput =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900'
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-transparent text-gray-900'
 
 export const authButton =
   'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed'

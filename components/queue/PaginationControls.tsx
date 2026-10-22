@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { buttonClass } from '@/components/ui/styles'
 
 interface PaginationControlsProps {
   page: number
@@ -61,13 +62,10 @@ export default function PaginationControls({
               onChange={e => setCustomSize(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCustomSubmit()}
               placeholder="Enter size"
-              className="w-24 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-24 px-2 py-1.5 text-sm border border-gray-500 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               autoFocus
             />
-            <button
-              onClick={handleCustomSubmit}
-              className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-            >
+            <button onClick={handleCustomSubmit} className={buttonClass('primary', 'sm')}>
               OK
             </button>
             <button
@@ -85,7 +83,7 @@ export default function PaginationControls({
             aria-label="Records per page"
             value={pageSize}
             onChange={e => handleSelectChange(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            className="px-3 py-1.5 text-sm border border-gray-500 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 bg-white"
           >
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -112,17 +110,13 @@ export default function PaginationControls({
 
       {/* Right: Page navigation */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => onPageChange(1)}
-          disabled={page === 1}
-          className="px-3 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
+        <button onClick={() => onPageChange(1)} disabled={page === 1} className={buttonClass('secondary', 'sm')}>
           « First
         </button>
         <button
           onClick={() => onPageChange(Math.max(1, page - 1))}
           disabled={page === 1}
-          className="px-4 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={buttonClass('secondary')}
         >
           ← Previous
         </button>
@@ -132,14 +126,14 @@ export default function PaginationControls({
         <button
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
           disabled={page === totalPages || totalPages === 0}
-          className="px-4 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={buttonClass('secondary')}
         >
           Next →
         </button>
         <button
           onClick={() => onPageChange(totalPages)}
           disabled={page === totalPages || totalPages === 0}
-          className="px-3 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={buttonClass('secondary', 'sm')}
         >
           Last »
         </button>

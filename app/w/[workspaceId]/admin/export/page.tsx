@@ -2,6 +2,7 @@
 import { workspaceApi } from '@/lib/workspace/urls'
 import { useState } from 'react'
 import PageHeader from '@/components/PageHeader'
+import { buttonClass, panelClass } from '@/components/ui/styles'
 
 export default function ExportAdminPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -44,7 +45,7 @@ export default function ExportAdminPage() {
 
   return (
     <>
-      <PageHeader title="Export Data" />
+      <PageHeader title="Export data" />
       <div className="px-8 py-8">
         <div className="mb-8">
           <p className="text-sm text-gray-600">
@@ -66,43 +67,38 @@ export default function ExportAdminPage() {
         )}
 
         {/* Export Data */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className={`${panelClass} p-6`}>
           <div className="flex items-center gap-2 mb-6">
-            <span className="text-2xl">📥</span>
-            <h2 className="text-lg font-semibold text-gray-900">Export Labeled Data</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Export labeled data</h2>
           </div>
 
           <div className="space-y-4">
             <div className="flex items-end gap-4">
               <div className="w-64">
                 <label htmlFor="export-status" className="block text-sm font-medium text-gray-700 mb-2">
-                  Status Filter
+                  Status filter
                 </label>
                 <select
                   id="export-status"
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   <option value="all">All</option>
-                  <option value="submitted">Submitted Only</option>
-                  <option value="pending">Pending Only</option>
-                  <option value="skipped">Skipped Only</option>
+                  <option value="submitted">Submitted only</option>
+                  <option value="pending">Pending only</option>
+                  <option value="skipped">Skipped only</option>
                 </select>
               </div>
 
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {exporting ? 'Exporting...' : 'Export CSV'}
+              <button onClick={handleExport} disabled={exporting} className={buttonClass('primary')}>
+                {exporting ? 'Exporting…' : 'Export CSV'}
               </button>
             </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Export Format</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Export format</h3>
             <p className="text-xs text-gray-600">
               The exported CSV includes: sentence ID, original field columns (field_FIELD_NAME format), support columns,
               labeled taxonomies ({'{taxonomyKey}'}_1, {'{taxonomyKey}'}_2, etc.), AI suggestions ({'{taxonomyKey}'}

@@ -108,7 +108,7 @@ export default function AIJobStatusBadge() {
       case 'learning':
         return 'Learning'
       case 'taxonomy_sync':
-        return 'Taxonomy Sync'
+        return 'Taxonomy sync'
       default:
         return 'AI Job'
     }
@@ -233,9 +233,9 @@ export default function AIJobStatusBadge() {
                         )}
                       </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className="w-full bg-gray-200 h-1.5">
                       <div
-                        className={`h-1.5 rounded-full transition-all duration-300 ${
+                        className={`h-1.5 transition-all duration-300 ${
                           isFinished ? (job.status === 'completed' ? 'bg-green-500' : 'bg-red-500') : 'bg-indigo-500'
                         }`}
                         style={{ width: `${progress}%` }}

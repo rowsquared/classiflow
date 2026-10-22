@@ -1,5 +1,6 @@
 import type { PeopleSort, ProgressPeople } from '@/lib/contracts/progress'
 import { formatNumber, relativeTime } from './format'
+import { buttonClass } from '@/components/ui/styles'
 
 type Column = { sort: PeopleSort; label: string; numeric?: boolean }
 
@@ -37,7 +38,7 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
   const last = Math.min(people.page * people.pageSize, people.total)
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className="border border-gray-200 bg-white">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm" data-testid="people-table">
           <caption className="sr-only">
@@ -57,7 +58,7 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
                     <button
                       type="button"
                       onClick={() => onSort(column.sort)}
-                      className="inline-flex items-center gap-1 rounded hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="inline-flex items-center gap-1 rounded hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
                       {column.label}
                       <span aria-hidden="true" className="text-xs text-gray-500">
@@ -86,7 +87,7 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
                       <button
                         type="button"
                         onClick={() => onSelectPerson(person.userId)}
-                        className="text-left font-medium text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                        className="text-left font-medium text-indigo-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
                         title={`Show ${person.name || person.username} only`}
                       >
                         {person.name || person.username}
@@ -133,7 +134,7 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
             type="button"
             onClick={() => onPage(people.page - 1)}
             disabled={people.page <= 1}
-            className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className={buttonClass('secondary', 'sm')}
           >
             Previous
           </button>
@@ -144,7 +145,7 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
             type="button"
             onClick={() => onPage(people.page + 1)}
             disabled={people.page >= pages}
-            className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className={buttonClass('secondary', 'sm')}
           >
             Next
           </button>

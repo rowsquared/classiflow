@@ -7,6 +7,8 @@ import ResizablePanel from '../ResizablePanel'
 import { useDialog } from '../Modal'
 import { getUnknownCodeForLevel, isUnknownNodeCode } from '@/lib/constants'
 import { SaveOperation } from '@/lib/save-operation'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
+import { Check, ChevronsRight, CircleHelp, Flag, MessageSquare, X } from 'lucide-react'
 
 interface BulkLabelPanelProps {
   sentenceIds: string[]
@@ -221,9 +223,9 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
 
   if (taxonomies.length === 0) {
     return (
-      <div {...dialog} className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 focus:outline-none">
-        <div className="bg-white p-6 rounded-lg">
-          <div className="text-gray-900">Loading taxonomies...</div>
+      <div {...dialog} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 focus:outline-none">
+        <div className={`${dialogPanelClass} p-6`}>
+          <div className="text-gray-900">Loading taxonomies…</div>
         </div>
       </div>
     )
@@ -232,7 +234,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/10 z-40" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
 
       {/* Slide-in Panel */}
       <div
@@ -247,21 +249,19 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
           maxWidth={70}
           side="right"
           storageKey="bulk-label-panel-width"
-          className="bg-white shadow-2xl flex flex-col"
+          className="bg-white border-l border-gray-900 shadow-2xl flex flex-col"
           style={{ pointerEvents: 'auto' }}
         >
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Bulk Label</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Bulk label</h2>
               <p className="text-sm text-gray-600 mt-1">
                 Labeling {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'}
               </p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-900 transition-colors">
+              <X className="w-6 h-6" aria-hidden="true" />
             </button>
           </div>
 
@@ -316,16 +316,9 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
               <button
                 onClick={() => setShowCommentDialog(true)}
                 className={`${actionButtonBaseClass} ${comment ? commentActiveClasses : primaryActionClasses}`}
-                title="Add Comment"
+                title="Add comment"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
+                <MessageSquare className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">Comment</span>
               </button>
               <button
@@ -333,14 +326,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                 className={`${actionButtonBaseClass} ${flagged ? flagActiveClasses : primaryActionClasses}`}
                 title={flagged ? 'Unflag all selected sentences' : 'Flag all selected sentences'}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
-                  />
-                </svg>
+                <Flag className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">Flag</span>
               </button>
               <button
@@ -348,14 +334,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                 className={`${actionButtonBaseClass} ${primaryActionClasses}`}
                 title="Unknown"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <CircleHelp className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">Unknown</span>
               </button>
               <button
@@ -366,9 +345,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                 title="Skip"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                </svg>
+                <ChevronsRight className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">Skip</span>
               </button>
               <button
@@ -382,9 +359,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                 <span className="text-sm font-medium">
                   {submitting ? 'Submitting...' : `Submit (${sentenceIds.length})`}
                 </span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+                <Check className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -394,19 +369,16 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
       {/* Comment Dialog */}
       {showCommentDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-[32rem]">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Add Comment</h3>
+          <div className={`${dialogPanelClass} p-6 w-[32rem]`}>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Add comment</h3>
             <textarea
               value={comment}
               onChange={e => setComment(e.target.value)}
               placeholder="This comment will be added to all selected sentences..."
-              className="w-full p-3 border border-gray-300 rounded-md h-32 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full p-3 border border-gray-500 rounded-md h-32 text-gray-900 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-indigo-500"
             />
             <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowCommentDialog(false)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-              >
+              <button onClick={() => setShowCommentDialog(false)} className={buttonClass('secondary')}>
                 Cancel
               </button>
               <button
@@ -441,7 +413,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                   }
                   setShowCommentDialog(false)
                 }}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className={buttonClass('primary')}
               >
                 Save
               </button>

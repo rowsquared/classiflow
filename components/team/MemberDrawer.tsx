@@ -8,9 +8,10 @@ import { formatRelativeTime } from '@/lib/utils'
 import { generatePassword, type MemberRole, type TeamMember } from '@/lib/team-table'
 import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
 import { mailPurposeLabel, mailStatusLabel } from '@/components/team/mail-status'
+import { buttonClass } from '@/components/ui/styles'
 
 const input =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900'
+  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
 
 type Props = {
   member: TeamMember
@@ -86,7 +87,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
       label={`Member ${member.username}`}
       onClose={onClose}
       closeOnOverlayClick
-      className="fixed inset-0 bg-gray-900/40 flex justify-end z-50"
+      className="fixed inset-0 bg-black/50 flex justify-end z-50"
     >
       <aside className="bg-white w-full max-w-lg h-full overflow-y-auto p-6 space-y-6 shadow-xl">
         <div className="flex items-start justify-between">
@@ -167,7 +168,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
             type="button"
             disabled={busy}
             onClick={() => call('PUT', { status: 'active' }, `${member.username} reactivated`)}
-            className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+            className={buttonClass('primary', 'md', 'w-full')}
           >
             Reactivate in this workspace
           </button>
@@ -245,11 +246,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
                 in this workspace alone that have never signed in; otherwise ask a platform admin.
               </p>
             </div>
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-            >
+            <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'w-full')}>
               Save
             </button>
           </form>
@@ -266,7 +263,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
                   onClick={() =>
                     call('POST', { purpose: 'invitation' }, `Invitation sent again to ${member.username}`, '/mail')
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={buttonClass('secondary', 'sm')}
                 >
                   Resend invitation
                 </button>
@@ -277,7 +274,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
                   onClick={() =>
                     call('POST', { purpose: 'password_link' }, `Password link sent to ${member.username}`, '/mail')
                   }
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={buttonClass('secondary', 'sm')}
                 >
                   Send password link
                 </button>
@@ -323,7 +320,7 @@ export default function MemberDrawer({ member, supervisors, isSelf, mailEnabled,
                     type="button"
                     disabled={busy}
                     onClick={() => call('DELETE', { unassignOpen }, `${member.username} removed from this workspace`)}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50"
+                    className={buttonClass('danger', 'md', 'flex-1')}
                   >
                     Remove
                   </button>

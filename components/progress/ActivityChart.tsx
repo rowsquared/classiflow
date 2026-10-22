@@ -29,7 +29,7 @@ export default function ActivityChart({ timeline, view }: { timeline: ProgressTi
 
   if (view === 'table') {
     return (
-      <div className="max-h-96 overflow-auto rounded-lg border border-gray-200 bg-white">
+      <div className="max-h-96 overflow-auto border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <caption className="sr-only">Records labeled per {unit}</caption>
           <thead className="sticky top-0 bg-gray-50 text-left text-gray-700">
@@ -65,11 +65,11 @@ export default function ActivityChart({ timeline, view }: { timeline: ProgressTi
   }))
 
   return (
-    <figure className="rounded-lg border border-gray-200 bg-white p-4" data-testid="activity-chart">
+    <figure className="border border-gray-200 bg-white p-4" data-testid="activity-chart">
       <div role="img" aria-label={`Bar chart of records labeled per ${unit}. ${summary}`} className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" vertical={false} />
             <XAxis
               dataKey="label"
               tick={{ fontSize: 12, fill: '#4b5563' }}
@@ -80,9 +80,9 @@ export default function ActivityChart({ timeline, view }: { timeline: ProgressTi
             <Tooltip
               formatter={value => [formatNumber(Number(value)), 'Records labeled']}
               labelFormatter={(_, payload) => (payload?.[0]?.payload as { full?: string } | undefined)?.full ?? ''}
-              cursor={{ fill: '#f3f4f6' }}
+              cursor={{ fill: '#f5f5f5' }}
             />
-            <Bar dataKey="labeledRecords" name="Records labeled" fill="var(--color-indigo-600)" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="labeledRecords" name="Records labeled" fill="var(--color-indigo-600)" radius={0} />
           </BarChart>
         </ResponsiveContainer>
       </div>

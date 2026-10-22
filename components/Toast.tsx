@@ -29,35 +29,35 @@ export function ToastItem({ toast, onClose }: ToastProps) {
   const getIcon = () => {
     switch (toast.type) {
       case 'success':
-        return <CheckCircle2 className="w-5 h-5 text-green-500" />
+        return <CheckCircle2 className="w-5 h-5 text-indigo-600" />
       case 'error':
-        return <XCircle className="w-5 h-5 text-red-500" />
+        return <XCircle className="w-5 h-5 text-red-600" />
       case 'info':
-        return <Info className="w-5 h-5 text-blue-500" />
+        return <Info className="w-5 h-5 text-gray-700" />
     }
   }
 
   const getStyles = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-green-50 border-green-200 text-green-800'
+        return 'border-t-indigo-600'
       case 'error':
-        return 'bg-red-50 border-red-200 text-red-800'
+        return 'border-t-red-600'
       case 'info':
-        return 'bg-blue-50 border-blue-200 text-blue-800'
+        return 'border-t-gray-900'
     }
   }
 
   return (
     <div
-      className={`${getStyles()} border rounded-lg shadow-lg p-4 flex items-start gap-3 min-w-[300px] max-w-[500px] animate-in slide-in-from-top-5 fade-in`}
+      className={`${getStyles()} bg-white text-gray-900 border border-gray-200 border-t-2 shadow-lg p-4 flex items-start gap-3 min-w-[300px] max-w-[500px] animate-fade-in`}
     >
       {getIcon()}
       <div className="flex-1 text-sm">{toast.message}</div>
       <button
         onClick={() => onClose(toast.id)}
         aria-label="Dismiss notification"
-        className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+        className="text-gray-600 hover:text-gray-900 transition-colors flex-shrink-0"
       >
         <X className="w-4 h-4" />
       </button>

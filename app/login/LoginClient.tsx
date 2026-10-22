@@ -5,6 +5,7 @@ import { signInWithIdentifier } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
+import { buttonClass } from '@/components/ui/styles'
 
 type Props = {
   /** Shows "Forgot password?" (only with mail). */
@@ -50,22 +51,21 @@ export default function LoginClient({ mailEnabled, next }: Props) {
   return (
     <div className="h-screen flex">
       {/* Left Panel - Hierarchical Classification Tree */}
-      <div className="hidden lg:flex lg:flex-1 lg:w-[60%] bg-gradient-to-br from-indigo-400 via-indigo-500 to-indigo-600 relative overflow-hidden flex-col items-center justify-center p-12">
+      <div className="hidden lg:flex lg:flex-1 lg:w-[60%] bg-[linear-gradient(250deg,#0087b0_0%,#0093a3_47%)] relative overflow-hidden flex-col items-center justify-center p-12">
         {/* Hierarchical Tree Visualization */}
         <div className="relative w-full max-w-2xl mb-8">
           <svg viewBox="0 0 600 380" className="w-full h-auto">
             <defs>
-              {/* Glow effect for highlighted path */}
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-
-              {/* Animated path highlight - all elements in a path highlight together */}
+              {/* Animated path highlight - all elements in a path highlight together.
+                  Opacity and colour only, and only when the reader has not asked for less motion. */}
               <style>{`
+                .brain-icon, .chip-icon {
+                  margin-bottom: 32px;
+                }
+                .brain-icon-svg, .chip-icon-svg {
+                  stroke: rgba(255, 255, 255, 0.85);
+                }
+                @media (prefers-reduced-motion: no-preference) {
                 @keyframes pathPulse {
                   0%, 100% { opacity: 0.35; }
                   50% { opacity: 0.8; }
@@ -82,12 +82,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
                   animation: pathPulse 12s ease-in-out infinite;
                   animation-delay: 8s;
                 }
-                
-                /* Icon animations - subtle scale and color sync with paths */
-                @keyframes iconScale {
-                  0%, 100% { transform: scale(1); }
-                  50% { transform: scale(1.08); }
-                }
+                /* Icon colour in step with the paths */
                 @keyframes iconColorPulse1 {
                   0%, 100% { stroke: rgba(255, 255, 255, 0.7); }
                   0%, 33% { stroke: rgba(255, 255, 255, 0.95); }
@@ -102,19 +97,12 @@ export default function LoginClient({ mailEnabled, next }: Props) {
                   0%, 66% { stroke: rgba(255, 255, 255, 0.7); }
                   67%, 100% { stroke: rgba(255, 255, 255, 0.95); }
                 }
-            .brain-icon {
-              animation: iconScale 4s ease-in-out infinite;
-              margin-bottom: 32px;
-            }
-            .chip-icon {
-              animation: iconScale 4s ease-in-out infinite 2s;
-              margin-bottom: 32px;
-            }
                 .brain-icon-svg {
                   animation: iconColorPulse1 12s ease-in-out infinite;
                 }
                 .chip-icon-svg {
                   animation: iconColorPulse3 12s ease-in-out infinite;
+                }
                 }
               `}</style>
             </defs>
@@ -209,9 +197,9 @@ export default function LoginClient({ mailEnabled, next }: Props) {
               className="path-line-3"
             />
 
-            <rect x="155" y="200" width="50" height="40" rx="8" fill="white" opacity="0.7" className="path-node-1" />
-            <rect x="275" y="200" width="50" height="40" rx="8" fill="white" opacity="0.7" className="path-node-2" />
-            <rect x="395" y="200" width="50" height="40" rx="8" fill="white" opacity="0.7" className="path-node-3" />
+            <rect x="155" y="200" width="50" height="40" rx="2" fill="white" opacity="0.7" className="path-node-1" />
+            <rect x="275" y="200" width="50" height="40" rx="2" fill="white" opacity="0.7" className="path-node-2" />
+            <rect x="395" y="200" width="50" height="40" rx="2" fill="white" opacity="0.7" className="path-node-3" />
 
             {/* Level 2 - Leaf nodes with variety (2, 1, 3 children) */}
             {/* Left branch - 2 children */}
@@ -227,18 +215,8 @@ export default function LoginClient({ mailEnabled, next }: Props) {
             />
             <line x1="180" y1="240" x2="210" y2="300" stroke="white" strokeWidth="2" opacity="0.25" />
 
-            <rect
-              x="105"
-              y="300"
-              width="50"
-              height="35"
-              rx="8"
-              fill="white"
-              opacity="0.6"
-              className="path-node-1"
-              filter="url(#glow)"
-            />
-            <rect x="185" y="300" width="50" height="35" rx="8" fill="white" opacity="0.35" />
+            <rect x="105" y="300" width="50" height="35" rx="2" fill="white" opacity="0.6" className="path-node-1" />
+            <rect x="185" y="300" width="50" height="35" rx="2" fill="white" opacity="0.35" />
 
             {/* Middle branch - 1 child (single) */}
             <line
@@ -252,17 +230,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
               className="path-line-2"
             />
 
-            <rect
-              x="275"
-              y="300"
-              width="50"
-              height="35"
-              rx="8"
-              fill="white"
-              opacity="0.6"
-              className="path-node-2"
-              filter="url(#glow)"
-            />
+            <rect x="275" y="300" width="50" height="35" rx="2" fill="white" opacity="0.6" className="path-node-2" />
 
             {/* Right branch - 3 children */}
             <line x1="420" y1="240" x2="360" y2="300" stroke="white" strokeWidth="2" opacity="0.25" />
@@ -278,26 +246,18 @@ export default function LoginClient({ mailEnabled, next }: Props) {
               className="path-line-3"
             />
 
-            <rect x="335" y="300" width="50" height="35" rx="8" fill="white" opacity="0.35" />
-            <rect x="395" y="300" width="50" height="35" rx="8" fill="white" opacity="0.35" />
-            <rect
-              x="455"
-              y="300"
-              width="50"
-              height="35"
-              rx="8"
-              fill="white"
-              opacity="0.6"
-              className="path-node-3"
-              filter="url(#glow)"
-            />
+            <rect x="335" y="300" width="50" height="35" rx="2" fill="white" opacity="0.35" />
+            <rect x="395" y="300" width="50" height="35" rx="2" fill="white" opacity="0.35" />
+            <rect x="455" y="300" width="50" height="35" rx="2" fill="white" opacity="0.6" className="path-node-3" />
           </svg>
         </div>
 
         {/* Text overlay */}
         <div className="relative z-10 text-white text-center">
-          <h1 className="text-4xl font-bold mb-4">AI assisted classification.</h1>
-          <p className="text-xl opacity-90">Improve your surveys.</p>
+          <h1 className="text-4xl xl:text-5xl font-semibold leading-tight text-balance mb-4">
+            complex classifications made easy
+          </h1>
+          <p className="text-xl">Open-source. AI-assisted. User-friendly.</p>
         </div>
       </div>
 
@@ -306,12 +266,12 @@ export default function LoginClient({ mailEnabled, next }: Props) {
         <div className="w-full max-w-md">
           {/* Logo and Title */}
           <div className="flex items-center gap-3 mb-8">
-            <Image src="/logo.svg" alt="Logo" width={32} height={32} className="h-8 w-8" />
+            <Image src="/logo.svg" alt="" width={32} height={32} className="h-8 w-8" />
             <h1 className="text-xl font-semibold text-gray-900">classiflow</h1>
           </div>
 
           {/* Sign in heading - left aligned */}
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Sign in</h2>
+          <h2 className="text-3xl font-semibold text-gray-900 mb-8">Sign in</h2>
 
           {/* Error message */}
           {error && (
@@ -322,7 +282,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Username or Email
+                Username or email
               </label>
               <input
                 id="email"
@@ -330,7 +290,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
+                className="w-full px-4 py-3 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-transparent text-gray-900"
                 placeholder=""
               />
             </div>
@@ -345,7 +305,7 @@ export default function LoginClient({ mailEnabled, next }: Props) {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
+                className="w-full px-4 py-3 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:border-transparent text-gray-900"
                 placeholder=""
               />
             </div>
@@ -358,30 +318,29 @@ export default function LoginClient({ mailEnabled, next }: Props) {
               </p>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed"
-            >
+            <button type="submit" disabled={loading} className={buttonClass('primary', 'md', 'w-full')}>
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
         </div>
 
-        {/* R2 Footer Logo - Bottom Right */}
+        {/* made with love by rowsquared - bottom right */}
         <div className="absolute bottom-8 inset-x-0 px-8 flex justify-center">
           <div className="w-full max-w-md flex justify-end">
             <a
               href="https://rowsquared.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="block hover:opacity-100 transition-opacity"
-              style={{
-                width: '160px',
-                opacity: 0.6
-              }}
+              className="block"
+              style={{ width: '160px' }}
             >
-              <Image src="/r2-footer.svg" alt="Made with ❤️ by R2" width={160} height={27} className="w-full h-auto" />
+              <Image
+                src="/r2-footer.svg"
+                alt="made with love by rowsquared"
+                width={160}
+                height={27}
+                className="w-full h-auto"
+              />
             </a>
           </div>
         </div>

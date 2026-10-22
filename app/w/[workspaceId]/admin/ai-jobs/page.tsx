@@ -17,7 +17,7 @@ export default async function AIJobsPage({ params }: { params: Promise<{ workspa
     )
   } catch (error) {
     await logError('AI jobs page failed to load', error)
-    return <LoadError title="AI Jobs" what="the AI jobs" />
+    return <LoadError title="AI jobs" what="the AI jobs" />
   }
 
   return <AIJobsClient initialJobs={data.jobs as AIJob[]} initialPagination={data.pagination} />

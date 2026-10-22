@@ -9,6 +9,7 @@ import { fetchJson } from '@/lib/query/fetch'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import { EMPTY_QUEUE_FILTERS, countActiveFilters, type QueueFilterValues } from '@/lib/queue-url'
 import Combobox, { type ComboboxOption } from '@/components/ui/Combobox'
+import { badgeClass, buttonClass } from '@/components/ui/styles'
 
 interface FilterPanelProps {
   /** The applied filters (from the URL). The panel edits a draft until Apply. */
@@ -67,9 +68,9 @@ function useNodeOptions(taxonomyKey: string | null, query: string) {
 }
 
 const fieldBaseClasses =
-  'w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed'
+  'w-full px-2 py-1 text-sm border rounded focus:outline-none focus-visible:ring-2 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed'
 const getFieldClasses = (active: boolean) =>
-  active ? 'border-teal-500 bg-[#e6fbf8] focus:ring-teal-500' : 'border-gray-300 focus:ring-indigo-500'
+  active ? 'border-teal-500 bg-[#e6fbf8] focus-visible:ring-teal-500' : 'border-gray-300 focus-visible:ring-indigo-500'
 
 const booleanValue = (value: boolean | null) => (value === null ? '' : value ? 'true' : 'false')
 const parseBoolean = (value: string) => (value === '' ? null : value === 'true')
@@ -148,11 +149,7 @@ export default function FilterPanel({
       <div className="p-4 border-b border-gray-200 flex items-center justify-between min-h-[76px]">
         <div className="flex items-center gap-2">
           <h2 className="font-semibold text-gray-900">Filters</h2>
-          {activeFilterCount > 0 && (
-            <span className="px-2 py-0.5 bg-indigo-600 text-white text-xs font-medium rounded-full">
-              {activeFilterCount}
-            </span>
-          )}
+          {activeFilterCount > 0 && <span className={badgeClass('solid')}>{activeFilterCount}</span>}
         </div>
         <button
           type="button"
@@ -176,7 +173,7 @@ export default function FilterPanel({
                 type="checkbox"
                 checked={draft.flagged === true}
                 onChange={e => set('flagged', e.target.checked ? true : null)}
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="rounded border-gray-500 text-indigo-600 focus-visible:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
                 <svg
@@ -203,7 +200,7 @@ export default function FilterPanel({
                 type="checkbox"
                 checked={draft.hasComments === true}
                 onChange={e => set('hasComments', e.target.checked ? true : null)}
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="rounded border-gray-500 text-indigo-600 focus-visible:ring-indigo-500"
               />
               <span className="text-sm text-gray-700 flex items-center gap-1">
                 <svg
@@ -256,7 +253,7 @@ export default function FilterPanel({
             id={`${id}-import`}
             value={draft.importId || ''}
             onChange={e => set('importId', e.target.value || null)}
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${getFieldClasses(Boolean(draft.importId))}`}
+            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus-visible:ring-2 ${getFieldClasses(Boolean(draft.importId))}`}
             disabled={imports.isPending}
           >
             <option value="">All imports</option>
@@ -466,12 +463,8 @@ export default function FilterPanel({
 
       {/* Actions */}
       <div className="p-4 border-t border-gray-200 space-y-2">
-        <button
-          type="button"
-          onClick={() => onApply(draft)}
-          className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-        >
-          Apply Filters
+        <button type="button" onClick={() => onApply(draft)} className={buttonClass('primary', 'md', 'w-full')}>
+          Apply filters
         </button>
         <button
           type="button"

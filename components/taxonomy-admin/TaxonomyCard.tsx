@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { formatDate, formatRelativeTime } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
 import type { Message, Taxonomy } from './types'
+import { buttonClass, panelClass } from '@/components/ui/styles'
 
 type Props = {
   taxonomy: Taxonomy
@@ -97,7 +98,7 @@ export default function TaxonomyCard({
     )
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className={`${panelClass} overflow-hidden`} data-testid="taxonomy-card">
       <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center justify-between">
           <div className="flex-1">
@@ -129,11 +130,7 @@ export default function TaxonomyCard({
       <div className="p-6">
         <div className="flex gap-4 flex-wrap">
           <div className="flex flex-col">
-            <button
-              onClick={handleSyncAI}
-              disabled={syncing}
-              className="px-4 py-2.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-            >
+            <button onClick={handleSyncAI} disabled={syncing} className={buttonClass('primary')}>
               {syncing ? 'Syncing…' : 'Sync taxonomy with AI'}
             </button>
             <div className="mt-2 text-center">
@@ -148,7 +145,7 @@ export default function TaxonomyCard({
             <button
               onClick={handleLearning}
               disabled={!synced || learning || taxonomy.newAnnotationsSinceLastLearning < learningThreshold}
-              className="px-4 py-2.5 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+              className={buttonClass('primary')}
             >
               {learning ? 'Sending…' : 'Train AI with submitted labels'}
             </button>

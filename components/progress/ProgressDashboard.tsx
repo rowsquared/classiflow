@@ -33,6 +33,7 @@ import ProgressFilters from './ProgressFilters'
 import { memberName, personInTeam, useSelectedMember } from './MemberPicker'
 import TimeZoneDialog from './TimeZoneDialog'
 import { formatDay, formatRange, formatTime, localDate } from './format'
+import { buttonClass } from '@/components/ui/styles'
 
 export type InitialReports = {
   /** The query strings the server loaded; initial data applies only while they match. */
@@ -185,7 +186,7 @@ export default function ProgressDashboard({
               type="button"
               onClick={() => void refresh()}
               disabled={fetching}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+              className={buttonClass('secondary', 'sm')}
             >
               Refresh
             </button>
@@ -221,7 +222,7 @@ export default function ProgressDashboard({
                   <button
                     type="button"
                     onClick={() => setTimeZoneOpen(true)}
-                    className="rounded text-indigo-700 underline hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="rounded text-indigo-700 underline hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     Change time zone
                   </button>
@@ -278,7 +279,7 @@ export default function ProgressDashboard({
                       disabled={disabled}
                       title={disabled ? `Daily view covers at most ${MAX_BUCKETS} days` : undefined}
                       onClick={() => void setUrl({ granularity: g })}
-                      className={`px-3 py-1 first:rounded-l-md last:rounded-r-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`px-3 py-1 first:rounded-l-md last:rounded-r-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 ${
                         granularity === g ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
                       }`}
                     >
@@ -291,7 +292,7 @@ export default function ProgressDashboard({
                 type="button"
                 aria-pressed={activityView === 'table'}
                 onClick={() => setActivityView(activityView === 'chart' ? 'table' : 'chart')}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-800 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={buttonClass('secondary', 'sm')}
               >
                 {activityView === 'chart' ? 'Show as table' : 'Show as chart'}
               </button>
@@ -319,7 +320,7 @@ export default function ProgressDashboard({
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search people"
-                  className="w-48 rounded-md border border-gray-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-48 rounded-md border border-gray-500 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 />
               </label>
             }

@@ -25,6 +25,8 @@ import PaginationControls from '@/components/queue/PaginationControls'
 import BulkLabelPanel from '@/components/queue/BulkLabelPanel'
 import AssignmentModal from '@/components/queue/AssignmentModal'
 import { ToastContainer, type Toast } from '@/components/Toast'
+import { Loader2, Tag, Users } from 'lucide-react'
+import { buttonClass } from '@/components/ui/styles'
 
 export type Sentence = {
   id: string
@@ -402,7 +404,7 @@ export default function QueuePageClient({
                 <button
                   type="button"
                   onClick={() => queueQuery.refetch()}
-                  className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                 >
                   Retry
                 </button>
@@ -410,8 +412,8 @@ export default function QueuePageClient({
             )}
             {!queue ? (
               <div className="p-12 text-center text-gray-600">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                <p className="mt-2">Loading sentences...</p>
+                <Loader2 className="inline-block h-8 w-8 animate-spin text-indigo-600" aria-hidden="true" />
+                <p className="mt-2">Loading records…</p>
               </div>
             ) : queue?.sentences.length === 0 ? (
               <div className="p-12 text-center text-gray-500">
@@ -432,34 +434,22 @@ export default function QueuePageClient({
                           checked={allSelected}
                           onChange={e => handleSelectAll(e.target.checked)}
                           aria-label="Select all records on this page"
-                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                          className="w-4 h-4 rounded border-gray-500 text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-0 cursor-pointer"
                         />
                       </th>
-                      <th
-                        className={`pl-0 pr-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${contentWidthClass}`}
-                      >
+                      <th className={`pl-0 pr-4 py-3 text-left text-sm font-medium text-gray-700 ${contentWidthClass}`}>
                         <span className="block pl-7">Content</span>
                       </th>
-                      <th
-                        className={`px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider ${labelWidthClass}`}
-                      >
+                      <th className={`px-4 py-3 text-left text-sm font-medium text-gray-700 ${labelWidthClass}`}>
                         Labels
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                        Edited
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                        Editor
-                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Edited</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Editor</th>
                       {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                          Assigned
-                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Assigned</th>
                       )}
                       {showStatusColumn && (
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                          Status
-                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
                       )}
                     </tr>
                   </thead>
@@ -508,34 +498,20 @@ export default function QueuePageClient({
                   <div className="h-4 w-px bg-gray-300"></div>
                   <button
                     onClick={() => setBulkLabelOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                    className={buttonClass('primary')}
                     title="Apply the same label to all selected sentences"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                      />
-                    </svg>
-                    Bulk Label
+                    <Tag className="w-4 h-4" aria-hidden="true" />
+                    Bulk label
                   </button>
                   {canAssign && (
                     <button
                       onClick={() => setAssignmentModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 transition-colors text-sm font-medium"
+                      className={buttonClass('secondary')}
                       title="Manage user assignments for selected sentences"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                        />
-                      </svg>
-                      Assign / Unassign
+                      <Users className="w-4 h-4" aria-hidden="true" />
+                      Assign / unassign
                     </button>
                   )}
                   {isAdmin && activeTaxonomies.length > 0 && (
@@ -548,7 +524,7 @@ export default function QueuePageClient({
                           unsyncedTaxonomies.length > 0 ||
                           syncedTaxonomies.length === 0
                         }
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={buttonClass('secondary')}
                         title={
                           unsyncedTaxonomies.length > 0
                             ? 'Sync all taxonomies with AI before sending sentences.'
@@ -573,11 +549,8 @@ export default function QueuePageClient({
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => setSelectedIds(NO_SELECTION)}
-                  className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-                >
-                  Clear Selection
+                <button onClick={() => setSelectedIds(NO_SELECTION)} className={buttonClass('ghost', 'sm')}>
+                  Clear selection
                 </button>
               </div>
             </div>

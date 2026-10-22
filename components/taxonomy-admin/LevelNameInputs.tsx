@@ -23,7 +23,7 @@ export default function LevelNameInputs({
             value={levelNames[level.toString()] || ''}
             onChange={e => onChange({ ...levelNames, [level.toString()]: e.target.value })}
             placeholder={`Level ${level}`}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+            className="flex-1 px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
           />
         </div>
       ))}

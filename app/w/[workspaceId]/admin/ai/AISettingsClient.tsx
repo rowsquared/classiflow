@@ -8,6 +8,7 @@ import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { formatRelativeTime } from '@/lib/utils'
+import { buttonClass } from '@/components/ui/styles'
 
 type Connection = {
   id: string
@@ -145,7 +146,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
 
   return (
     <div className="flex flex-col h-screen">
-      <PageHeader title="AI Settings" />
+      <PageHeader title="AI settings" />
 
       <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl space-y-6">
         {!deployment.ready && (
@@ -249,7 +250,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                     value={endpointId}
                     onChange={e => setEndpointId(e.target.value)}
                     disabled={readOnly}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     {settings.endpoints.map(endpoint => (
                       <option key={endpoint.id} value={endpoint.id}>
@@ -270,7 +271,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                     value={credential}
                     onChange={e => setCredential(e.target.value)}
                     disabled={readOnly}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   />
                   <p className="mt-1 text-xs text-gray-600">
                     Stored encrypted and never shown again. Saving creates a new version; jobs already running keep the
@@ -281,7 +282,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                   <button
                     type="submit"
                     disabled={busy || readOnly || !endpointId || !credential}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    className={buttonClass('primary')}
                   >
                     Save connection
                   </button>
@@ -292,7 +293,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                       onClick={() =>
                         call('/ai-settings/connection', 'DELETE', undefined, 'Connection removed; AI is off.')
                       }
-                      className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      className={buttonClass('secondary')}
                     >
                       Remove connection
                     </button>
@@ -326,18 +327,14 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                   onChange={e => setJobSettingsText(prev => ({ ...prev, [field.key]: e.target.value }))}
                   disabled={archived}
                   aria-describedby={`ai-${field.key}-help`}
-                  className="w-48 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-48 px-3 py-2 border border-gray-500 rounded-lg text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 />
                 <p id={`ai-${field.key}-help`} className="mt-1 text-xs text-gray-600">
                   {field.help} In use: {settings.jobSettings.effective[field.key]}.
                 </p>
               </div>
             ))}
-            <button
-              type="submit"
-              disabled={busy || archived}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-            >
+            <button type="submit" disabled={busy || archived} className={buttonClass('primary')}>
               Save job settings
             </button>
           </form>

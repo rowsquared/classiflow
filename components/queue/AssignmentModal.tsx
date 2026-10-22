@@ -5,6 +5,8 @@ import Modal from '@/components/Modal'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
+import { X } from 'lucide-react'
 
 type User = {
   id: string
@@ -167,23 +169,17 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
   }
 
   return (
-    <Modal
-      label="Manage assignments"
-      onClose={onClose}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-    >
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+    <Modal label="Manage assignments" onClose={onClose}>
+      <div className={`${dialogPanelClass} p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col`}>
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Manage Assignments</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Manage assignments</h2>
             <p className="text-sm text-gray-600 mt-1">
               {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'} selected
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Close">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -210,7 +206,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search by name, email or role"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-500 rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 />
               </div>
             )}
@@ -222,7 +218,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                   type="checkbox"
                   checked={allShownSelected}
                   onChange={() => handleSelectAll(assignableUsers)}
-                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                  className="w-4 h-4 rounded border-gray-500 text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-0 cursor-pointer"
                 />
                 <span className="text-sm font-medium text-gray-700">
                   Select all ({assignableUsers.length} {needle ? 'shown' : 'users'})
@@ -231,7 +227,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
               <div className="flex items-center gap-3 text-sm text-gray-600">
                 {selectedUserIds.size > 0 && <span>{selectedUserIds.size} selected</span>}
                 {initialUserIds.size > 0 && (
-                  <span className="text-gray-400">({initialUserIds.size} currently assigned)</span>
+                  <span className="text-gray-500">({initialUserIds.size} currently assigned)</span>
                 )}
               </div>
             </div>
@@ -263,11 +259,11 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => handleToggleUser(user.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                        className="w-4 h-4 rounded border-gray-500 text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-0 cursor-pointer"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">{user.name || 'Unnamed User'}</span>
+                          <span className="font-medium text-gray-900">{user.name || 'Unnamed user'}</span>
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getRoleBadgeColor(user.role)}`}
                           >
@@ -290,11 +286,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
 
             {/* Actions */}
             <div className="flex gap-3 pt-4 mt-4 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={onClose} className={buttonClass('secondary', 'md', 'flex-1')}>
                 Cancel
               </button>
               <button

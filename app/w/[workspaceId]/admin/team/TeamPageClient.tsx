@@ -23,6 +23,7 @@ import {
 } from '@/lib/team-table'
 import { sortFromUrl, sortToUrl, teamFiltersFromUrl, teamFiltersToUrl, teamParsers } from '@/lib/team-url'
 import { useWorkspacePaths, workspaceApi } from '@/lib/workspace/urls'
+import { buttonClass, panelClass } from '@/components/ui/styles'
 
 export type User = TeamMember
 export type { PendingInvitation }
@@ -30,7 +31,7 @@ export type { PendingInvitation }
 type Props = { initialUsers: User[]; initialInvitations: PendingInvitation[]; mailEnabled: boolean }
 
 const select =
-  'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  'px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500'
 
 const COLUMNS: Array<{ key: SortKey; label: string; title?: string }> = [
   { key: 'username', label: 'Username' },
@@ -107,7 +108,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
 
   return (
     <div className="flex flex-col h-screen">
-      <PageHeader title="Team Management" />
+      <PageHeader title="Team" />
 
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -121,7 +122,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
               placeholder="Search username, name or email"
               value={filters.search}
               onChange={e => setFilter('search', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 border border-gray-500 rounded-lg text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             />
           </div>
           <label className="sr-only" htmlFor="team-role">
@@ -187,25 +188,13 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
               Clear
             </button>
           )}
-          <a
-            href={api('/users/export')}
-            download
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
+          <a href={api('/users/export')} download className={buttonClass('secondary')}>
             Export CSV
           </a>
-          <button
-            type="button"
-            onClick={() => setImporting(true)}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-          >
+          <button type="button" onClick={() => setImporting(true)} className={buttonClass('secondary')}>
             Import members
           </button>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-          >
+          <button type="button" onClick={() => setAdding(true)} className={buttonClass('primary')}>
             Add member
           </button>
         </div>
@@ -228,7 +217,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
           </p>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className={`${panelClass} overflow-x-auto`}>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -240,14 +229,14 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
                       scope="col"
                       title={column.title}
                       aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase whitespace-nowrap"
+                      className="px-4 py-3 text-left text-sm font-medium text-gray-600 whitespace-nowrap"
                     >
                       <button
                         type="button"
                         onClick={() =>
                           void setUrl({ sort: sortToUrl(nextSort(sort, column.key)) }, { history: 'push' })
                         }
-                        className="uppercase hover:text-gray-800"
+                        className="hover:text-gray-800"
                       >
                         {column.label}
                         {active ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ''}

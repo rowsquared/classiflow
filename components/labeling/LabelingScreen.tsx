@@ -23,6 +23,7 @@ import { useActiveTaxonomies, useComments, useRecord, type LabelingRecord } from
 import RecordPanel from './RecordPanel'
 import ActionBar from './ActionBar'
 import CommentsDialog from './CommentsDialog'
+import { buttonClass } from '@/components/ui/styles'
 
 // Tab colours per taxonomy index (match TaxonomyBrowser's chips).
 const TAB_COLORS = ['text-teal-600', 'text-[#3A67BB]', 'text-[#A14A76]', 'text-rose-600', 'text-orange-600']
@@ -337,9 +338,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         goToQueue()
       }}
       disabled={isNavigatingBack}
-      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+      className={buttonClass('secondary')}
     >
-      ← {isNavigatingBack ? 'Loading Queue…' : 'Back to Queue'}
+      ← {isNavigatingBack ? 'Loading queue…' : 'Back to queue'}
     </button>
   )
 

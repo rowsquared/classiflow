@@ -3,10 +3,11 @@ import { formatNumber, percent } from './format'
 
 function Card({ label, value, detail, testId }: { label: string; value: string; detail?: string; testId: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5" data-testid={testId}>
-      <dt className="text-sm font-medium text-gray-600">{label}</dt>
+    // The brand stat figure: a rule on top, a large number, a grey label; no box.
+    <div className="border-t border-gray-900 pt-3" data-testid={testId}>
+      <dt className="text-sm text-gray-600">{label}</dt>
       <dd className="mt-1">
-        <span className="block text-3xl font-semibold tabular-nums text-gray-900">{value}</span>
+        <span className="block text-4xl font-semibold tabular-nums tracking-tight text-gray-900">{value}</span>
         {detail && <span className="mt-1 block text-sm text-gray-600">{detail}</span>}
       </dd>
     </div>
@@ -26,7 +27,7 @@ export default function WorkloadCards({ overview }: { overview: ProgressOverview
     .join(', ')
 
   return (
-    <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
       <Card label="Total records now" value={formatNumber(workload.total)} testId="card-total" />
       <Card
         label="Complete now"

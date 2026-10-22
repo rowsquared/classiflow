@@ -8,8 +8,9 @@ import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import { formatRelativeTime } from '@/lib/utils'
-import { CheckCircle2, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock, Loader2, X, XCircle } from 'lucide-react'
 import Modal from '@/components/Modal'
+import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 
 export type AIJob = {
   id: string
@@ -121,7 +122,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
       case 'learning':
         return 'Learning'
       case 'taxonomy_sync':
-        return 'Taxonomy Sync'
+        return 'Taxonomy sync'
       default:
         return 'AI Job'
     }
@@ -157,7 +158,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
   return (
     <div className="flex flex-col h-screen">
-      <PageHeader title="AI Jobs" />
+      <PageHeader title="AI jobs" />
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {/* Filters */}
@@ -173,7 +174,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                 setStatusFilter(e.target.value)
                 setPage(1)
               }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+              className="px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
             >
               <option value="all">All</option>
               <option value="pending">Pending</option>
@@ -186,7 +187,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
         </div>
 
         {/* Jobs Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className={`${panelClass} overflow-hidden`}>
           {loading && jobs.length === 0 ? (
             <div className="p-8 text-center text-gray-500">Loading...</div>
           ) : jobs.length === 0 ? (
@@ -195,15 +196,15 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Taxonomy</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created By</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Type</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Taxonomy</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Progress</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Details</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Created by</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Started</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Completed</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -225,9 +226,9 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                       <td className="px-4 py-3 text-sm text-gray-900">{job.taxonomy}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div className="flex-1 bg-gray-200 h-2">
                             <div
-                              className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                              className="bg-indigo-500 h-2 transition-all duration-300"
                               style={{ width: `${progress}%` }}
                             />
                           </div>
@@ -282,7 +283,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                className={buttonClass('secondary', 'sm')}
               >
                 Previous
               </button>
@@ -292,7 +293,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
               <button
                 onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
                 disabled={page === pagination.pages}
-                className="px-3 py-1 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                className={buttonClass('secondary', 'sm')}
               >
                 Next
               </button>
@@ -303,26 +304,19 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
 
       {/* Job Detail Modal */}
       {selectedJob && (
-        <Modal
-          label="Job details"
-          onClose={() => setSelectedJob(null)}
-          className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50"
-          closeOnOverlayClick
-        >
+        <Modal label="Job details" onClose={() => setSelectedJob(null)} closeOnOverlayClick>
           <div
-            className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+            className={`${dialogPanelClass} p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto`}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Job details</h2>
               <button
                 onClick={() => setSelectedJob(null)}
                 className="text-gray-500 hover:text-gray-700"
                 aria-label="Close"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X className="w-6 h-6" aria-hidden="true" />
               </button>
             </div>
 
@@ -356,9 +350,9 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                     <label className="text-sm font-medium text-gray-700">Progress</label>
                     <div className="mt-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div className="flex-1 bg-gray-200 h-2">
                           <div
-                            className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
+                            className="bg-indigo-500 h-2 transition-all duration-300"
                             style={{ width: `${getProgress(selectedJob)}%` }}
                           />
                         </div>
@@ -376,7 +370,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
               )}
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Created By</label>
+                <label className="text-sm font-medium text-gray-700">Created by</label>
                 <p className="text-sm text-gray-900">
                   {selectedJob.createdBy ? selectedJob.createdBy.name || selectedJob.createdBy.email : '-'}
                 </p>

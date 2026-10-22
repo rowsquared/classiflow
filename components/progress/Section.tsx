@@ -37,8 +37,9 @@ export default function Section({
 }: SectionProps) {
   const headingId = `${id}-heading`
   return (
-    <section aria-labelledby={headingId} aria-busy={loading || updating} className="mb-8" data-section={id}>
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+    <section aria-labelledby={headingId} aria-busy={loading || updating} className="mb-10" data-section={id}>
+      {/* The rowsquared section signature: a full-width rule with the heading under it. */}
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4 border-t border-gray-900 pt-3">
         <div>
           <h2 id={headingId} className="text-lg font-semibold text-gray-900">
             {title}
@@ -57,20 +58,20 @@ export default function Section({
       {error && (
         <div
           role="alert"
-          className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="mb-3 flex flex-wrap items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
         >
           <span>{error}</span>
           <button
             type="button"
             onClick={onRetry}
-            className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium text-red-800 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="border border-red-300 bg-white px-3 py-1 font-medium text-red-800 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
           >
             Retry
           </button>
         </div>
       )}
       {loading && !error ? (
-        <div className={`${skeletonHeight} animate-pulse rounded-lg bg-gray-100`} aria-hidden="true" />
+        <div className={`${skeletonHeight} animate-pulse bg-gray-100`} aria-hidden="true" />
       ) : (
         !error && <div className={updating ? 'opacity-60 transition-opacity' : undefined}>{children}</div>
       )}
