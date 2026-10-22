@@ -36,7 +36,7 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
       while loading and clears its selection after a bulk label, comment dialog
       stays open after saving, "Up" in the taxonomy browser goes one level up,
       teal primary buttons, Team page "Export CSV", AI settings "Job settings",
-      AI service "Access" on the Workspaces page.
+      AI service "Access" on the Workspaces page, double annotation (section 6).
 
 ## 2. Decisions (taken 22 October 2026) and what they still need
 
@@ -107,3 +107,18 @@ reach other workspaces' models.
 Independent double annotation now has a proposed
 [implementation plan](double-annotation.md); it is not implemented. Other
 product ideas are in [ideas.md](../ideas.md).
+
+## 6. Double annotation (v1 on staging)
+
+Implemented as described in section 0 of [the plan](double-annotation.md).
+
+- [ ] **Smoke test on staging** with the demo workspace (`DEMO_SEED`): sign in
+      as demo.amina; "Needs review" shortcut, review panel (use an answer,
+      accept single label, hand over a part), export "Confirmed records only"
+      and "Export details CSV", Progress "Double annotation" section; as a
+      labeller of a waiting record, check the blind view.
+- [ ] **Benchmark** the queue `double` filters and the labellers' own-part
+      status tabs on staging-like data with the runtime role.
+- [ ] **Full e2e suite** once on the merged code (only the new journey and the
+      accessibility spec were run before the merge).
+- [ ] **Decide** which deferred follow-ups (plan section 0) are wanted.

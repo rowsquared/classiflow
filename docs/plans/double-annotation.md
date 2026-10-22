@@ -1,7 +1,8 @@
 # Independent double annotation: implementation plan
 
-**Status:** v1 implemented on branch `feature/double-annotation` (not merged
-to `staging`); open items in the section 0 checklist. Section 0 is the simplified v1 contract and the
+**Status:** v1 implemented and merged into `staging` (22 October 2026); what
+is left is the open part of the section 0 checklist, also listed in
+[open items](open-items.md) section 6. Section 0 is the simplified v1 contract and the
 handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
@@ -93,14 +94,12 @@ viewers simply see only their own comments), kappa.
 - [x] Browser check, supervisor side (local demo data): dialog preview and start, queue filter and badges, record panel while waiting
 - [x] Labeller side (blind view, independence notice) and a real disagreement review: covered by the e2e journey
 
-**Local test setup used:** throwaway PostgreSQL 16 cluster on port 5499
-(`classiflow_dev` seeded with `scripts/seed-demo.ts`, `classiflow_test` for
-integration tests), dev server via the git-ignored `.claude/launch.json`
-entry `classiflow-double-local` on port 3003.
 - [x] Docs: AGENTS.md, docs/security.md (double-annotation table, access matrix), README, docs/ideas.md
 - [x] lint, format, production build, full integration suite (204 tests)
 - [ ] Benchmark the queue `double` filters and personal status tabs at scale (runtime role)
 - [ ] Full e2e suite run (only the new spec and `accessibility.spec.ts` were run)
+- [x] Demo seed: `scripts/seed-demo.ts` puts 35 records of Amina's team in every state (waiting, needs review, agreed, resolved)
+- [ ] Smoke test on staging with the demo workspace (sign in as demo.amina: Needs review shortcut, review panel, export options, progress section)
 - [ ] Product follow-ups (section 0 "deliberately deferred"), if wanted
 
 ## 1. Product contract
