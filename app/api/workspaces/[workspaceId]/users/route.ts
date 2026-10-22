@@ -1,6 +1,7 @@
+import { addExistingMember } from '@/lib/server/memberships'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { forbidden, workspaceRoute } from '@/lib/api-auth'
+import { workspaceRoute } from '@/lib/api-auth'
 import { listVisibleUsers, resolveSupervisor } from '@/lib/server/users'
 import { generateTemporaryPassword, setPassword, USERNAME_PATTERN } from '@/lib/passwords'
 import { audit } from '@/lib/audit'
@@ -36,11 +37,14 @@ const createSchema = z.object({
 // Adding an account that already exists elsewhere: platform admins only.
 // Workspace admins invite an email address instead (../invitations), so they
 // cannot probe which accounts exist or take over someone else's identity.
-const addExistingSchema = z.object({
-  existingUser: z.string().min(1).max(254),
-  role: roleSchema,
-  supervisorId: z.string().optional().nullable()
-})
+const addExistingSchema = z
+  .object({
+    existingUser: z.string().min(1).max(254).optional(),
+    existingUserId: z.string().min(1).max(100).optional(),
+    role: roleSchema,
+    supervisorId: z.string().optional().nullable()
+  })
+  .refine(value => !!value.existingUser !== !!value.existingUserId, 'Choose one user identifier')
 
 // GET: admins see every member (suspended ones too with ?includeSuspended=true),
 // supervisors themselves and their team.
@@ -55,44 +59,12 @@ export const GET = workspaceRoute(['admin', 'supervisor'], async (req, { user })
 export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
   const body = await req.json().catch(() => null)
 
-  if (body && typeof body === 'object' && 'existingUser' in body) {
-    if (actor.authority !== 'platform') {
-      return forbidden('Only platform admins can add an existing account to a workspace')
-    }
+  if (body && typeof body === 'object' && ('existingUser' in body || 'existingUserId' in body)) {
     const parsed = addExistingSchema.safeParse(body)
-    if (!parsed.success)
-      return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
-    const identifier = parsed.data.existingUser.trim().toLowerCase()
-    const account = await db().user.findFirst({
-      where: { OR: [{ username: identifier }, { email: identifier }] },
-      select: { id: true, username: true }
-    })
-    if (!account) return NextResponse.json({ error: 'No account with that username or email' }, { status: 404 })
-    const existing = await db().workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId: actor.workspaceId, userId: account.id } },
-      select: { id: true }
-    })
-    if (existing) return NextResponse.json({ error: 'Already a member of this workspace' }, { status: 400 })
-    const supervisorMembershipId = await resolveSupervisor(actor.workspaceId, null, parsed.data.supervisorId ?? null)
-    if (supervisorMembershipId !== null && typeof supervisorMembershipId === 'object')
-      return NextResponse.json(supervisorMembershipId, { status: 400 })
-    await db().workspaceMembership.create({
-      data: {
-        workspaceId: actor.workspaceId,
-        userId: account.id,
-        role: parsed.data.role,
-        supervisorMembershipId,
-        addedById: actor.id
-      }
-    })
-    await audit({
-      actorId: actor.id,
-      action: 'member.added',
-      entityType: 'user',
-      entityId: account.id,
-      payload: { username: account.username, role: parsed.data.role, existingAccount: true }
-    })
-    return NextResponse.json({ user: { id: account.id } }, { status: 201 })
+    if (!parsed.success) return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })
+    const result = await addExistingMember(actor, parsed.data)
+    if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ user: { id: result.userId } }, { status: result.status })
   }
 
   const parsed = createSchema.safeParse(body)

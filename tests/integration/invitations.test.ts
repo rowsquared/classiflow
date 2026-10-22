@@ -1,3 +1,5 @@
+import * as setupRoute from '@/app/api/invitations/setup/route'
+import { checkPassword } from '@/lib/passwords'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { User } from '@/lib/generated/prisma/client'
 import { settleBackgroundTasks } from '@/lib/after-response'
@@ -148,4 +150,55 @@ describe('workspace invitations', () => {
       enableMail(webhook.url)
     }
   })
+})
+
+it('sets up a new global identity only through a valid invitation and never replaces existing credentials', async () => {
+  await invite('new-invitee@test.local', 'supervisor')
+  const token = tokenFrom(webhook.mails.at(-1))
+  signInAs(null)
+  const setup = (value: string) =>
+    setupRoute.POST(
+      publicRequest('/api/invitations/setup', {
+        token: value,
+        name: 'New person',
+        password: 'violet-river-stone-482!'
+      })
+    )
+  const before = await prisma.user.count()
+  expect((await setup('invalid')).status).toBe(404)
+  expect(await prisma.user.count()).toBe(before)
+  expect((await setup(token)).status).toBe(200)
+  const person = await prisma.user.findUniqueOrThrow({
+    where: { email: 'new-invitee@test.local' },
+    include: { memberships: true }
+  })
+  expect(person.role).toBe('user')
+  expect(person.memberships).toHaveLength(1)
+  expect(person.memberships[0]).toMatchObject({ workspaceId: wsId(), role: 'supervisor' })
+  expect(await checkPassword(prisma, person.id, 'violet-river-stone-482!')).toBe(true)
+  expect((await setup(token)).status).toBe(404)
+  const existing = await createUser('labeller', { workspaceId: otherWorkspace })
+  await invite(existing.email)
+  const existingToken = tokenFrom(webhook.mails.at(-1))
+  const response = await setup(existingToken)
+  expect(response.status).toBe(409)
+})
+
+it('rolls back account setup when the inviter no longer administers the workspace', async () => {
+  const inviter = await createUser('admin')
+  await invite('revoked-authority@test.local', 'labeller', inviter)
+  const token = tokenFrom(webhook.mails.at(-1))
+  await prisma.workspaceMembership.update({
+    where: { workspaceId_userId: { workspaceId: wsId(), userId: inviter.id } },
+    data: { role: 'labeller' }
+  })
+  signInAs(null)
+  const response = await setupRoute.POST(
+    publicRequest('/api/invitations/setup', { token, name: 'Invited person', password: 'violet-river-stone-482!' })
+  )
+  expect(response.status).toBe(409)
+  expect(await prisma.user.findUnique({ where: { email: 'revoked-authority@test.local' } })).toBeNull()
+  expect(
+    await prisma.workspaceInvitation.findFirstOrThrow({ where: { email: 'revoked-authority@test.local' } })
+  ).toMatchObject({ status: 'pending' })
 })

@@ -71,8 +71,10 @@ Only when mail is configured (ENV_SETUP.md "Email"; `lib/mail/`).
   the answer is the same either way: a workspace admin cannot probe for
   accounts. Accepting needs the signed-in account whose email matches, and
   re-checks at that moment that the workspace is active and the inviter is
-  still its admin (or a platform admin). Inviting never creates, resets or mails
-  a password. A resend replaces the link; withdrawing kills it.
+  still its admin (or a platform admin). Inviting never resets or mails a password. A holder of a valid invitation
+  who has no account may choose a name and password at `/api/invitations/setup`;
+  the account, membership and invitation acceptance commit together. An existing
+  identity must sign in instead and its credentials are never replaced. A resend replaces the link; withdrawing kills it.
 - **Changing an email** follows the local-account rule below; the old address
   gets a notice and open links of the account end. The audit entry holds no
   addresses.
@@ -220,3 +222,14 @@ Open items are in [open items](plans/open-items.md). Cross-site mutation
 checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.
+
+## Global Team directory
+
+`/team` is platform-admin-only and `/accounts` redirects there. A person has
+one global identity identified by normalized email, and separate workspace
+memberships. Platform admins can edit those memberships from the user profile
+or enter a workspace's member page from `/workspaces`. Standard users cannot
+browse global accounts. New account forms may omit username; a random unique
+legacy alias is generated and email sign-in works as before. Adding an existing
+active member again is idempotent and never changes their role or password.
+Removed memberships must be explicitly restored; their IDs and history remain.

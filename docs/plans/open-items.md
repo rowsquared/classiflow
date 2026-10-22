@@ -82,6 +82,12 @@ reach other workspaces' models.
 
 ## 4. Optional code
 
+- [ ] **Global users, remaining slices** (global Team at `/team`, per-user
+      workspace access and invitation setup are done): reuse existing
+      accounts in the CSV member import instead of creating a second
+      identity path; server pagination and URL filters for the global user
+      list; a user picker for a new workspace's first admin; retire the
+      exception that lets workspace admins edit a member's global profile.
 - [ ] TanStack Table for the Team list (the hand-made table is small and
       tested).
 - [ ] Remove hand-written `useMemo`/`useCallback` where the React Compiler

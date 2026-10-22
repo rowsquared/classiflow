@@ -96,3 +96,14 @@ MIT. See `LICENSE`.
 ## Support
 
 Open a GitHub issue for bugs or feature requests.
+
+## Users and workspace access
+
+Platform administrators use **Team** to create global users by email and edit
+**Workspace access** in each user's profile. A person has one account and can
+be a supervisor in one workspace and a labeller in another, with separate
+supervisors. **Workspaces → Manage members** opens the corresponding local
+member list. Removing workspace access preserves the account and its history;
+disabling the account blocks access everywhere. Workspace invitations let
+existing people sign in or new people set up their account from the emailed
+link. Deployments without mail can hand over a temporary password instead.

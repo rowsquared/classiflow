@@ -128,7 +128,14 @@ test('team add-member dialog', async ({ page }) => {
 test('accounts', async ({ page }) => {
   await page.goto('/accounts')
   await expect(page.locator('tbody tr').first()).toBeVisible()
-  await expectAccessible(page, 'accounts')
+  await expect(page).toHaveURL(/\/team$/)
+  await expectAccessible(page, 'global team')
+  await page.getByRole('button', { name: 'Edit', exact: true }).first().click()
+  await expect(page.getByRole('heading', { name: 'Workspace access' })).toBeVisible()
+  await expectAccessible(page, 'global user workspace access')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Add user', exact: true }).click()
+  await expectAccessible(page, 'global add user')
 })
 
 test('forgot-password and set-password pages (signed out)', async ({ browser }) => {

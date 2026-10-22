@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
@@ -10,9 +11,15 @@ import { passwordProblem } from '@/lib/password-policy'
 // per workspace (/api/workspaces/[workspaceId]/users).
 
 const createSchema = z.object({
-  username: z.string().min(3).max(100).regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen'),
+  username: z
+    .string()
+    .min(3)
+    .max(100)
+    .regex(USERNAME_PATTERN, 'Use letters, digits, dot, underscore or hyphen')
+    .optional(),
   email: z
     .string()
+    .trim()
     .email()
     .max(254)
     .transform(e => e.toLowerCase()),
@@ -57,7 +64,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
   const { email, name, platformRole, tempPassword } = parsed.data
-  const displayUsername = parsed.data.username
+  const displayUsername = parsed.data.username ?? `user_${randomUUID().replaceAll('-', '')}`
   const username = displayUsername.toLowerCase()
   const weak = passwordProblem(tempPassword, { username, email, name })
   if (weak) return NextResponse.json({ error: `Temporary password: ${weak}`, field: 'tempPassword' }, { status: 400 })

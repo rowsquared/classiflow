@@ -19,11 +19,17 @@ export default async function WorkspacesPage() {
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
           {user.platformRole === 'admin' && (
-            <Link href="/accounts" className="text-sm text-indigo-600 hover:text-indigo-700">
-              Manage accounts
+            <Link href="/team" className="text-sm text-indigo-600 hover:text-indigo-700">
+              Manage users
             </Link>
           )}
         </div>
+        {user.platformRole === 'admin' && (
+          <nav aria-label="Team views" className="flex gap-4 my-6">
+            <Link href="/team">Users</Link>
+            <span aria-current="page">Workspaces</span>
+          </nav>
+        )}
         <p className="text-sm text-gray-600 mb-8">
           Each workspace is a separate classification exercise with its own records, taxonomies, members and roles.
         </p>
@@ -50,6 +56,11 @@ export default async function WorkspacesPage() {
                   </div>
                   {w.description && <p className="mt-1 text-sm text-gray-600">{w.description}</p>}
                 </Link>
+                {(user.platformRole === 'admin' || w.role === 'admin') && (
+                  <Link className="inline-block px-5 py-2 text-sm text-indigo-700" href={`/w/${w.id}/admin/team`}>
+                    Manage members
+                  </Link>
+                )}
               </li>
             ))}
           </ul>

@@ -1,5 +1,8 @@
+import { Prisma } from '@/lib/generated/prisma/client'
+import { hashPassword, setPasswordHash } from '@/lib/passwords'
+import { passwordProblem } from '@/lib/password-policy'
 import 'server-only'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual, randomUUID } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import type { CurrentUser, Role, SessionUser } from '@/lib/api-auth'
 import { audit } from '@/lib/audit'
@@ -12,7 +15,7 @@ import { resolveSupervisor } from '@/lib/server/users'
 // Workspace invitations (P4 / U7b): a workspace admin invites an email
 // address. The answer and the mail are the same whether or not an account uses
 // that address, so inviting reveals nothing about other accounts. Accepting
-// needs the signed-in account with that address and re-checks the inviter,
+// needs the matching account (or token-gated new-account setup) and re-checks the inviter,
 // the workspace and the role at that moment. Inviting never creates, resets
 // or mails a password.
 
@@ -246,70 +249,129 @@ export async function acceptInvitation(token: unknown, user: SessionUser): Promi
   }
   const parsed = parseToken(token)!
   try {
-    return await withWorkspace(
-      found.workspaceId,
-      async (): Promise<AcceptResult> => {
-        const [invitation] = await db().$queryRaw<
-          Array<{
-            status: string
-            expiresAt: Date
-            tokenHash: string | null
-            role: Role
-            supervisorMembershipId: string | null
-            invitedById: string | null
-          }>
-        >`SELECT status, "expiresAt", "tokenHash", role, "supervisorMembershipId", "invitedById"
-          FROM "WorkspaceInvitation" WHERE id = ${found.id} FOR UPDATE`
-        if (
-          !invitation ||
-          invitation.status !== 'pending' ||
-          invitation.expiresAt.getTime() < Date.now() ||
-          !secretMatches(invitation.tokenHash, parsed.secret)
-        ) {
-          return GONE
-        }
-        if (!(await inviterStillAdmin(found.workspaceId, invitation.invitedById))) {
-          return { ok: false, status: 409, error: 'This invitation is no longer valid. Ask an admin for a new one.' }
-        }
-        const membership = await db().workspaceMembership.findUnique({
-          where: { workspaceId_userId: { workspaceId: found.workspaceId, userId: user.id } },
-          select: { id: true, status: true }
-        })
-        if (membership?.status === 'active') {
-          await markAccepted(found.id, user.id)
-          return { ok: true, workspaceId: found.workspaceId }
-        }
-        const supervisorOk =
-          invitation.supervisorMembershipId &&
-          !(await validateSupervisor(found.workspaceId, membership?.id ?? null, invitation.supervisorMembershipId))
-        const data = {
-          role: invitation.role,
-          status: 'active' as const,
-          supervisorMembershipId: supervisorOk ? invitation.supervisorMembershipId : null,
-          addedById: invitation.invitedById
-        }
-        if (membership) {
-          await db().workspaceMembership.update({ where: { id: membership.id }, data })
-        } else {
-          await db().workspaceMembership.create({ data: { workspaceId: found.workspaceId, userId: user.id, ...data } })
-        }
-        await markAccepted(found.id, user.id)
-        await audit({
-          actorId: user.id,
-          action: membership ? 'member.reactivated' : 'member.added',
-          entityType: 'user',
-          entityId: user.id,
-          payload: { role: invitation.role, via: 'invitation', invitationId: found.id }
-        })
-        return { ok: true, workspaceId: found.workspaceId }
-      },
-      { write: true }
-    )
+    return await withWorkspace(found.workspaceId, () => acceptInside(found, parsed, user), { write: true })
   } catch (caught) {
     if (caught instanceof WorkspaceArchivedError) {
       return { ok: false, status: 409, error: 'This workspace is archived; the invitation cannot be accepted' }
     }
     throw caught
+  }
+}
+
+async function acceptInside(
+  found: NonNullable<Awaited<ReturnType<typeof findOpenInvitation>>>,
+  parsed: NonNullable<ReturnType<typeof parseToken>>,
+  user: SessionUser
+): Promise<AcceptResult> {
+  const [invitation] = await db().$queryRaw<
+    Array<{
+      status: string
+      expiresAt: Date
+      tokenHash: string | null
+      role: Role
+      supervisorMembershipId: string | null
+      invitedById: string | null
+    }>
+  >`SELECT status, "expiresAt", "tokenHash", role, "supervisorMembershipId", "invitedById"
+          FROM "WorkspaceInvitation" WHERE id = ${found.id} FOR UPDATE`
+  if (
+    !invitation ||
+    invitation.status !== 'pending' ||
+    invitation.expiresAt.getTime() < Date.now() ||
+    !secretMatches(invitation.tokenHash, parsed.secret)
+  ) {
+    return GONE
+  }
+  if (!(await inviterStillAdmin(found.workspaceId, invitation.invitedById))) {
+    return { ok: false, status: 409, error: 'This invitation is no longer valid. Ask an admin for a new one.' }
+  }
+  const membership = await db().workspaceMembership.findUnique({
+    where: { workspaceId_userId: { workspaceId: found.workspaceId, userId: user.id } },
+    select: { id: true, status: true }
+  })
+  if (membership?.status === 'active') {
+    await markAccepted(found.id, user.id)
+    return { ok: true, workspaceId: found.workspaceId }
+  }
+  const supervisorOk =
+    invitation.supervisorMembershipId &&
+    !(await validateSupervisor(found.workspaceId, membership?.id ?? null, invitation.supervisorMembershipId))
+  const data = {
+    role: invitation.role,
+    status: 'active' as const,
+    supervisorMembershipId: supervisorOk ? invitation.supervisorMembershipId : null,
+    addedById: invitation.invitedById
+  }
+  if (membership) {
+    await db().workspaceMembership.update({ where: { id: membership.id }, data })
+  } else {
+    await db().workspaceMembership.create({ data: { workspaceId: found.workspaceId, userId: user.id, ...data } })
+  }
+  await markAccepted(found.id, user.id)
+  await audit({
+    actorId: user.id,
+    action: membership ? 'member.reactivated' : 'member.added',
+    entityType: 'user',
+    entityId: user.id,
+    payload: { role: invitation.role, via: 'invitation', invitationId: found.id }
+  })
+  return { ok: true, workspaceId: found.workspaceId }
+}
+
+/** Only a valid invitation can create an account; never replace an existing identity's credentials. */
+export async function setupInvitedAccount(token: unknown, name: string, password: string): Promise<AcceptResult> {
+  const found = await findOpenInvitation(token)
+  if (!found) return GONE
+  const username = `user_${randomUUID().replaceAll('-', '')}`
+  const weak = passwordProblem(password, { username, email: found.email, name })
+  if (weak) return { ok: false, status: 400, error: weak }
+  const hash = await hashPassword(password)
+  try {
+    return await withWorkspace(
+      found.workspaceId,
+      async () => {
+        // Serialize setup for this email across workspaces. Uniqueness also protects other creators.
+        await db()
+          .$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('classiflow.identity.' || ${found.email}))`
+        const existing = await db().user.findUnique({ where: { email: found.email }, select: { id: true } })
+        if (existing)
+          return {
+            ok: false as const,
+            status: 409,
+            error: 'An account already uses this email. Sign in to accept the invitation.'
+          }
+        // Validate acceptance before creating anything. A thrown refusal rolls back the new account too.
+        const user = await db().user.create({
+          data: {
+            username,
+            displayUsername: username,
+            email: found.email,
+            name,
+            mustResetPassword: false,
+            invitedAt: new Date(),
+            invitationAcceptedAt: new Date()
+          },
+          select: { id: true }
+        })
+        await setPasswordHash(db(), user.id, hash)
+        const result = await acceptInside(found, parseToken(token)!, { id: user.id, platformRole: 'user' })
+        if (!result.ok) throw new InvitationSetupError(result)
+        return result
+      },
+      { write: true }
+    )
+  } catch (error) {
+    if (error instanceof InvitationSetupError) return error.result
+    if (error instanceof WorkspaceArchivedError) return { ok: false, status: 409, error: 'This workspace is archived' }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+      return { ok: false, status: 409, error: 'An account already uses this email. Sign in to accept the invitation.' }
+    throw error
+  }
+}
+
+class InvitationSetupError extends Error {
+  constructor(readonly result: AcceptResult) {
+    super('Invitation setup refused')
   }
 }
 

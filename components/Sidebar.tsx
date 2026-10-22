@@ -148,7 +148,7 @@ export default function Sidebar() {
     },
     {
       icon: <Users className="w-full h-full" strokeWidth={1.5} />,
-      label: 'Team',
+      label: 'Workspace members',
       href: '/admin/team',
       roles: ['admin']
     },
@@ -282,6 +282,12 @@ export default function Sidebar() {
 
       {/* Navigation Items */}
       <nav className="flex-1 py-4" aria-label="Workspace pages">
+        {session?.user.role === 'admin' && (
+          <Link href="/team" className="flex items-center gap-4 px-5 py-3 text-sm text-gray-700 hover:bg-gray-100">
+            <Users className="w-5 h-5" aria-hidden="true" />
+            {!collapsed && 'Team'}
+          </Link>
+        )}
         {visibleNavItems.map(item => {
           const active = isActive(item.href)
           return (
@@ -374,6 +380,16 @@ export default function Sidebar() {
                     All workspaces
                   </Link>
                 </DropdownMenu.Item>
+                {session?.user.role === 'admin' && (
+                  <DropdownMenu.Item asChild>
+                    <Link
+                      href="/team"
+                      className="block px-4 py-2 text-sm text-gray-700 outline-none data-[highlighted]:bg-gray-100"
+                    >
+                      Team - global users
+                    </Link>
+                  </DropdownMenu.Item>
+                )}
                 <DropdownMenu.Separator className="my-1 h-px bg-gray-100" />
                 <DropdownMenu.Item
                   onSelect={handleLogout}

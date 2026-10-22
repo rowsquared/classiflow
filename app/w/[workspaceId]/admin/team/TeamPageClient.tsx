@@ -113,7 +113,7 @@ export default function TeamPageClient({ initialUsers, initialInvitations, mailE
 
   return (
     <div className="flex flex-col h-screen">
-      <PageHeader title="Team" />
+      <PageHeader title={`Members of ${workspace?.name ?? 'workspace'}`} />
 
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
         <div className="flex flex-wrap items-end gap-3">

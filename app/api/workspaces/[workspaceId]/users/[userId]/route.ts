@@ -52,6 +52,8 @@ export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor
     select: { id: true, role: true, status: true, supervisorMembershipId: true }
   })
   if (!membership) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  if (status === 'active' && (await db().user.findUnique({ where: { id: userId }, select: { banned: true } }))?.banned)
+    return NextResponse.json({ error: 'Enable this account before granting workspace access' }, { status: 409 })
 
   const losesAdmin =
     membership.role === 'admin' &&

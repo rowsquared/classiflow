@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import WorkspaceAccess from '@/components/team/WorkspaceAccess'
 import Modal from '@/components/Modal'
 import QueryProvider from '@/components/QueryProvider'
 import { fetchJson } from '@/lib/query/fetch'
@@ -22,7 +23,7 @@ type Account = {
 }
 
 const input =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
+  'w-full px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900'
 
 // /accounts is outside any workspace, so it has its own query cache.
 export default function AccountsClient({ currentUserId }: { currentUserId: string }) {
@@ -36,7 +37,9 @@ export default function AccountsClient({ currentUserId }: { currentUserId: strin
 function Accounts({ currentUserId }: { currentUserId: string }) {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
-  const [editing, setEditing] = useState<Account | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [workspaceFilter, setWorkspaceFilter] = useState('')
 
   const {
     data,
@@ -47,6 +50,20 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
     queryFn: ({ signal }) => fetchJson<{ users: Account[] }>('/api/users', { signal })
   })
   const accounts = data?.users ?? []
+  const editing = accounts.find(a => a.id === editingId) ?? null
+  const shown = accounts.filter(
+    a =>
+      (!search || [a.name, a.email, a.username].some(v => v.toLowerCase().includes(search.toLowerCase()))) &&
+      (!workspaceFilter ||
+        (workspaceFilter === 'none'
+          ? a.platformRole !== 'admin' && !a.memberships.some(m => m.status === 'active')
+          : a.platformRole === 'admin' ||
+            a.memberships.some(m => m.workspace.id === workspaceFilter && m.status === 'active')))
+  )
+  const workspaceOptions = [
+    ...new Map(accounts.flatMap(a => a.memberships.map(m => [m.workspace.id, m.workspace] as const))).values()
+  ]
+
   const error = isError ? 'Could not load the accounts.' : null
   const load = () => queryClient.invalidateQueries({ queryKey: queryKeys.accounts() })
 
@@ -59,6 +76,7 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || 'The change was refused')
     await load()
+    return data
   }
 
   return (
@@ -66,20 +84,20 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
       <div className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Team</h1>
             <p className="text-sm text-gray-600">
-              Sign-in accounts across all workspaces. Workspace roles are set on each workspace&apos;s Team page.
+              Global users. Each person has one account and a separate role in each workspace.
             </p>
           </div>
           <div className="flex gap-3">
             <Link
               href="/workspaces"
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white"
+              className="px-4 py-2 border border-gray-500 rounded-lg text-gray-700 hover:bg-white"
             >
               Workspaces
             </Link>
             <button onClick={() => setCreating(true)} className={buttonClass('primary')}>
-              New account
+              Add user
             </button>
           </div>
         </div>
@@ -90,6 +108,29 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
           </div>
         )}
 
+        <nav aria-label="Team views" className="flex gap-4 mb-6">
+          <span aria-current="page">Users</span>
+          <Link href="/workspaces">Workspaces</Link>
+        </nav>
+        <div className="flex gap-3 mb-4">
+          <label className="flex-1 text-sm text-gray-700">
+            Search users
+            <input className={input} value={search} onChange={e => setSearch(e.target.value)} type="search" />
+          </label>
+          <label className="text-sm text-gray-700">
+            Workspace access
+            <select className={input} value={workspaceFilter} onChange={e => setWorkspaceFilter(e.target.value)}>
+              <option value="">All users</option>
+              <option value="none">No workspace access</option>
+              {workspaceOptions.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {loading && <p role="status">Loading users - </p>}
         <div className={`${panelClass} overflow-x-auto`}>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200 text-left text-sm font-medium text-gray-600">
@@ -104,7 +145,7 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-900">
-              {accounts.map(a => (
+              {shown.map(a => (
                 <tr key={a.id} className={a.banned ? 'opacity-60' : ''}>
                   <td className="px-4 py-3">
                     {a.username}
@@ -114,6 +155,9 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
                   <td className="px-4 py-3 text-gray-600">{a.email}</td>
                   <td className="px-4 py-3">{a.platformRole === 'admin' ? 'Platform admin' : 'User'}</td>
                   <td className="px-4 py-3 text-gray-600">
+                    {a.platformRole === 'admin' && (
+                      <span className="block">All workspaces (platform administrator)</span>
+                    )}
                     {a.memberships.length === 0
                       ? '—'
                       : a.memberships.map(m => (
@@ -127,16 +171,16 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
                     {a.lastLogin ? new Date(a.lastLogin).toLocaleDateString() : 'Never'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditing(a)} className="text-indigo-700 hover:text-indigo-800">
+                    <button onClick={() => setEditingId(a.id)} className="text-indigo-700 hover:text-indigo-800">
                       Edit
                     </button>
                   </td>
                 </tr>
               ))}
-              {!loading && accounts.length === 0 && (
+              {!loading && shown.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-gray-600">
-                    No accounts.
+                    No users match these filters.
                   </td>
                 </tr>
               )}
@@ -149,23 +193,33 @@ function Accounts({ currentUserId }: { currentUserId: string }) {
         <CreateAccount
           onClose={() => setCreating(false)}
           onSave={async body => {
-            await send('/api/users', 'POST', body)
+            const email = (body as { email: string }).email.trim().toLowerCase()
+            const existing = accounts.find(a => a.email === email)
+            if (existing) {
+              setCreating(false)
+              setEditingId(existing.id)
+              return
+            }
+            const result = await send('/api/users', 'POST', body)
             setCreating(false)
+            setEditingId(result.user.id)
           }}
         />
       )}
       {editing && (
         <EditAccount
+          key={editing.id}
           account={editing}
+          onMembershipChanged={load}
           isSelf={editing.id === currentUserId}
-          onClose={() => setEditing(null)}
+          onClose={() => setEditingId(null)}
           onSave={async body => {
             await send(`/api/users/${editing.id}`, 'PUT', body)
-            setEditing(null)
+            setEditingId(null)
           }}
           onDelete={async () => {
             await send(`/api/users/${editing.id}`, 'DELETE')
-            setEditing(null)
+            setEditingId(null)
           }}
         />
       )}
@@ -191,7 +245,7 @@ function useSubmit(action: () => Promise<void>) {
 }
 
 function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body: unknown) => Promise<void> }) {
-  const [form, setForm] = useState({ username: '', email: '', name: '', platformRole: 'user', tempPassword: '' })
+  const [form, setForm] = useState({ email: '', name: '', platformRole: 'user', tempPassword: '' })
   const { error, busy, run } = useSubmit(() => onSave(form))
   const field = (key: keyof typeof form, label: string, type = 'text') => (
     <div>
@@ -209,7 +263,7 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
     </div>
   )
   return (
-    <Modal label="New account" onClose={onClose}>
+    <Modal label="Add user" onClose={onClose}>
       <form
         onSubmit={e => {
           e.preventDefault()
@@ -217,13 +271,12 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
         }}
         className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}
       >
-        <h2 className="text-xl font-semibold text-gray-900">New account</h2>
+        <h2 className="text-xl font-semibold text-gray-900">Add user</h2>
         {error && (
           <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm">
             {error}
           </div>
         )}
-        {field('username', 'Username')}
         {field('email', 'Email', 'email')}
         {field('name', 'Name')}
         {field('tempPassword', 'Temporary password (min. 10)', 'password')}
@@ -241,12 +294,14 @@ function CreateAccount({ onClose, onSave }: { onClose: () => void; onSave: (body
             <option value="admin">Platform admin</option>
           </select>
         </div>
-        <p className="text-xs text-gray-500">Add the account to workspaces from their Team pages.</p>
+        <p className="text-xs text-gray-500">
+          After creating the user, add workspace access in their profile. They can sign in with their email.
+        </p>
         <div className="flex gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
+            className="flex-1 px-4 py-2 border border-gray-500 rounded-lg text-gray-700"
           >
             Cancel
           </button>
@@ -264,19 +319,23 @@ function EditAccount({
   isSelf,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  onMembershipChanged
 }: {
   account: Account
   isSelf: boolean
   onClose: () => void
   onSave: (body: unknown) => Promise<void>
+  onMembershipChanged: () => Promise<unknown>
   onDelete: () => Promise<void>
 }) {
+  const [email, setEmail] = useState(account.email)
   const [name, setName] = useState(account.name)
   const [platformRole, setPlatformRole] = useState(account.platformRole)
   const [newPassword, setNewPassword] = useState('')
   const save = useSubmit(() =>
     onSave({
+      ...(email !== account.email ? { email } : {}),
       ...(name !== account.name ? { name } : {}),
       ...(platformRole !== account.platformRole ? { platformRole } : {}),
       ...(newPassword ? { newPassword } : {})
@@ -290,8 +349,12 @@ function EditAccount({
   const error = save.error || ban.error || remove.error || signOutEverywhere.error
   return (
     <Modal label={`Edit ${account.username}`} onClose={onClose}>
-      <div className={`${dialogPanelClass} p-6 max-w-md w-full mx-4 space-y-4`}>
-        <h2 className="text-xl font-semibold text-gray-900">{account.username}</h2>
+      <div className={`${dialogPanelClass} p-6 max-w-2xl w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto`}>
+        <h2 className="text-xl font-semibold text-gray-900">{account.name}</h2>
+        <p className="text-sm text-gray-600">
+          {account.email} - Profile and password changes apply across all workspaces.
+        </p>
+        <WorkspaceAccess user={account} onChanged={onMembershipChanged} />
         {error && (
           <div role="alert" className="p-3 rounded bg-red-50 text-red-700 text-sm">
             {error}
@@ -305,6 +368,17 @@ function EditAccount({
           className="space-y-4"
         >
           <div>
+            <label htmlFor="edit-email" className="block text-sm font-medium text-gray-700 mb-1">
+              Email
+            </label>
+            <input
+              id="edit-email"
+              type="email"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className={input}
+            />
             <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 mb-1">
               Name
             </label>
@@ -345,7 +419,7 @@ function EditAccount({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
+              className="flex-1 px-4 py-2 border border-gray-500 rounded-lg text-gray-700"
             >
               Cancel
             </button>
@@ -368,7 +442,7 @@ function EditAccount({
               disabled={ban.busy}
               className="flex-1 px-4 py-2 border border-amber-300 text-amber-800 rounded-lg hover:bg-amber-50"
             >
-              {account.banned ? 'Lift ban' : 'Ban (sign out everywhere)'}
+              {account.banned ? 'Enable account' : 'Disable account everywhere'}
             </button>
             <button
               onClick={remove.run}

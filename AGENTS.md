@@ -95,6 +95,16 @@ Browser: React client components
   there when you add one. White text needs `indigo-600` or darker, body text
   `gray-600` or darker on white; every input and select has a label.
 
+## Global user management
+
+Platform admins manage global users at `/team` (`/accounts` redirects there).
+The user editor manages workspace roles and supervisors through the existing
+workspace member APIs; `components/team/WorkspaceAccess.tsx` is the global
+membership editor and `lib/server/memberships.ts` owns attaching existing users.
+New global users can be created with email and name (a legacy username is generated).
+Workspace invitations support token-gated new-account setup at
+`/api/invitations/setup`; public unrestricted sign-up remains disabled.
+
 ## Where to look
 
 | Area | Entry points and responsibilities |

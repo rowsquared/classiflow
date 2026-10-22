@@ -199,8 +199,8 @@ export default function CreateMemberModal({ supervisors, canAddExisting, mailEna
                 className={input}
               />
               <p className="mt-1 text-xs text-gray-500">
-                For people who already have a classiflow account (or will get one): they accept the invitation signed in
-                with the account that uses this address.
+                People can sign in with this email or create their account from the invitation. Their role applies only
+                to this workspace.
               </p>
             </div>
           ) : mode === 'existing' ? (
