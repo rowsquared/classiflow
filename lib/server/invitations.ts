@@ -84,7 +84,25 @@ export async function inviteToWorkspace(
   if (member) return { error: 'Already a member of this workspace' }
   const supervisor = await resolveSupervisor(actor.workspaceId, null, input.supervisorId)
   if (supervisor !== null && typeof supervisor === 'object') return supervisor
+  const { id, mailId } = await createInvitation(actor, {
+    email: input.email,
+    role: input.role,
+    supervisorMembershipId: supervisor
+  })
+  deliverSoon([mailId])
+  const invitation = await db().workspaceInvitation.findUniqueOrThrow({ where: { id }, select: invitationSelect })
+  return { invitation: toInvitation(invitation) }
+}
 
+/**
+ * Creates or renews the invitation for `email` and queues its mail, inside
+ * the workspace transaction. The caller checks membership and the supervisor
+ * and delivers the mail after the commit (`deliverSoon`).
+ */
+export async function createInvitation(
+  actor: CurrentUser,
+  input: { email: string; role: Role; supervisorMembershipId: string | null }
+): Promise<{ id: string; mailId: string }> {
   const expiresAt = new Date(Date.now() + mailConfig().invitationHours * 3600_000)
   const existing = await db().workspaceInvitation.findFirst({
     where: { workspaceId: actor.workspaceId, email: input.email, status: 'pending' },
@@ -92,7 +110,7 @@ export async function inviteToWorkspace(
   })
   const data = {
     role: input.role,
-    supervisorMembershipId: supervisor,
+    supervisorMembershipId: input.supervisorMembershipId,
     invitedById: actor.id,
     expiresAt,
     tokenHash: null
@@ -116,12 +134,7 @@ export async function inviteToWorkspace(
     entityId: row.id,
     payload: { role: input.role, renewed: !!existing, authority: actor.authority }
   })
-  deliverSoon([mailId])
-  const invitation = await db().workspaceInvitation.findUniqueOrThrow({
-    where: { id: row.id },
-    select: invitationSelect
-  })
-  return { invitation: toInvitation(invitation) }
+  return { id: row.id, mailId }
 }
 
 export async function revokeInvitation(actor: CurrentUser, invitationId: string): Promise<boolean> {

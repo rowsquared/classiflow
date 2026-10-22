@@ -8,9 +8,10 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 
 /**
  * CSV member import (workspace admins). `?dryRun=true` (default) validates and
- * returns every row with its errors; nothing is written or mailed. With
- * `dryRun=false` the same file is validated again and every account is
- * created in one transaction, or none. The form field `importKey` identifies
+ * returns every row with its outcome (lib/server/member-import.ts) and its
+ * errors; nothing is written or mailed. With `dryRun=false` the same file is
+ * validated again and every row is applied in one transaction, or none.
+ * Restoring removed members needs the form field `confirmRestore=true`. The form field `importKey` identifies
  * the commit: sending it again returns the first outcome. Generated passwords
  * (access `generate`) appear only in that first commit response.
  *
@@ -38,7 +39,7 @@ export const POST = workspaceRoute(
       if (stored) return NextResponse.json({ ok: true, replayed: true, ...stored }, { headers: NO_STORE })
     }
 
-    const prepared = await prepareImport(user.workspaceId, await file.text())
+    const prepared = await prepareImport(user, await file.text())
     if (prepared.fileErrors.length) {
       return NextResponse.json({ ok: false, fileErrors: prepared.fileErrors }, { status: 400 })
     }
@@ -50,7 +51,8 @@ export const POST = workspaceRoute(
       const result = await commitImport(user, {
         importKey: importKey as string,
         fileName: file.name.slice(0, 255),
-        rows: prepared.rows
+        rows: prepared.rows,
+        confirmRestore: form?.get('confirmRestore') === 'true'
       })
       if (!result) {
         const stored = await importOutcome(user.workspaceId, { importKey: importKey as string })

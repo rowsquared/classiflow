@@ -41,6 +41,7 @@ const eslintConfig = [
       'lib/mail/outbox.ts',
       'lib/rate-limit.ts',
       'lib/server/accounts.ts',
+      'lib/server/global-users.ts',
       'lib/server/invitations.ts',
       'lib/server/member-import.ts',
       'lib/server/workspaces.ts',

@@ -9,6 +9,7 @@ import { audit } from '@/lib/audit'
 import { passwordProblem } from '@/lib/password-policy'
 import { changeEmail } from '@/lib/server/accounts'
 import { deliverSoon } from '@/lib/mail/outbox'
+import { getGlobalUser } from '@/lib/server/global-users'
 
 // Platform administration of one global account: name, email, platform role,
 // temporary password, ban, deletion. Workspace roles live on memberships.
@@ -30,6 +31,14 @@ const updateSchema = z.object({
 })
 
 type Params = { params: Promise<{ userId: string }> }
+
+export async function GET(_req: Request, { params }: Params) {
+  const { error } = await requirePlatformAdmin()
+  if (error) return error
+  const user = await getGlobalUser((await params).userId)
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  return NextResponse.json({ user })
+}
 
 export async function PUT(req: Request, { params }: Params) {
   const { user: actor, error } = await requirePlatformAdmin()

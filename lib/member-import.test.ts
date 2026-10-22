@@ -12,8 +12,17 @@ describe('parseMemberCsv', () => {
     expect(result.rows.map(r => [r.username, r.access, r.supervisor])).toEqual([
       ['maria', 'invite', null],
       ['ahmed', 'email_password', 'maria'],
-      ['wei', 'generate', 'maria']
+      ['wei', 'generate', 'maria'],
+      // An existing account: username and access stay empty.
+      ['', null, 'maria']
     ])
+  })
+
+  it('leaves username, name and access to the server, which needs them only for new accounts', () => {
+    const result = parse(['a1x,a1@x.org,A,supervisor,,generate,', ',a2@x.org,,labeller,a1x,,'].join('\n'))
+    expect(result.errors).toEqual([])
+    expect(result.rows[1]).toMatchObject({ username: '', name: '', access: null, supervisor: 'a1x' })
+    expect(creationOrder([...result.rows].reverse()).map(r => r.line)).toEqual([2, 3])
   })
 
   it('handles a BOM, CRLF, quoted commas and multi-line cells with correct line numbers', () => {
@@ -23,7 +32,7 @@ describe('parseMemberCsv', () => {
     expect(result.rows[0]!.name).toBe('Rossi, Ana')
     expect(result.rows.map(r => r.line)).toEqual([2, 3, 5])
     expect(result.errors.every(e => e.line === 5)).toBe(true)
-    expect(result.errors.map(e => e.field)).toEqual(expect.arrayContaining(['username', 'email', 'name', 'role']))
+    expect(result.errors.map(e => e.field)).toEqual(expect.arrayContaining(['email', 'role']))
   })
 
   it('lowercases usernames and emails and keeps passwords untrimmed', () => {

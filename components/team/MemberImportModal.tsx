@@ -25,7 +25,9 @@ type PreviewRow = {
   name: string
   role: string
   supervisor: string | null
-  access: string
+  access: string | null
+  outcome: 'create' | 'add' | 'restore' | 'unchanged' | 'invitation'
+  note: string | null
 }
 type RowError = { line: number; field: string; message: string }
 type ResultRow = {
@@ -41,12 +43,24 @@ const ACCESS_LABEL: Record<string, string> = {
   invite: 'invitation link by email',
   email_password: 'temporary password by email',
   generate: 'temporary password shown here',
-  password: 'password from the file'
+  password: 'password from the file',
+  add: 'existing account added',
+  restore: 'access restored',
+  unchanged: 'already a member, unchanged',
+  invitation: 'invitation to the workspace by email'
+}
+
+const OUTCOME_LABEL: Record<PreviewRow['outcome'], string> = {
+  create: 'New account',
+  add: 'Add existing account',
+  restore: 'Restore access',
+  unchanged: 'No change',
+  invitation: 'Invite'
 }
 
 /**
- * CSV member import: preview (nothing is written), then create every member
- * in one go. Generated passwords are shown once here and can be downloaded as
+ * CSV member import: preview each row's outcome (nothing is written), then
+ * apply every row in one go. Rows whose email has an account reuse it. Generated passwords are shown once here and can be downloaded as
  * a CSV built in the browser; the server keeps none of them.
  */
 export default function MemberImportModal({ mailEnabled, onClose, onImported }: Props) {
@@ -59,6 +73,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
   const [importKey, setImportKey] = useState<string>('')
   const [result, setResult] = useState<{ importId: string; rows: ResultRow[]; replayed?: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState(false)
 
   const send = async (dryRun: boolean) => {
     if (!file || busy) return
@@ -68,6 +83,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
       const form = new FormData()
       form.set('file', file)
       if (!dryRun) form.set('importKey', importKey)
+      if (!dryRun && confirmRestore) form.set('confirmRestore', 'true')
       const res = await fetch(workspaceApi(`/users/import?dryRun=${dryRun}`), { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
       if (data.fileErrors) {
@@ -78,7 +94,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
       setFileErrors([])
       if (data.rows && data.errors) setPreview({ rows: data.rows, errors: data.errors })
       if (!res.ok) {
-        setError(data.error || (data.errors?.length ? 'Some rows have problems; nothing was created' : 'Import failed'))
+        setError(data.error || (data.errors?.length ? 'Some rows have problems; nothing was changed' : 'Import failed'))
         return
       }
       if (dryRun) {
@@ -123,11 +139,12 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
   }
   const close = () => {
     if (!busy) {
-      if (result) onImported(`${result.rows.length} members imported`)
+      if (result) onImported(`${result.rows.length} ${result.rows.length === 1 ? 'row' : 'rows'} imported`)
       else onClose()
     }
   }
 
+  const restoring = preview?.rows.filter(r => r.outcome === 'restore').length ?? 0
   const errorsByLine = new Map<number, RowError[]>()
   for (const e of preview?.errors ?? []) errorsByLine.set(e.line, [...(errorsByLine.get(e.line) ?? []), e])
 
@@ -141,7 +158,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
             <p className="text-sm text-gray-700">
               {result.replayed
                 ? 'This file was already imported; nothing new was created.'
-                : `${result.rows.length} members created.`}
+                : `${result.rows.length} ${result.rows.length === 1 ? 'row' : 'rows'} imported.`}
             </p>
             {error && (
               <p role="alert" className="text-sm text-red-700">
@@ -159,8 +176,8 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                 <thead className="bg-gray-50 text-left text-xs text-gray-500">
                   <tr>
                     <th className="px-3 py-2">Line</th>
-                    <th className="px-3 py-2">Username</th>
-                    <th className="px-3 py-2">Access</th>
+                    <th className="px-3 py-2">Username or email</th>
+                    <th className="px-3 py-2">Result</th>
                     <th className="px-3 py-2">Email</th>
                     <th className="px-3 py-2">Password</th>
                   </tr>
@@ -208,10 +225,11 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
         ) : (
           <>
             <p className="text-sm text-gray-700">
-              One row per new member with the columns{' '}
-              <code>username, email, name, role, supervisor, access, password</code>. <code>access</code> is{' '}
-              <code>generate</code> (a temporary password shown here), <code>password</code> (the <code>password</code>{' '}
-              column)
+              One row per person with the columns <code>username, email, name, role, supervisor, access, password</code>
+              . If the email already has an account, that account is reused: leave <code>username</code>,{' '}
+              <code>name</code>, <code>access</code> and <code>password</code> empty; its profile and password are not
+              changed. For new accounts, <code>access</code> is <code>generate</code> (a temporary password shown here),{' '}
+              <code>password</code> (the <code>password</code> column)
               {mailEnabled ? (
                 <>
                   , <code>invite</code> (a link to choose a password) or <code>email_password</code> (a temporary
@@ -220,8 +238,8 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
               ) : (
                 '; email is off, so invite and email_password cannot be used'
               )}
-              . <code>supervisor</code> is the username of an admin or supervisor here or in the file. Existing accounts
-              are never changed; at most 500 rows.
+              . <code>supervisor</code> is the username of an admin or supervisor here or in the file. Members already
+              here keep their role; at most 500 rows.
             </p>
             <a href={workspaceApi('/users/import/template')} className="text-sm text-indigo-700 underline">
               Download template
@@ -240,6 +258,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                   setPreview(null)
                   setFileErrors([])
                   setError(null)
+                  setConfirmRestore(false)
                 }}
                 className="text-sm text-gray-700"
               />
@@ -266,14 +285,15 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                 <p className="text-sm text-gray-700">
                   {preview.rows.length} rows,{' '}
                   {preview.errors.length === 0 ? 'no problems' : `${errorsByLine.size} with problems`}.
-                  {preview.rows.some(r => r.role === 'admin') && ' Includes new admins.'}
+                  {preview.rows.some(r => r.role === 'admin' && r.outcome !== 'unchanged') && ' Includes new admins.'}
                 </p>
                 <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-80">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-left text-xs text-gray-500">
                       <tr>
                         <th className="px-3 py-2">Line</th>
-                        <th className="px-3 py-2">Username</th>
+                        <th className="px-3 py-2">Person</th>
+                        <th className="px-3 py-2">Outcome</th>
                         <th className="px-3 py-2">Role</th>
                         <th className="px-3 py-2">Supervisor</th>
                         <th className="px-3 py-2">Access</th>
@@ -284,13 +304,19 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                       {preview.rows.map(r => (
                         <tr key={r.line} className={errorsByLine.has(r.line) ? 'bg-red-50' : ''}>
                           <td className="px-3 py-2 text-gray-500">{r.line}</td>
-                          <td className="px-3 py-2">{r.username}</td>
+                          <td className="px-3 py-2">{r.username || r.email}</td>
+                          <td className="px-3 py-2">
+                            {OUTCOME_LABEL[r.outcome]}
+                            {r.note && <span className="block text-xs text-gray-600">{r.note}</span>}
+                          </td>
                           <td className="px-3 py-2 capitalize">{r.role}</td>
                           <td className="px-3 py-2 text-gray-600">
                             {r.supervisor ??
                               (r.role === 'labeller' ? <span className="text-amber-700">none</span> : '—')}
                           </td>
-                          <td className="px-3 py-2 text-gray-600">{ACCESS_LABEL[r.access] ?? r.access}</td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {r.outcome === 'create' && r.access ? (ACCESS_LABEL[r.access] ?? r.access) : '—'}
+                          </td>
                           <td className="px-3 py-2 text-red-700">
                             {(errorsByLine.get(r.line) ?? []).map(e => `${e.field}: ${e.message}`).join('; ')}
                           </td>
@@ -299,6 +325,17 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
                     </tbody>
                   </table>
                 </div>
+                {restoring > 0 && preview.errors.length === 0 && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={confirmRestore}
+                      onChange={e => setConfirmRestore(e.target.checked)}
+                    />
+                    Restore access for {restoring} removed {restoring === 1 ? 'member' : 'members'}, with the role in
+                    the file
+                  </label>
+                )}
               </div>
             )}
 
@@ -314,11 +351,11 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
               {preview && preview.errors.length === 0 && importKey ? (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || (restoring > 0 && !confirmRestore)}
                   onClick={() => send(false)}
                   className={buttonClass('primary', 'md', 'flex-1')}
                 >
-                  Create {preview.rows.length} members
+                  Import {preview.rows.length} {preview.rows.length === 1 ? 'row' : 'rows'}
                 </button>
               ) : (
                 <button
