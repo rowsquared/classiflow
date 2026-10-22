@@ -59,23 +59,17 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
       workspace unless restricted; reporting time zone per workspace,
       deployment default UTC; mail outbox kept 90 days.
 
-## 3. Taxomind (release gate for AI)
+## 3. AI on staging
 
-- [ ] **Namespace isolation verified live:** two namespaces with one
-      credential and identical taxonomy keys must not see each other's models.
-      Until then give independent workspaces separate Taxomind credentials or
-      instances (or open a service only to one workspace: "Access" on the
-      Workspaces page).
-- [ ] **Idempotent start** (W07): Taxomind should return the existing job for
-      a repeated `(sourceSlug, batchId)` on `/label` (and `/learn` needs a batch
-      id). Until then an instance that dies between `POST /label` and saving
-      the job id makes recovery send the batch again.
-- [ ] **Taxonomy delete action** in Taxomind; then add it here as a job kind
-      (deleting a taxonomy leaves its model in Taxomind until a sync replaces
-      it).
-- [ ] **End-to-end run** of sync, labeling and learning against a real
-      Taxomind on staging (so far only the contract-checked stub). Taxomind
-      receives `x-request-id` on every call; check its logs show it.
+- [ ] **Try AI end to end** on staging: approve the Taxomind URL, have a
+      platform admin enter the token in a workspace's AI settings, then sync,
+      label and learn (so far only the contract-checked stub has been used).
+      Check Taxomind's logs show the `x-request-id` classiflow sends.
+
+Longer-term Taxomind work (tokens bound to namespaces, idempotent starts,
+taxonomy delete) is in [Taxomind: isolation and robustness](taxomind.md). It
+is only needed before offering AI to an organisation whose admins should not
+reach other workspaces' models.
 
 ## 4. Optional code
 
