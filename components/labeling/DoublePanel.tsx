@@ -1,10 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import Combobox from '@/components/ui/Combobox'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
+import { queryKeys } from '@/lib/query/keys'
+import { fetchJson } from '@/lib/query/fetch'
 import { buttonClass, badgeClass, type BadgeTone } from '@/components/ui/styles'
 import { OUTCOME_LABELS, firstDifferingLevel, type DoubleRecordView, type OutcomeState } from '@/lib/double-annotation'
 
 type ManagerView = Extract<DoubleRecordView, { mode: 'manager' }>
+
+/** Manager commands (POST /sentences/[id]/double-annotation). */
+export type DoubleCommand =
+  { action: 'accept_single' | 'stop'; reason: string } | { action: 'reassign'; position: number; userId: string }
 type Labels = Array<{ level: number; nodeCode: string; nodeLabel?: string | null }>
 
 const TONES: Record<OutcomeState, BadgeTone> = {
@@ -36,7 +45,7 @@ export default function DoublePanel({
   taxonomyKey: string
   busy: boolean
   onUseAnswer: (labels: Labels) => void
-  onCommand: (body: { action: 'accept_single' | 'stop'; reason: string }) => Promise<boolean>
+  onCommand: (body: DoubleCommand) => Promise<boolean>
 }) {
   if (view.mode === 'task') {
     const done = view.answered.includes(taxonomyKey)
@@ -70,9 +79,13 @@ function ManagerPanel({
   taxonomyKey: string
   busy: boolean
   onUseAnswer: (labels: Labels) => void
-  onCommand: (body: { action: 'accept_single' | 'stop'; reason: string }) => Promise<boolean>
+  onCommand: (body: DoubleCommand) => Promise<boolean>
 }) {
-  const [pending, setPending] = useState<'accept_single' | 'stop' | null>(null)
+  const [pending, setPending] = useState<'accept_single' | 'stop' | 'reassign' | null>(null)
+  // Parts nobody has started (no answer yet) can go to someone else.
+  const handOver = view.tasks.filter(
+    t => t.status !== 'submitted' && !view.outcomes.some(o => o.answers.some(a => a.position === t.position))
+  )
   const [reason, setReason] = useState('')
   const outcome = view.outcomes.find(o => o.taxonomyKey === taxonomyKey)
   const person = (position: number) => view.tasks.find(t => t.position === position)
@@ -86,6 +99,7 @@ function ManagerPanel({
 
   const submitCommand = async () => {
     if (!pending || !reason.trim()) return
+    if (pending === 'reassign') return
     if (await onCommand({ action: pending, reason: reason.trim() })) {
       setPending(null)
       setReason('')
@@ -166,7 +180,17 @@ function ManagerPanel({
 
       {view.canReview && (
         <div className="flex flex-wrap items-end gap-2">
-          {pending ? (
+          {pending === 'reassign' ? (
+            <HandOverForm
+              parts={handOver}
+              taken={view.tasks.flatMap(t => (t.assignee ? [t.assignee.id] : []))}
+              busy={busy}
+              onCancel={() => setPending(null)}
+              onSubmit={async (position, userId) => {
+                if (await onCommand({ action: 'reassign', position, userId })) setPending(null)
+              }}
+            />
+          ) : pending ? (
             <>
               <div className="flex-1 min-w-48">
                 <label htmlFor="double-reason" className="block text-xs text-gray-700 mb-1">
@@ -209,6 +233,16 @@ function ManagerPanel({
                   Accept single label…
                 </button>
               )}
+              {handOver.length > 0 && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPending('reassign')}
+                  className={buttonClass('secondary', 'sm')}
+                >
+                  Hand over a part…
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}
@@ -222,5 +256,81 @@ function ManagerPanel({
         </div>
       )}
     </section>
+  )
+}
+
+type Part = ManagerView['tasks'][number]
+
+/** Choose an unstarted part and the person who takes it over (people the caller may assign). */
+function HandOverForm({
+  parts,
+  taken,
+  busy,
+  onCancel,
+  onSubmit
+}: {
+  parts: Part[]
+  taken: string[]
+  busy: boolean
+  onCancel: () => void
+  onSubmit: (position: number, userId: string) => Promise<void>
+}) {
+  const { workspaceId, api } = useWorkspacePaths()
+  const [position, setPosition] = useState(parts[0]?.position ?? 1)
+  const [userId, setUserId] = useState<string | null>(null)
+  const members = useQuery({
+    queryKey: queryKeys.members(workspaceId),
+    queryFn: ({ signal }) =>
+      fetchJson<{ users: Array<{ id: string; name: string | null; email: string; role: string }> }>(api('/users'), {
+        signal
+      }).then(d => d.users)
+  })
+  // Never the people who already hold a part: the two labels come from two different people.
+  const options = (members.data ?? [])
+    .filter(u => !taken.includes(u.id))
+    .map(u => ({ value: u.id, label: u.name || u.email, hint: u.role }))
+  return (
+    <>
+      {parts.length > 1 && (
+        <div>
+          <label htmlFor="double-part" className="block text-xs text-gray-700 mb-1">
+            Part
+          </label>
+          <select
+            id="double-part"
+            value={position}
+            onChange={e => setPosition(Number(e.target.value))}
+            className="px-2 py-1.5 border border-gray-500 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            {parts.map(p => (
+              <option key={p.position} value={p.position}>
+                {p.assignee?.name ?? 'Former member'}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <Combobox
+        label={`Hand ${parts.find(p => p.position === position)?.assignee?.name ?? 'this part'}'s part to`}
+        options={options}
+        value={userId}
+        onChange={value => setUserId(value)}
+        placeholder="Choose a person"
+        loading={members.isPending}
+        className="flex-1 min-w-48"
+        labelClassName="block text-xs text-gray-700 mb-1"
+      />
+      <button
+        type="button"
+        disabled={busy || !userId}
+        onClick={() => userId && void onSubmit(position, userId)}
+        className={buttonClass('primary', 'sm')}
+      >
+        Hand over
+      </button>
+      <button type="button" disabled={busy} onClick={onCancel} className={buttonClass('secondary', 'sm')}>
+        Cancel
+      </button>
+    </>
   )
 }

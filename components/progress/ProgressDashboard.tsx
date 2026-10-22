@@ -27,6 +27,7 @@ import type {
 } from '@/lib/contracts/progress'
 import Section from './Section'
 import WorkloadCards from './WorkloadCards'
+import DoubleAnnotationCards from './DoubleAnnotationCards'
 import ActivityChart from './ActivityChart'
 import PeopleTable from './PeopleTable'
 import ProgressFilters from './ProgressFilters'
@@ -220,6 +221,24 @@ export default function ProgressDashboard({
         >
           {overviewQuery.data && <WorkloadCards overview={overviewQuery.data} />}
         </Section>
+
+        {overviewQuery.data?.double &&
+          (overviewQuery.data.double.inProgress > 0 ||
+            overviewQuery.data.double.confirmed > 0 ||
+            overviewQuery.data.double.agreement.length > 0) && (
+            <Section
+              id="double-annotation"
+              title="Double annotation"
+              description="Records two people label independently. Counts overlap; agreement compares the first two labels before any review."
+              loading={false}
+              error={null}
+              updating={overviewQuery.isPlaceholderData}
+              onRetry={() => void overviewQuery.refetch()}
+              skeletonHeight="h-28"
+            >
+              <DoubleAnnotationCards double={overviewQuery.data.double} />
+            </Section>
+          )}
 
         <Section
           id="activity"

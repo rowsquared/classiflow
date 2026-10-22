@@ -1,7 +1,7 @@
 # Independent double annotation: implementation plan
 
-**Status:** v1 in progress on branch `feature/double-annotation` (backend
-and first UI done; see the checklist). Section 0 is the simplified v1 contract and the
+**Status:** v1 implemented on branch `feature/double-annotation` (not merged
+to `staging`); open items in the section 0 checklist. Section 0 is the simplified v1 contract and the
 handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
@@ -84,21 +84,24 @@ viewers simply see only their own comments), kappa.
 - [x] UI: assignment dialog mode "Two independent labels" with preview counts (`components/queue/DoubleAnnotationPanel.tsx`)
 - [x] UI: queue badge per row (`DoubleBadge`), `double` filter in URL and filter panel, "Needs review · N" shortcut
 - [x] UI: record screen panel (`components/labeling/DoublePanel.tsx`): both answers, first difference marked, use an answer, choose another, accept single, stop
-- [ ] UI: reassign a part from the record screen (API exists: `action: 'reassign'`)
+- [x] UI: hand over an unstarted part from the record screen ("Hand over a part…")
 - [x] UI: labeller notice "Independent labelling" + locked submitted taxonomies
 - [x] UI: export page selector (all / confirmed) + details download
-- [ ] Progress dashboard: small double section (needs review, waiting, confirmed, agreement % with n)
+- [x] Progress dashboard: "Double annotation" section (in progress, needs review, needs another person, confirmed, reviewed in period, agreement per taxonomy with agreed/compared); activity counts labelling only (`LabelingActivity.kind`)
 - [x] Unit tests for `lib/double-annotation.ts`
-- [ ] e2e journey (`tests/e2e/double-annotation.spec.ts`) + axe for the assignment dialog's new mode and the record panel
+- [x] e2e journey (`tests/e2e/double-annotation.spec.ts`) with axe on the dialog's new mode and the review panel; fixed two TaxonomyBrowser findings it exposed (selected-code contrast, chip name)
 - [x] Browser check, supervisor side (local demo data): dialog preview and start, queue filter and badges, record panel while waiting
-- [ ] Browser check, labeller side (blind view, locked answer) and a real disagreement review; covered by integration tests only so far
+- [x] Labeller side (blind view, independence notice) and a real disagreement review: covered by the e2e journey
 
 **Local test setup used:** throwaway PostgreSQL 16 cluster on port 5499
 (`classiflow_dev` seeded with `scripts/seed-demo.ts`, `classiflow_test` for
 integration tests), dev server via the git-ignored `.claude/launch.json`
 entry `classiflow-double-local` on port 3003.
-- [ ] Docs: AGENTS.md, docs/security.md access matrix, README feature line
-- [ ] lint, format, build; benchmark queue filters at scale
+- [x] Docs: AGENTS.md, docs/security.md (double-annotation table, access matrix), README, docs/ideas.md
+- [x] lint, format, production build, full integration suite (204 tests)
+- [ ] Benchmark the queue `double` filters and personal status tabs at scale (runtime role)
+- [ ] Full e2e suite run (only the new spec and `accessibility.spec.ts` were run)
+- [ ] Product follow-ups (section 0 "deliberately deferred"), if wanted
 
 ## 1. Product contract
 

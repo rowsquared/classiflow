@@ -20,6 +20,7 @@ import * as commandRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sen
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
 import * as listRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
+import * as overviewRoute from '@/app/api/workspaces/[workspaceId]/progress/overview/route'
 
 // Two active taxonomies (A, B); alice and bob label, sam supervises them, ann is admin.
 let alice: User, bob: User, carol: User, sam: User, ann: User, outsider: User
@@ -135,6 +136,17 @@ describe('double annotation', () => {
     expect(await statusOf(r.id)).toBe('submitted')
     const outcome = await prisma.doubleOutcome.findFirstOrThrow({ where: { taxonomyId: taxA.id } })
     expect(outcome).toMatchObject({ state: 'reviewed', matched: false, reviewedById: sam.id }) // comparison kept
+
+    // Progress: one compared pair matched (B), one did not (A); the review counts separately.
+    const overview = await (await overviewRoute.GET(request('/x/progress/overview'), params())).json()
+    expect(overview.double).toMatchObject({ inProgress: 0, needsReview: 0, confirmed: 1, reviewedInPeriod: 1 })
+    expect(overview.double.agreement).toEqual([
+      { taxonomyKey: 'A', agreed: 0, compared: 1 },
+      { taxonomyKey: 'B', agreed: 1, compared: 1 }
+    ])
+    expect(overview.activity.labeledRecords).toBe(1) // labelling only, not the review
+    signInAs(alice)
+    expect((await (await overviewRoute.GET(request('/x/progress/overview'), params())).json()).double).toBeNull()
 
     // A participant manager cannot review.
     const [r2] = await createSentences(1, [alice.id])

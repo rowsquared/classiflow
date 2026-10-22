@@ -25,7 +25,7 @@ import { useActiveTaxonomies, useComments, useRecord, type LabelingRecord } from
 import RecordPanel from './RecordPanel'
 import ActionBar from './ActionBar'
 import CommentsDialog from './CommentsDialog'
-import DoublePanel from './DoublePanel'
+import DoublePanel, { type DoubleCommand } from './DoublePanel'
 import { buttonClass } from '@/components/ui/styles'
 
 // Tab colours per taxonomy index (match TaxonomyBrowser's chips).
@@ -248,7 +248,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         activeOutcome.state === 'accepted_single'))
   const canSubmit = !locked && canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
 
-  const handleDoubleCommand = async (body: { action: 'accept_single' | 'stop'; reason: string }) => {
+  const handleDoubleCommand = async (body: DoubleCommand) => {
     try {
       await fetchJson(api(`/sentences/${sentenceId}/double-annotation`), {
         method: 'POST',
@@ -490,7 +490,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
                     level: l.level,
                     nodeCode: l.nodeCode,
                     taxonomyKey: activeTaxonomy.key,
-                    label: l.nodeLabel ?? undefined
+                    label: l.nodeLabel ?? undefined,
+                    // A submitted answer is a validated complete path: its deepest level ends it.
+                    isLeaf: l.level === Math.max(...labels.map(x => x.level))
                   }))
                 )
               }

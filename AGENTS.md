@@ -111,7 +111,7 @@ Workspace invitations support token-gated new-account setup at
 | --- | --- |
 | Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, query cache, nuqs adapter, sidebar), `components/Sidebar.tsx`, `components/WorkspaceSwitcher.tsx`, `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
 | Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan in `docs/archive/plans-2026-10/workspace-isolation.md` |
-| Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments |
+| Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments, double annotation (`DoubleAnnotationPanel`, `DoubleBadge`, `double` filter) |
 | Individual labeling | `app/w/[workspaceId]/queue/[sentenceId]/page.tsx`, `components/labeling/` (screen, data hooks, panels, comments dialog), `components/TaxonomyBrowser.tsx`, `lib/labeling.ts` (submit and navigation rules), `lib/labeling-navigation.ts` (previous/next list); hierarchical selection, suggestions, keyboard navigation, comments, flags |
 | Taxonomy browsing | `app/w/[workspaceId]/taxonomies/[key]/page.tsx` |
 | Administration | `app/w/[workspaceId]/admin/`: `taxonomy/` (screen parts in `components/taxonomy-admin/`), `sentences/`, `team/` (`components/team/`), `export/`, `ai-jobs/`, `ai/`, `audit/`; `/admin` redirects to `/admin/taxonomy` |
@@ -174,6 +174,20 @@ Read `prisma/schema.prisma` before changing data behavior.
   successful human label save, written in the single and bulk save
   transactions (optional `operationId` dedups replays). Write it from any new
   path that saves human labels; never from AI suggestions or flag/comment saves.
+- **Double annotation** (`lib/double-annotation.ts` rules,
+  `lib/server/double-annotation.ts` workflow, `lib/server/double-queue.ts`
+  queue badges; plan and v1 contract in `docs/plans/double-annotation.md`
+  section 0): a `DoubleRound` per record (one active) with two `DoubleTask`s
+  (two different people), their immutable `DoubleTaskLabel` answers and a
+  `DoubleOutcome` per required taxonomy. `SentenceAnnotation` stays the
+  current, exportable result (the first answer while waiting or disagreeing);
+  `Sentence.status` is `submitted` only when every required taxonomy is
+  agreed, reviewed or accepted. The single save route sends a labeller's save
+  to their task and a manager's save on a disagreement to review; bulk label
+  and skip refuse active rounds. Labellers of a round see it blind (own
+  answer and comments, no AI) in the record, comments and queue reads; keep
+  that when adding a read path. `LabelingActivity.kind` separates labelling
+  from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's
   `newAnnotationsSinceLastLearning` counter.
@@ -197,7 +211,9 @@ browser-local `list` navigation key. Discussion content opens in a `Modal`
   `confirmOrphans=true`.
 - Export includes original field/support names, human labels as
   `{taxonomyKey}_{level}`, and AI codes/confidences as `{taxonomyKey}_ai{level}`
-  and `{taxonomyKey}_ai{level}c`. All cells go through `lib/csv.ts` (escaping,
+  and `{taxonomyKey}_ai{level}c`, then `annotation_mode`, `annotation_status`
+  and `{taxonomyKey}_annotation_status`; `labels=confirmed` and
+  `format=details` (each double-annotation answer) are options. All cells go through `lib/csv.ts` (escaping,
   formula neutralising for free text only). Record import does not accept all export columns;
   a full export is not directly round-trippable through that importer.
 
