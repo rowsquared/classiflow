@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { HEADER_HEIGHT } from './Sidebar'
 import AIJobStatusBadge from './AIJobStatusBadge'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 interface PageHeaderProps {
   title: string
@@ -17,6 +18,7 @@ export default function PageHeader({ title, actions }: PageHeaderProps) {
       <div className="flex items-center gap-3">
         <AIJobStatusBadge />
         {actions && <div className="flex items-center gap-3">{actions}</div>}
+        <WorkspaceSwitcher />
       </div>
     </div>
   )

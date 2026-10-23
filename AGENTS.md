@@ -130,7 +130,7 @@ cannot be hard-deleted; disable them instead.
 
 | Area | Entry points and responsibilities |
 | --- | --- |
-| Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, query cache, nuqs adapter, sidebar), `components/Sidebar.tsx`, `components/WorkspaceSwitcher.tsx`, `proxy.ts`; `/` goes to the only workspace or the chooser `/workspaces` |
+| Application shell | `app/layout.tsx` (CSP nonce), `app/w/[workspaceId]/layout.tsx` (workspace access, query cache, nuqs adapter, sidebar), `components/Sidebar.tsx`, `components/WorkspaceSwitcher.tsx` (upper-right page header), `proxy.ts`; `/` returns to the last active workspace remembered for this account in this browser, or the first accessible active workspace, with `/workspaces` as the fallback when none are active |
 | Workspaces | `lib/workspace/db.ts` (`withWorkspace`, `db()`, query extension), `lib/api-auth.ts` (`requireWorkspace`, `workspaceRoute`), `lib/server/workspaces.ts`, `app/api/workspaces/`, `app/workspaces/`; plan in `docs/archive/plans-2026-10/workspace-isolation.md` |
 | Work queue | `app/w/[workspaceId]/queue/page.tsx`, `QueuePageClient.tsx`, `components/queue/`, `lib/queue-url.ts` (view in the URL); filtering, sorting, pagination, selection, bulk labels, assignments, double annotation (`DoubleAnnotationPanel`, `DoubleBadge`, `double` filter) |
 | Individual labeling | `app/w/[workspaceId]/queue/[sentenceId]/page.tsx`, `components/labeling/` (screen, data hooks, panels, comments dialog), `components/TaxonomyBrowser.tsx`, `lib/labeling.ts` (submit and navigation rules), `lib/labeling-navigation.ts` (previous/next list); hierarchical selection, suggestions, keyboard navigation, comments, flags |

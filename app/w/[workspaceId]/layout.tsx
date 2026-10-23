@@ -28,6 +28,7 @@ export default async function WorkspaceLayout({
   return (
     <WorkspaceProvider
       key={workspaceId}
+      userId={user.id}
       value={{
         id: workspaceId,
         name: workspace.name,

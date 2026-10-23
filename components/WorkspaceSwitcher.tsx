@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Popover from '@radix-ui/react-popover'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronsUpDown } from 'lucide-react'
+import { Building2, ChevronsUpDown } from 'lucide-react'
 import Modal from '@/components/Modal'
-import type { WorkspaceInfo } from '@/components/WorkspaceProvider'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
 import { hasUnsavedChanges } from '@/lib/unsaved-changes'
@@ -28,13 +28,8 @@ const roleText = (role: string, authority: string) => (authority === 'platform' 
  * the other workspaces the user may enter (from /api/workspaces). Keyboard:
  * type to filter, arrows to move, Enter to switch, Escape to close.
  */
-export default function WorkspaceSwitcher({
-  workspace,
-  collapsed
-}: {
-  workspace: WorkspaceInfo | null
-  collapsed: boolean
-}) {
+export default function WorkspaceSwitcher() {
+  const workspace = useWorkspaceInfo()
   const id = useId()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -103,40 +98,27 @@ export default function WorkspaceSwitcher({
         <Popover.Trigger asChild>
           <button
             type="button"
-            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-            title={collapsed ? label : undefined}
+            className="flex shrink-0 items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            title={label}
+            aria-label={`${label}. Switch workspace`}
           >
-            {collapsed ? (
-              <>
-                <span
-                  className="w-5 h-5 flex items-center justify-center rounded bg-indigo-100 text-indigo-800 text-xs font-semibold"
-                  aria-hidden="true"
-                >
-                  {workspace?.name.slice(0, 1).toUpperCase() ?? 'W'}
-                </span>
-                <span className="sr-only">{`${label}. Switch workspace`}</span>
-              </>
-            ) : (
-              <>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-gray-900 truncate">
-                    {workspace?.name ?? 'Choose a workspace'}
-                  </span>
-                  <span className="block text-xs text-gray-600 truncate">
-                    {workspace ? roleText(workspace.role, workspace.authority) : 'Open a workspace'}
-                    {workspace?.archived ? ' · archived' : ''}
-                  </span>
-                </span>
-                <ChevronsUpDown className="w-4 h-4 text-gray-500 flex-shrink-0" aria-hidden="true" />
-                <span className="sr-only">Switch workspace</span>
-              </>
-            )}
+            <Building2 className="h-5 w-5 text-gray-600" aria-hidden="true" />
+            <span className="hidden sm:block max-w-48 min-w-0">
+              <span className="block text-sm font-medium text-gray-900 truncate">
+                {workspace?.name ?? 'Choose a workspace'}
+              </span>
+              <span className="block text-xs text-gray-600 truncate">
+                {workspace ? roleText(workspace.role, workspace.authority) : 'Open a workspace'}
+                {workspace?.archived ? ' · archived' : ''}
+              </span>
+            </span>
+            <ChevronsUpDown className="w-4 h-4 text-gray-500 flex-shrink-0" aria-hidden="true" />
           </button>
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content
             side="bottom"
-            align="start"
+            align="end"
             sideOffset={4}
             className="z-50 w-72 rounded-lg border border-gray-200 bg-white shadow-lg"
           >

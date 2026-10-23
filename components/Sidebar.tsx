@@ -8,7 +8,6 @@ import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
-import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
 import { ToastContainer, type Toast } from '@/components/Toast'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import Image from 'next/image'
@@ -190,7 +189,7 @@ export default function Sidebar() {
     : null
 
   // The product name; the exercise's own name (e.g. 'HIES 2015') is the
-  // workspace's, shown by the WorkspaceSwitcher below and set by its admins.
+  // workspace's, shown in the page header and set by its admins.
   const productName = 'classiflow'
 
   const visibleNavItems = user && workspace ? navItems.filter(item => item.roles.includes(user.role)) : []
@@ -288,13 +287,6 @@ export default function Sidebar() {
           </button>
         )}
       </div>
-
-      {/* Current workspace and switcher */}
-      {
-        <div className="border-b border-gray-200" style={{ padding: collapsed ? '8px 10px' : '8px 12px' }}>
-          <WorkspaceSwitcher workspace={workspace} collapsed={collapsed} />
-        </div>
-      }
 
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         {/* Navigation Items */}
