@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { ADMIN, RECORDS } from './fixtures'
+import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures'
 import { api, failOnCspViolations, pagePath, rows, signIn } from './helpers'
 
 // The tests share one seeded database and run in this order: the labelling
@@ -23,6 +23,7 @@ test('sign-in refuses a wrong password and admits the right one', async ({ page 
 test.describe('queue', () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page)
+    await expect(page).toHaveURL(/\/queue$/)
     await expect(rows(page)).toHaveCount(RECORDS.length)
   })
 
@@ -107,6 +108,7 @@ test.describe('queue', () => {
 
 test('a record can be labelled with the keyboard and submitted', async ({ page }) => {
   await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
   await rows(page).filter({ hasText: 'primary school teacher' }).click()
   await expect(page).toHaveURL(/\/queue\/[^/?]+/)
   const recordId = new URL(page.url()).pathname.split('/').pop()!
@@ -158,6 +160,7 @@ test('the audit log lists the export and can be filtered', async ({ page }) => {
 
 test('a comment can be added from the labelling page without triggering shortcuts', async ({ page }) => {
   await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
   await rows(page).filter({ hasText: 'software developer' }).click()
   await expect(page).toHaveURL(/\/queue\/[^/?]+/)
   const recordId = new URL(page.url()).pathname.split('/').pop()!
@@ -198,115 +201,150 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
   expect(sentences.map(s => [s.recordKey, s.field1])).toEqual([['0042', 'baker, head']])
 })
 
-test('team: add a member with a generated password, find, sort and remove them', async ({ page }) => {
+test('users: add, find and remove workspace access while retaining the account', async ({ page }) => {
   await signIn(page)
-  await expect(page).toHaveURL(/\/queue$/)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
   await page.goto(pagePath('/admin/team'))
-
-  await page.getByRole('button', { name: 'Add member' }).click()
-  await page.getByLabel('Username', { exact: true }).fill('e2e-new')
-  await page.getByLabel('Email', { exact: true }).fill('e2e-new@test.local')
-  await page.getByLabel('Name', { exact: true }).fill('Nova Member')
-  await page.getByLabel('Set a temporary password and hand it over myself').check()
-  await page.getByRole('button', { name: 'Generate' }).click()
-  await page.getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByRole('heading', { name: 'Member created' })).toBeVisible()
-  await expect(page.getByText(/Username: e2e-new/)).toBeVisible()
-  await page.getByRole('button', { name: 'Done' }).click()
-
-  await page.getByLabel('Search members').fill('nova')
+  await expect(page).toHaveURL(/\/users\?workspace=/)
+  await page.getByRole('button', { name: 'Add user', exact: true }).click()
+  const add = page.getByRole('dialog', { name: 'Add user', exact: true })
+  await add.getByLabel('Email', { exact: true }).fill('e2e-new@test.local')
+  await add.getByLabel('Name', { exact: true }).fill('Nova Member')
+  await add.getByLabel('Show a temporary password').check()
+  await add.getByRole('button', { name: 'Generate password' }).click()
+  await add.getByRole('button', { name: 'Add user', exact: true }).click()
+  await expect(add.getByText('Account created.', { exact: true })).toBeVisible()
+  await expect(add.getByText(/Password:/)).toBeVisible()
+  await add.getByRole('button', { name: 'Done' }).click()
+  await page.getByLabel('Search name or email').fill('nova')
   await expect(rows(page)).toHaveCount(1)
-  await page.getByRole('button', { name: 'Last seen' }).click()
-  await expect(page.getByRole('columnheader', { name: /Last seen/ })).toHaveAttribute('aria-sort', 'ascending')
-
-  await rows(page).first().getByRole('button', { name: 'Open' }).click()
-  await page.getByRole('button', { name: 'Remove from workspace' }).click()
-  await page.getByRole('button', { name: 'Remove', exact: true }).click()
-  await expect(page.getByText('e2e-new removed from this workspace')).toBeVisible()
-  await expect(page.getByText('No members match these filters.')).toBeVisible()
+  await rows(page).getByRole('button', { name: /Edit/ }).click()
+  await page.getByRole('button', { name: 'Remove from E2E workspace', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: 'Remove workspace access', exact: true })
+  await confirm.getByRole('button', { name: 'Remove access', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Restore access' })).toBeVisible()
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByText('No users match these filters.')).toBeVisible()
+  await page.getByRole('combobox', { name: 'Access', exact: true }).selectOption('removed')
+  await expect(rows(page)).toHaveCount(1)
+  await expect(rows(page)).toContainText('removed')
 })
 
-test('platform admins see accounts with their workspaces', async ({ page }) => {
+test('platform admins see one directory with workspace access chips', async ({ page }) => {
   await signIn(page)
-  await expect(page).toHaveURL(/\/queue$/)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
   await page.goto('/accounts')
-  await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible()
-  const admin = page.locator('tbody tr', { hasText: ADMIN.username })
-  await expect(admin).toContainText('Platform admin')
-  await expect(admin).toContainText('E2E workspace: admin')
+  await expect(page).toHaveURL(/\/users$/)
+  await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible()
+  await expect(page.locator('tbody tr', { hasText: 'E2E Admin' })).toContainText('All workspaces · platform admin')
 })
 
-test('global user profile manages workspace access independently of credentials', async ({ page }) => {
+test('global user editor adds, removes and restores a membership', async ({ page }) => {
   await signIn(page)
-  await expect(page).toHaveURL(/\/queue$/)
-  const workspaceName = `Membership journey ${Date.now()}`
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
+  const stamp = Date.now()
+  const workspaceName = 'Membership journey ' + stamp
   const workspaceResponse = await page.request.post('/api/workspaces', { data: { name: workspaceName } })
   expect(workspaceResponse.ok()).toBe(true)
-  const { workspace } = await workspaceResponse.json()
-  await page.goto('/team')
-  await page.getByRole('button', { name: 'Add user', exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Email', { exact: true }).fill(`membership-${Date.now()}@test.local`)
-  await dialog.getByLabel('Name', { exact: true }).fill('Membership journey person')
-  await dialog.getByLabel('Temporary password', { exact: false }).fill('violet-river-stone-482!')
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Workspace access' })).toBeVisible()
-  await page.getByRole('combobox', { name: 'Add workspace', exact: true }).selectOption({ label: workspaceName })
+  await workspaceResponse.json()
+  const created = await page.request.post('/api/users', {
+    data: {
+      email: 'membership-' + stamp + '@test.local',
+      name: 'Membership journey person',
+      tempPassword: 'violet-river-stone-482!'
+    }
+  })
+  expect(created.ok()).toBe(true)
+  const { user } = await created.json()
+  await page.goto('/users?q=' + encodeURIComponent(user.email))
+  await page.getByRole('button', { name: /Edit Membership journey person/ }).click()
+  await page.getByRole('combobox', { name: 'Add to workspace', exact: true }).click()
+  await page.getByRole('option', { name: workspaceName, exact: true }).click()
   await page.getByRole('combobox', { name: 'Workspace role', exact: true }).selectOption('supervisor')
   await page.getByRole('button', { name: 'Add workspace access', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Save workspace access', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: `Remove from ${workspaceName}`, exact: true }).click()
+  await page.getByRole('button', { name: 'Remove from ' + workspaceName, exact: true }).click()
+  await page
+    .getByRole('dialog', { name: 'Remove workspace access' })
+    .getByRole('button', { name: 'Remove access', exact: true })
+    .click()
   await expect(page.getByRole('button', { name: 'Restore access', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Restore access', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Save workspace access', exact: true })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Workspace role', exact: true })).toHaveValue('supervisor')
-  await page.keyboard.press('Escape')
-  await page.request.put(`/api/workspaces/${workspace.id}`, { data: { status: 'archived' } })
 })
 
-test('the global directory keeps its search and filters in the URL', async ({ page }) => {
+test('users keeps search and workspace filters in the URL and browser history', async ({ page }) => {
   await signIn(page)
-  await expect(page).toHaveURL(/\/queue$/)
-  await page.goto('/team')
-  await page.getByLabel('Search users').fill(ADMIN.username)
-  await expect(page).toHaveURL(new RegExp(`q=${ADMIN.username}`))
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
+  await page.goto('/users?workspace=' + WORKSPACE_ID)
+  await page.getByLabel('Search name or email').fill(ADMIN.username)
+  await expect(page).toHaveURL(new RegExp('q=' + ADMIN.username))
   await expect(page.locator('tbody tr')).toHaveCount(1)
-  await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption('labeller')
-  await expect(page).toHaveURL(/role=labeller/)
+  await page.getByRole('combobox', { name: 'Workspace role', exact: true }).selectOption('labeller')
   await expect(page.getByText('No users match these filters.')).toBeVisible()
   await page.goBack()
-  await expect(page.getByRole('combobox', { name: 'Role', exact: true })).toHaveValue('')
+  await expect(page.getByRole('combobox', { name: 'Workspace role', exact: true })).toHaveValue('')
   await page.reload()
-  await expect(page.getByLabel('Search users')).toHaveValue(ADMIN.username)
-  await expect(page.locator('tbody tr', { hasText: ADMIN.username })).toBeVisible()
-  await expect(page.getByText(/^1–1 of 1 users$/)).toBeVisible()
+  await expect(page.getByLabel('Search name or email')).toHaveValue(ADMIN.username)
+  await expect(page.locator('tbody tr', { hasText: 'E2E Admin' })).toBeVisible()
 })
 
 test('a new workspace gets the first admin chosen in the picker', async ({ page }) => {
   await signIn(page)
-  await expect(page).toHaveURL(/\/queue$/)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
   const stamp = Date.now()
   const created = await page.request.post('/api/users', {
     data: {
-      email: `first-admin-${stamp}@test.local`,
-      name: `First Admin ${stamp}`,
+      email: 'first-admin-' + stamp + '@test.local',
+      name: 'First Admin ' + stamp,
       tempPassword: 'copper-meadow-lantern-73'
     }
   })
   expect(created.ok()).toBe(true)
   const { user } = await created.json()
   await page.goto('/workspaces')
+  await page.getByRole('button', { name: 'New workspace', exact: true }).click()
   const form = page.locator('form', { has: page.getByRole('heading', { name: 'New workspace' }) })
-  await form.getByLabel('Name', { exact: true }).fill(`Picker workspace ${stamp}`)
-  await page.getByRole('combobox', { name: 'First admin' }).fill(`First Admin ${stamp}`)
-  await page.getByRole('option', { name: new RegExp(`First Admin ${stamp}`) }).click()
-  await expect(
-    page.getByText(`First Admin ${stamp} (first-admin-${stamp}@test.local) becomes the workspace admin`)
-  ).toBeVisible()
+  await form.getByLabel('Name', { exact: true }).fill('Picker workspace ' + stamp)
+  await page.getByRole('combobox', { name: 'First admin' }).fill('First Admin ' + stamp)
+  await page.getByRole('option', { name: new RegExp('First Admin ' + stamp) }).click()
   await page.getByRole('button', { name: 'Create workspace' }).click()
   await expect(page).toHaveURL(/\/w\/[^/]+\/admin\/taxonomy$/)
-  const workspaceId = new URL(page.url()).pathname.split('/')[2]!
-  const members = await (await page.request.get(`/api/workspaces/${workspaceId}/users`)).json()
+  const id = new URL(page.url()).pathname.split('/')[2]!
+  const members = await (await page.request.get('/api/workspaces/' + id + '/users')).json()
   expect(members.users.map((m: { id: string; role: string }) => [m.id, m.role])).toEqual([[user.id, 'admin']])
-  await page.request.put(`/api/workspaces/${workspaceId}`, { data: { status: 'archived' } })
+})
+
+test('workspace management renames, archives, reopens and deletes with typed confirmation', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
+  const name = 'Disposable workspace ' + Date.now()
+  const response = await page.request.post('/api/workspaces', { data: { name } })
+  expect(response.ok()).toBe(true)
+  const { workspace } = await response.json()
+  await page.goto('/workspaces?edit=' + workspace.id)
+  const edit = page.getByRole('dialog', { name: 'Edit workspace', exact: true })
+  await edit.getByLabel('Name', { exact: true }).fill(name + ' renamed')
+  await edit.getByRole('button', { name: 'Save details' }).click()
+  await expect(edit).not.toBeVisible()
+  await page.goto('/workspaces?edit=' + workspace.id)
+  await edit.getByRole('button', { name: 'Archive workspace' }).click()
+  await expect(edit).not.toBeVisible()
+  await page.goto('/workspaces?status=archived&edit=' + workspace.id)
+  await edit.getByRole('button', { name: 'Reopen workspace' }).click()
+  await expect(edit).not.toBeVisible()
+  await page.goto('/workspaces?edit=' + workspace.id)
+  await edit.getByRole('button', { name: 'Archive workspace' }).click()
+  await expect(edit).not.toBeVisible()
+  await page.goto('/workspaces?status=archived&edit=' + workspace.id)
+  await edit.getByRole('button', { name: 'Delete workspace…', exact: true }).click()
+  const remove = page.getByRole('dialog', { name: 'Delete workspace', exact: true })
+  await expect(remove.getByText('User accounts are kept.', { exact: false })).toBeVisible()
+  await expect(remove.getByRole('button', { name: 'Delete workspace', exact: true })).toBeDisabled()
+  await remove.getByRole('textbox').fill(name + ' renamed')
+  await remove.getByRole('button', { name: 'Delete workspace', exact: true }).click()
+  await expect(remove).not.toBeVisible()
+  expect((await page.request.get('/api/workspaces/' + workspace.id)).status()).toBe(404)
+  expect((await page.request.get('/api/workspaces/' + WORKSPACE_ID)).status()).toBe(200)
 })

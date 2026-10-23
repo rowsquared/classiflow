@@ -1,6 +1,6 @@
 # Open items (after the October 2026 rounds)
 
-The modernization, workspace isolation, user management and progress
+The modernization, workspace isolation, user management, Users/workspaces redesign and progress
 dashboard plans are implemented and archived in
 [`docs/archive/plans-2026-10/`](../archive/plans-2026-10/). This page is the
 one list of what they left open. Almost none of it is code in this
@@ -26,7 +26,7 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
 - [ ] **Reverse proxy check** (W04): `Host` forwarded, HSTS, 50 MB body limit,
       rate limit on the sign-in endpoint (DEPLOYMENT.md "Reverse proxy").
 - [ ] **Mail against the real n8n workflow:** invite a test member, open the
-      link, set a password; forgot-password; check the Team page's mail status.
+      link, set a password; forgot-password; check the Users page's mail status.
       Only the mock webhook has been used so far.
 - [ ] **Progress benchmark (D4)** on staging-like data: 10 viewers plus
       labeling writes, browser timings against the budget in the archived
@@ -35,8 +35,8 @@ Nothing deploys from `staging` yet (COOLIFY_DEPLOYMENT.md "Deploy triggers").
       page (server-searched team/person pickers), queue keeps old rows dimmed
       while loading and clears its selection after a bulk label, comment dialog
       stays open after saving, "Up" in the taxonomy browser goes one level up,
-      teal primary buttons, Team page "Export CSV", AI settings "Job settings",
-      AI service "Access" on the Workspaces page, double annotation (section 6).
+      teal primary buttons, Users page "Export CSV", AI settings "Job settings",
+      AI service "Access" on the AI services page, double annotation (section 6).
 
 ## 2. Decisions (taken 22 October 2026) and what they still need
 
@@ -89,7 +89,12 @@ reach other workspaces' models.
       proposes leaving global profile editing to platform admins once
       invitation setup is the normal path. Everything else of the global
       users work is done.
-- [ ] TanStack Table for the Team list (the hand-made table is small and
+- [ ] **Optional no-mail browser smoke test:** create a new account with a
+      temporary password and check that attaching an existing account requires
+      a platform admin. Backend coverage passed; the extra no-mail test server
+      was blocked during local validation. See the archived
+      [redesign validation](../archive/plans-2026-10/users-page-redesign-validation.md).
+- [ ] TanStack Table for the Users list (the hand-made table is small and
       tested).
 - [ ] Remove hand-written `useMemo`/`useCallback` where the React Compiler
       covers them (M01).

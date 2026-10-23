@@ -37,6 +37,7 @@ export type AuditAction =
   | 'workspace.updated'
   | 'workspace.archived'
   | 'workspace.reopened'
+  | 'workspace.deleted'
   | 'member.added'
   | 'member.updated'
   | 'member.suspended'

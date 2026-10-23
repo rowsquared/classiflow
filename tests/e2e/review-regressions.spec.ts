@@ -209,7 +209,7 @@ test('member import reports a failed request and cannot close while receiving ge
   page
 }) => {
   await page.goto(view('/admin/team'))
-  await page.getByRole('button', { name: 'Import members' }).click()
+  await page.getByRole('button', { name: 'Import CSV' }).click()
   const dialog = page.getByRole('dialog', { name: 'Import members' })
   await dialog.getByLabel('CSV file').setInputFiles({
     name: 'members.csv',

@@ -3,8 +3,10 @@
 Playwright drives a production build in Chromium against a disposable
 database: sign-in, queue search (debounce, superseded requests, error banner and
 retry), dialog keyboard behaviour, labelling with the keyboard, comments,
-record import, the CSV export and audit log, the workspace Team page and the
-global Team with workspace access (`journeys.spec.ts`); bulk labelling (`labelling-bulk.spec.ts`); taxonomy
+record import, the CSV export and audit log, the unified Users directory,
+workspace access and workspace lifecycle (`journeys.spec.ts`); partial-grant retry,
+workspace scope isolation, scoped editors and global-page scrolling
+(`users-redesign.spec.ts`); bulk labelling (`labelling-bulk.spec.ts`); taxonomy
 administration (create from a CSV with leading-zero codes, browse, incremental
 import, edit, delete; `taxonomy-admin.spec.ts`); the queue view in the URL
 (reload, back/forward) and the workspace switcher (`queue-url.spec.ts`); the

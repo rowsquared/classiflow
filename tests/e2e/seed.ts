@@ -4,7 +4,7 @@
 // TypeScript loader cannot import).
 import { connect } from '../../scripts/lib/db.ts'
 import { setPassword } from '../../lib/passwords.ts'
-import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures.ts'
+import { ADMIN, RECORDS, WORKSPACE_ID, WORKSPACE_ADMIN } from './fixtures.ts'
 
 const prisma = connect()
 try {
@@ -27,6 +27,16 @@ try {
     include: { memberships: true }
   })
   await setPassword(prisma, admin.id, ADMIN.password)
+  const workspaceAdmin = await prisma.user.create({
+    data: {
+      username: WORKSPACE_ADMIN.username,
+      email: 'workspace-admin@test.local',
+      name: 'Workspace Admin',
+      mustResetPassword: false,
+      memberships: { create: { workspaceId: ws, role: 'admin' } }
+    }
+  })
+  await setPassword(prisma, workspaceAdmin.id, WORKSPACE_ADMIN.password)
   await prisma.user.create({
     data: {
       username: 'e2e-labeller',

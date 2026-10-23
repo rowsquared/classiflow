@@ -7,12 +7,73 @@ import { passwordProblem } from '@/lib/password-policy'
 import { auditInTransaction } from '@/lib/audit'
 import { mailEnabled } from '@/lib/mail/config'
 import { deliverMail, deliverSoon, queueMail } from '@/lib/mail/outbox'
+import { db, withWorkspace } from '@/lib/workspace/db'
 
 // Account flows behind the public password pages (U7b/U7c) and email changes
 // (U3). Accounts are global (control plane), so these use the plain client.
 
 /** One self-service password link per account per this period, across instances. */
 export const PASSWORD_LINK_COOLDOWN_MS = 15 * 60_000
+
+export async function sendAdminPasswordLink(userId: string, actorId: string) {
+  if (!mailEnabled()) return { ok: false, error: 'Email is not configured' }
+  const account = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { banned: true, invitedAt: true, invitationAcceptedAt: true }
+  })
+  if (!account) return null
+  if (account.banned) return { ok: false, error: 'Enable the account before sending a password link' }
+  const id = await prisma.$transaction(async tx => {
+    const mailId = await queueMail(tx, {
+      userId,
+      requestedById: actorId,
+      purpose: account.invitedAt && !account.invitationAcceptedAt ? 'invitation' : 'password_link'
+    })
+    await auditInTransaction(tx, {
+      workspaceId: null,
+      actorId,
+      action: 'mail.password_link_requested',
+      entityType: 'user',
+      entityId: userId
+    })
+    return mailId
+  })
+  deliverSoon([id])
+  return { ok: true }
+}
+
+/** Inspect saved work through every workspace's RLS scope; an unscoped relation count would miss it. */
+export async function accountDeletionBlocker(userId: string): Promise<string | null> {
+  if (await prisma.workspaceMembership.count({ where: { userId, status: 'active' } }))
+    return 'Remove active workspace access before deleting this account.'
+  if (await prisma.auditLog.count({ where: { actorId: userId, workspaceId: null } }))
+    return 'Disable the account instead: it has saved history.'
+  const workspaces = await prisma.workspace.findMany({ select: { id: true } })
+  for (const workspace of workspaces) {
+    const saved = await withWorkspace(workspace.id, async () => {
+      const [row] = await db().$queryRaw<Array<{ saved: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1 FROM "SentenceAnnotation" WHERE "workspaceId" = ${workspace.id} AND "createdById" = ${userId}
+          UNION ALL SELECT 1 FROM "Comment" WHERE "workspaceId" = ${workspace.id} AND "authorId" = ${userId}
+          UNION ALL SELECT 1 FROM "LabelingActivity" WHERE "workspaceId" = ${workspace.id} AND "actorId" = ${userId}
+          UNION ALL SELECT 1 FROM "AuditLog" WHERE "workspaceId" = ${workspace.id} AND "actorId" = ${userId}
+          UNION ALL SELECT 1 FROM "SentenceImport" WHERE "workspaceId" = ${workspace.id} AND "uploadedById" = ${userId}
+          UNION ALL SELECT 1 FROM "Sentence" WHERE "workspaceId" = ${workspace.id} AND "lastEditorId" = ${userId}
+          UNION ALL SELECT 1 FROM "AILabelingJob" WHERE "workspaceId" = ${workspace.id} AND "createdById" = ${userId}
+          UNION ALL SELECT 1 FROM "AILearningJob" WHERE "workspaceId" = ${workspace.id} AND "createdById" = ${userId}
+          UNION ALL SELECT 1 FROM "AITaxonomySyncJob" WHERE "workspaceId" = ${workspace.id} AND "createdById" = ${userId}
+          UNION ALL SELECT 1 FROM "DoubleTask" WHERE "workspaceId" = ${workspace.id} AND "assigneeId" = ${userId}
+          UNION ALL SELECT 1 FROM "DoubleOutcome" WHERE "workspaceId" = ${workspace.id} AND "reviewedById" = ${userId}
+          UNION ALL SELECT 1 FROM "DoubleRound" WHERE "workspaceId" = ${workspace.id} AND ("createdById" = ${userId} OR "closedById" = ${userId})
+          UNION ALL SELECT 1 FROM "SentenceAssignment" a JOIN "WorkspaceMembership" m ON a."membershipId" = m.id
+            WHERE a."workspaceId" = ${workspace.id} AND m."userId" = ${userId}
+        ) AS saved`
+      return row?.saved
+    })
+    if (saved) return 'Disable the account instead: it has saved work, history or assignments.'
+  }
+  return null
+}
 
 /**
  * Forgotten password: runs after the response, so neither the answer nor its

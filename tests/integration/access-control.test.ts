@@ -378,6 +378,8 @@ describe('user deletion', () => {
       accountRoute.DELETE(request(`/api/users/${userId}`, { method: 'DELETE' }), plainParams({ userId }))
     expect((await del(author.id)).status).toBe(409)
     expect(await prisma.user.count({ where: { id: author.id } })).toBe(1)
+    expect((await del(plain.id)).status).toBe(409)
+    expect((await userRoute.DELETE(request('/x', { method: 'DELETE' }), params({ userId: plain.id }))).status).toBe(200)
     expect((await del(plain.id)).status).toBe(200)
     expect(await prisma.user.count({ where: { id: plain.id } })).toBe(0)
   })

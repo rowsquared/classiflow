@@ -78,7 +78,7 @@ test('progress', async ({ page }) => {
 
 test('team', async ({ page }) => {
   await page.goto(pagePath('/admin/team'))
-  await expect(page.getByLabel('Search members')).toBeVisible()
+  await expect(page.getByLabel('Search name or email')).toBeVisible()
   await expectAccessible(page, 'team')
 })
 
@@ -120,17 +120,24 @@ test('record administration and export', async ({ page }) => {
 
 test('team add-member dialog', async ({ page }) => {
   await page.goto(pagePath('/admin/team'))
-  await page.getByRole('button', { name: 'Add member' }).click()
-  await expect(page.getByRole('combobox', { name: 'Supervisor', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Add user' }).click()
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Add user', exact: true })
+      .getByRole('combobox', { name: 'Supervisor', exact: true })
+  ).toBeVisible()
   await expectAccessible(page, 'add member')
 })
 
 test('accounts', async ({ page }) => {
   await page.goto('/accounts')
   await expect(page.locator('tbody tr').first()).toBeVisible()
-  await expect(page).toHaveURL(/\/team$/)
+  await expect(page).toHaveURL(/\/users$/)
   await expectAccessible(page, 'global team')
-  await page.getByRole('button', { name: 'Edit', exact: true }).first().click()
+  await page
+    .getByRole('button', { name: /^Edit / })
+    .first()
+    .click()
   await expect(page.getByRole('heading', { name: 'Workspace access' })).toBeVisible()
   await expectAccessible(page, 'global user workspace access')
   await page.keyboard.press('Escape')

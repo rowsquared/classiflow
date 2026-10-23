@@ -176,7 +176,7 @@ The default admin user is **automatically created** on first deployment using th
 - Ensure `DATABASE_URL` in the app matches the DB name you create.
 
 ### AI labeling API returns `Not Found`
-- The base URL is the approved service's (Workspaces page, or `AI_LABELING_API_URL`). It must point at the service root that serves the expected endpoints (e.g., `/learn`, `/learn/{jobId}/status`, `/label`).
+- The base URL is the approved service's (AI services page, or `AI_LABELING_API_URL`). It must point at the service root that serves the expected endpoints (e.g., `/learn`, `/learn/{jobId}/status`, `/label`).
 - If the provider uses a prefix (e.g., `/api`), include it (e.g., `https://taxomind-api.rowsquared.org/api`). Approve the corrected URL and retire the wrong one; workspaces then save their connection again.
 - Verify with `curl -i "<base URL>/learn"`; a 200/401/403 indicates you hit the right service, a 404 means the base path is wrong.
 

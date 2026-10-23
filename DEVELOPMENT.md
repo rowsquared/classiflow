@@ -102,7 +102,7 @@ N8N_EMAIL_WEBHOOK_URL="http://localhost:4010/webhook/send-email"
 
 The mock prints each mail's recipient, subject and links (marked dev only),
 never the rest of the body. `MOCK_MAIL_STATUS=500` makes it fail, to see the
-"unknown" outcome on the Team page.
+"unknown" outcome on the Users page.
 
 ## Branches and releases
 

@@ -53,7 +53,7 @@ Browser: React client components
   role, so nothing fetched under one scope is shown under another, and sign-out
   clears it. Keys come from `lib/query/keys.ts` and always start with
   `['ws', workspaceId]` (except the control-plane workspace list and
-  `/accounts`, which has its own provider outside any workspace); query
+  the global Users directory, which has its own provider outside any workspace); query
   functions use `fetchJson` (`lib/query/fetch.ts`: passes the abort signal,
   throws `HttpError` on non-2xx). Pass server-rendered data as `initialData`
   only when the query's parameters match what the server loaded (the queue
@@ -97,10 +97,14 @@ Browser: React client components
 
 ## Global user management
 
-Platform admins manage global users at `/team` (`/accounts` redirects there).
-The user editor manages workspace roles and supervisors through the existing
-workspace member APIs; `components/team/WorkspaceAccess.tsx` is the global
-membership editor and `lib/server/memberships.ts` owns attaching existing users.
+Admins manage people at `/users`; `/team` and `/accounts` redirect there,
+and `/w/[id]/admin/team` redirects to `/users?workspace=<id>`. Platform admins
+see every account; workspace admins see only members (including removed ones)
+of workspaces they administer and only those workspaces' membership details.
+The new `/api/user-directory` reads enforce that scope; `/api/users` stays
+platform-admin-only. The editor in `components/users/` uses
+`components/team/WorkspaceAccess.tsx`; membership mutations share
+`lib/server/memberships.ts`, account mutations `lib/server/global-user-admin.ts`.
 New global users can be created with email and name (a legacy username is generated).
 The directory is filtered and paged by the server (`lib/server/global-users.ts`,
 query in `lib/contracts/users.ts`, view in the URL with nuqs). New workspaces
@@ -110,6 +114,17 @@ Workspace invitations support token-gated new-account setup at
 The CSV member import reuses an account when the email has one
 (`lib/server/member-import.ts`: add for platform admins, invitation for
 workspace admins, restore only when confirmed, members unchanged).
+
+Global pages use `components/GlobalShell.tsx` with the same sidebar and a bounded
+scrolling main column. `/workspaces` is the chooser and management list;
+admins can rename/archive/reopen their workspaces. Platform admins can delete
+an archived workspace after a count preview and typed-name confirmation.
+`WORKSPACE_DELETE_TABLES` in `lib/server/workspaces.ts` is the child-first
+allowlist (an integration test compares it with every workspace-owned table).
+Deletion preserves accounts and approved endpoints, writes a platform audit in
+the transaction, and retains external Taxomind data. `/ai-services` holds the
+platform's approved endpoints. Accounts with active memberships or saved work
+cannot be hard-deleted; disable them instead.
 
 ## Where to look
 
@@ -401,7 +416,7 @@ files for deployment details; these are separate from the local dev stack.
 
 What is still open (staging, maintainer decisions, Taxomind) is in
 [open items](docs/plans/open-items.md). The October 2026 plans (modernization,
-workspace isolation, user management, progress dashboard) are implemented and
+workspace isolation, user management, progress dashboard, Users/workspaces redesign) are implemented and
 archived in `docs/archive/plans-2026-10/`, the hardening review, briefs and
 handoff in `docs/archive/hardening-2026-10/`; read them only for the reasoning
 behind a decision. These are

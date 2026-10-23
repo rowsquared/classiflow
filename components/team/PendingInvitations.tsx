@@ -17,6 +17,8 @@ export type PendingInvitation = {
 }
 
 type Props = {
+  readOnly?: boolean
+  workspaceId?: string
   invitations: PendingInvitation[]
   mailEnabled: boolean
   onChanged: (message: string) => void
@@ -24,14 +26,22 @@ type Props = {
 }
 
 /** Open invitations to this workspace, with resend and withdraw (workspace admins). */
-export default function PendingInvitations({ invitations, mailEnabled, onChanged, onError }: Props) {
+export default function PendingInvitations({
+  workspaceId,
+  invitations,
+  mailEnabled,
+  onChanged,
+  onError,
+  readOnly = false
+}: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   if (invitations.length === 0) return null
 
   const act = async (invitation: PendingInvitation, method: 'POST' | 'DELETE') => {
     setBusy(invitation.id)
     try {
-      const res = await fetch(workspaceApi(`/invitations/${invitation.id}`), { method })
+      const path = `/invitations/${invitation.id}`
+      const res = await fetch(workspaceId ? `/api/workspaces/${workspaceId}${path}` : workspaceApi(path), { method })
       if (!res.ok) {
         onError((await res.json().catch(() => ({}))).error || 'The change was refused')
         return
@@ -60,7 +70,7 @@ export default function PendingInvitations({ invitations, mailEnabled, onChanged
             {mailEnabled && (
               <button
                 type="button"
-                disabled={busy === invitation.id}
+                disabled={readOnly || busy === invitation.id}
                 onClick={() => act(invitation, 'POST')}
                 className="text-indigo-700 underline disabled:opacity-50"
               >
@@ -69,7 +79,7 @@ export default function PendingInvitations({ invitations, mailEnabled, onChanged
             )}
             <button
               type="button"
-              disabled={busy === invitation.id}
+              disabled={readOnly || busy === invitation.id}
               onClick={() => act(invitation, 'DELETE')}
               className="text-red-700 underline disabled:opacity-50"
             >

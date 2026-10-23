@@ -42,7 +42,7 @@ cp .env.example .env
 ```
 
 3. For local access, uncomment the app port mapping in `docker-compose.yml` (3000:3000).
-4. Optional: enable AI suggestions by deploying Taxomind, setting `AI_CREDENTIALS_KEYS` and `AI_SOURCE_SLUG` in `.env`, approving the service as a platform admin (Workspaces page) and connecting each workspace with its token (Admin › AI Settings).
+4. Optional: enable AI suggestions by deploying Taxomind, setting `AI_CREDENTIALS_KEYS` and `AI_SOURCE_SLUG` in `.env`, approving the service as a platform admin (AI services page) and connecting each workspace with its token (Admin › AI Settings).
 5. Start the stack:
 ```bash
 docker compose up -d --build
@@ -100,11 +100,16 @@ Open a GitHub issue for bugs or feature requests.
 
 ## Users and workspace access
 
-Platform administrators use **Team** to create global users by email and edit
+Platform administrators use **Users** to create global users by email and edit
 **Workspace access** in each user's profile. A person has one account and can
 be a supervisor in one workspace and a labeller in another, with separate
-supervisors. **Workspaces → Manage members** opens the corresponding local
-member list. Removing workspace access preserves the account and its history;
+supervisors. Workspace administrators use the same directory, scoped to their
+workspaces. Removing workspace access preserves the account and its history;
 disabling the account blocks access everywhere. Workspace invitations let
 existing people sign in or new people set up their account from the emailed
 link. Deployments without mail can hand over a temporary password instead.
+
+**Workspaces** provides counts, renaming and archive/reopen controls. Platform
+administrators can permanently delete an archived workspace after a count preview
+and typed-name confirmation. Deletion preserves accounts, approved AI services
+and external Taxomind data.

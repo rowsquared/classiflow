@@ -80,7 +80,7 @@ For local testing, `node scripts/mock-mail-webhook.mjs` (DEVELOPMENT.md).
 ## AI suggestions (optional)
 
 AI is configured **per workspace** (Admin › AI Settings): a platform admin
-approves the Taxomind services workspaces may use (Workspaces page; open to
+approves the Taxomind services workspaces may use (AI services page; open to
 every workspace or only to chosen ones), and each
 workspace admin connects the workspace to one of them with the workspace's own
 access token. The deployment only provides the encryption keys for those tokens

@@ -51,8 +51,15 @@ export const queryKeys = {
 
   /** The caller's workspace directory (control plane, not workspace data). */
   workspaces: () => ['workspaces'] as const,
-  /** Platform accounts (/team; control plane, its own cache). Invalidate after any account change. */
+  /** Platform account pickers (control plane, outside the workspace caches). */
   accounts: () => ['accounts'] as const,
   accountsPage: (params: string) => ['accounts', 'list', params] as const,
-  account: (userId: string) => ['accounts', 'user', userId] as const
+  account: (userId: string) => ['accounts', 'user', userId] as const,
+  /** Users directory (platform-wide or scoped to the viewer's administered workspaces). */
+  directory: () => ['user-directory'] as const,
+  directoryPage: (params: string) => ['user-directory', 'list', params] as const,
+  directoryUser: (userId: string) => ['user-directory', 'user', userId] as const,
+  accountLookup: (email: string) => ['accounts', 'lookup', email] as const,
+  invitations: (workspaceId: string) => ['ws', workspaceId, 'invitations'] as const,
+  deletionPreview: (workspaceId: string) => ['ws', workspaceId, 'deletion-preview'] as const
 }

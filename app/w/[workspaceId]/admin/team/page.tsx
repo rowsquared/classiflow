@@ -1,37 +1,20 @@
-import LoadError from '@/components/LoadError'
-import { asJson } from '@/lib/server/json'
+import { redirect } from 'next/navigation'
 import { requirePageUser } from '@/lib/server/page-user'
-import { withWorkspace } from '@/lib/workspace/db'
-import { listVisibleUsers } from '@/lib/server/users'
-import { listInvitations } from '@/lib/server/invitations'
-import { mailEnabled } from '@/lib/mail/config'
-import { recoverOutbox } from '@/lib/mail/outbox'
-import TeamPageClient, { type PendingInvitation, type User } from './TeamPageClient'
-import { logError } from '@/lib/logger'
-
-export default async function TeamPage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function TeamPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ workspaceId: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { workspaceId } = await params
-  const user = await requirePageUser(workspaceId, 'admin')
-
-  let loaded
-  try {
-    await recoverOutbox().catch(error => logError('Mail outbox recovery failed', error))
-    loaded = asJson(
-      await withWorkspace(workspaceId, async () => ({
-        users: (await listVisibleUsers(user, { includeSuspended: true })).users,
-        invitations: await listInvitations(workspaceId)
-      }))
-    )
-  } catch (error) {
-    await logError('Team page failed to load', error)
-    return <LoadError title="Team" what="the team" />
-  }
-
-  return (
-    <TeamPageClient
-      initialUsers={loaded.users as User[]}
-      initialInvitations={loaded.invitations as PendingInvitation[]}
-      mailEnabled={mailEnabled()}
-    />
-  )
+  await requirePageUser(workspaceId, 'admin')
+  const old = await searchParams
+  const query = new URLSearchParams({ workspace: workspaceId })
+  for (const key of ['q', 'role', 'supervisor', 'activity']) if (typeof old[key] === 'string') query.set(key, old[key])
+  if (old.status === 'removed') query.set('access', 'removed')
+  if (old.status === 'all') query.set('access', 'all')
+  if (old.status === 'must-reset') query.set('setup', 'password')
+  if (old.status === 'invited') query.set('setup', 'invited')
+  redirect(`/users?${query}`)
 }

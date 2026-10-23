@@ -20,3 +20,14 @@ export const globalUsersQuery = z.object({
 })
 
 export type GlobalUsersQuery = z.output<typeof globalUsersQuery>
+
+export const directoryQuery = globalUsersQuery.extend({
+  role: z.enum(['admin', 'supervisor', 'labeller']).optional(),
+  access: z.enum(['active', 'removed', 'all']).default('active'),
+  setup: z.enum(['password', 'invited']).optional(),
+  supervisor: z.string().max(100).optional(),
+  activity: z.enum(['seen-7', 'not-seen-7', 'not-seen-30', 'never']).optional(),
+  sort: z.enum(['name', 'email', 'role', 'supervisor', 'team', 'assigned', 'lastSeen', 'lastLogin']).default('name'),
+  direction: z.enum(['asc', 'desc']).default('asc')
+})
+export type DirectoryQuery = z.output<typeof directoryQuery>

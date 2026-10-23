@@ -117,7 +117,7 @@ usable token, and the keys alone hold no data:
   sees every workspace's connections; it never prints a token.)
 - A connection version that was replaced keeps its token only while jobs that
   started with it are running; the next settings change erases it.
-- Taxomind services must be approved by a platform admin (Workspaces page)
+- Taxomind services must be approved by a platform admin (AI services page)
   before a workspace can use them. Requests to them do not follow redirects.
 
 ## Reverse proxy
@@ -140,15 +140,15 @@ never the request's host, so set it to the public `https://` address.
   restart left behind and marks rows stuck while sending as **unknown** (they
   may have arrived; they are never resent automatically). Several instances are
   safe: a row is claimed with one conditional update before it is sent.
-- **Outcomes** on the Team page: sent, failed (the workflow refused it; resending
+- **Outcomes** on the Users page: sent, failed (the workflow refused it; resending
   is safe), unknown (timeout or server error). Emailed temporary passwords are
   never retried or stored; after a failure send a password link instead.
 - **Retention:** `OutgoingMail` rows are only needed for recent status. Each
   instance deletes sent, failed and unknown rows older than
   `MAIL_RETENTION_DAYS` (default 90; `0` keeps them) once an hour. The mail
   events stay in the audit log.
-- **Check it:** sign in, open Team, create a test member with "Email a link to
-  choose a password", and look for "email sent" in the member's drawer.
+- **Check it:** sign in, open Users, create a test member with "Email a link to
+  set a password", and look for "email sent" in the user editor.
 
 ## Health Check
 
@@ -200,7 +200,7 @@ Changing `DEFAULT_ADMIN_PASSWORD` later does **not** change an existing account.
 docker compose exec -e NEW_PASSWORD='a-temporary-password' app node scripts/reset-admin-password.ts admin
 ```
 
-The account must change it at next sign-in, its existing sessions are signed out, and a ban on it is lifted. Other users are reset by an admin on the Team page, or, with mail on, choose a new password themselves ("Forgot password?" on the sign-in page).
+The account must change it at next sign-in, its existing sessions are signed out, and a ban on it is lifted. Other users are reset by an admin on the Users page, or, with mail on, choose a new password themselves ("Forgot password?" on the sign-in page).
 
 ## Audit log
 
@@ -263,7 +263,7 @@ docker compose exec app node scripts/restore-check.ts   # uses the container's D
 ## Troubleshooting
 
 - **Database does not exist**: Ensure the database is created and the name matches `DATABASE_URL`.
-- **AI labeling returns 404**: Verify the approved service's base URL (Workspaces page) points to the Taxomind base path, including a prefix such as `/api`.
+- **AI labeling returns 404**: Verify the approved service's base URL (AI services page) points to the Taxomind base path, including a prefix such as `/api`.
 - **AI jobs stay "pending"**: the workspace or the deployment is at its job ceiling (`AI_MAX_ACTIVE_JOBS_PER_WORKSPACE`, `AI_MAX_ACTIVE_JOBS`), or `AI_CREDENTIALS_KEYS` is not set on the instance (then no instance runs AI jobs).
 
 ## Platform Notes

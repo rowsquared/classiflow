@@ -1,17 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ADMIN, WORKSPACE_ID } from './fixtures'
+import { WORKSPACE_ID } from './fixtures'
+import { signIn } from './helpers'
 
 // The queue's view lives in the URL (lib/queue-url.ts): reloading or sharing a
 // link shows the same records, and back/forward step through the views.
 // Read-only; runs after the data journeys, which submit records.
-
-async function signIn(page: Page) {
-  await page.goto('/login')
-  await page.getByLabel(/username or email/i).fill(ADMIN.username)
-  await page.getByLabel(/password/i).fill(ADMIN.password)
-  await page.getByRole('button', { name: /sign in|log in/i }).click()
-  await expect(page).toHaveURL(/\/queue/)
-}
 
 const rows = (page: Page) => page.locator('tbody tr')
 

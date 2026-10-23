@@ -25,7 +25,7 @@ test('AI settings: approve a service, connect the workspace with a write-only to
   await page.getByRole('button', { name: /sign in|log in/i }).click()
   await expect(page).toHaveURL(/\/queue$/)
 
-  await page.goto('/workspaces')
+  await page.goto('/ai-services')
   await page.getByLabel('Name', { exact: true }).last().fill('Test Taxomind')
   await page.getByLabel('Base URL').fill('https://taxomind.invalid/api/')
   await page.getByRole('button', { name: 'Approve' }).click()

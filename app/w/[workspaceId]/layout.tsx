@@ -38,9 +38,9 @@ export default async function WorkspaceLayout({
     >
       <QueryProvider key={`${workspaceId}:${user.id}:${user.role}`}>
         <NuqsAdapter>
-          <div className="flex h-screen">
+          <div className="flex h-dvh overflow-hidden">
             <Sidebar />
-            <main className="flex-1 overflow-auto bg-white">
+            <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-white">
               {user.archived && (
                 <div role="status" className="px-8 py-2 text-sm bg-amber-50 text-amber-900 border-b border-amber-200">
                   This workspace is archived and read-only.

@@ -3,7 +3,9 @@ import { useCallback, useState, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
@@ -52,6 +54,11 @@ export default function Sidebar() {
   const queryClient = useQueryClient()
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
   const { data: session } = useSession()
+  const directory = useQuery({
+    queryKey: queryKeys.workspaces(),
+    queryFn: ({ signal }) =>
+      fetchJson<{ workspaces: Array<{ id: string; role: string }> }>('/api/workspaces', { signal })
+  })
   const workspace = useWorkspaceInfo()
   const { href: workspaceHref } = useWorkspacePaths()
 
@@ -147,12 +154,6 @@ export default function Sidebar() {
       roles: ['admin']
     },
     {
-      icon: <Users className="w-full h-full" strokeWidth={1.5} />,
-      label: 'Workspace members',
-      href: '/admin/team',
-      roles: ['admin']
-    },
-    {
       icon: <Sparkles className="w-full h-full" strokeWidth={1.5} />,
       label: 'AI jobs',
       href: '/admin/ai-jobs',
@@ -192,7 +193,22 @@ export default function Sidebar() {
   // workspace's, shown by the WorkspaceSwitcher below and set by its admins.
   const productName = 'classiflow'
 
-  const visibleNavItems = user ? navItems.filter(item => item.roles.includes(user.role)) : []
+  const visibleNavItems = user && workspace ? navItems.filter(item => item.roles.includes(user.role)) : []
+  const platform = session?.user.role === 'admin'
+  const canManageUsers = platform || directory.data?.workspaces.some(w => w.role === 'admin')
+  const globalItems = [
+    ...(canManageUsers
+      ? [
+          {
+            href: workspace && workspace.role === 'admin' ? `/users?workspace=${workspace.id}` : '/users',
+            label: 'Users',
+            icon: Users
+          }
+        ]
+      : []),
+    { href: '/workspaces', label: 'Workspaces', icon: List },
+    ...(platform ? [{ href: '/ai-services', label: 'AI services', icon: Sparkles }] : [])
+  ]
 
   const isActive = (path: string) => {
     const href = workspaceHref(path)
@@ -274,55 +290,68 @@ export default function Sidebar() {
       </div>
 
       {/* Current workspace and switcher */}
-      {workspace && (
+      {
         <div className="border-b border-gray-200" style={{ padding: collapsed ? '8px 10px' : '8px 12px' }}>
           <WorkspaceSwitcher workspace={workspace} collapsed={collapsed} />
         </div>
-      )}
+      }
 
-      {/* Navigation Items */}
-      <nav className="flex-1 py-4" aria-label="Workspace pages">
-        {session?.user.role === 'admin' && (
-          <Link href="/team" className="flex items-center gap-4 px-5 py-3 text-sm text-gray-700 hover:bg-gray-100">
-            <Users className="w-5 h-5" aria-hidden="true" />
-            {!collapsed && 'Team'}
-          </Link>
-        )}
-        {visibleNavItems.map(item => {
-          const active = isActive(item.href)
-          return (
-            <Link
-              key={item.href}
-              href={workspaceHref(item.href)}
-              className={`
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+        {/* Navigation Items */}
+        <nav className="flex-1 py-4" aria-label="Workspace pages">
+          {visibleNavItems.map(item => {
+            const active = isActive(item.href)
+            return (
+              <Link
+                key={item.href}
+                href={workspaceHref(item.href)}
+                className={`
                 flex items-center gap-4 py-3 transition-colors relative
                 ${active ? 'bg-indigo-50 text-indigo-800 font-semibold' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'}
               `}
-              style={{
-                paddingLeft: `${SPACING}px`,
-                paddingRight: `${SPACING}px`
-              }}
-              title={collapsed ? item.label : undefined}
-            >
-              <div className="flex-shrink-0" style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}>
-                {item.icon}
-              </div>
-              <span
-                className="text-sm whitespace-nowrap overflow-hidden"
-                suppressHydrationWarning
                 style={{
-                  opacity: collapsed ? 0 : 1,
-                  width: collapsed ? 0 : 'auto',
-                  transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
+                  paddingLeft: `${SPACING}px`,
+                  paddingRight: `${SPACING}px`
                 }}
+                title={collapsed ? item.label : undefined}
               >
-                {item.label}
-              </span>
-            </Link>
-          )
-        })}
-      </nav>
+                <div className="flex-shrink-0" style={{ width: `${ICON_SIZE}px`, height: `${ICON_SIZE}px` }}>
+                  {item.icon}
+                </div>
+                <span
+                  className="text-sm whitespace-nowrap overflow-hidden"
+                  suppressHydrationWarning
+                  style={{
+                    opacity: collapsed ? 0 : 1,
+                    width: collapsed ? 0 : 'auto',
+                    transition: isHydrated ? 'opacity 300ms ease-in-out' : 'none'
+                  }}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            )
+          })}
+        </nav>
 
+        <nav aria-label={canManageUsers ? 'Administration' : 'Workspaces'} className="border-t border-gray-200 py-2">
+          {canManageUsers && !collapsed && (
+            <p className="px-5 py-2 text-xs font-medium text-gray-600">Administration</p>
+          )}
+          {globalItems.map(item => (
+            <Link
+              key={item.label}
+              href={item.href}
+              aria-current={pathname === item.href.split('?')[0] ? 'page' : undefined}
+              title={collapsed ? item.label : undefined}
+              className={`flex items-center gap-4 px-5 py-3 text-sm ${pathname === item.href.split('?')[0] ? 'bg-indigo-50 text-indigo-800' : 'text-gray-700 hover:bg-gray-100'}`}
+            >
+              <item.icon size={ICON_SIZE} strokeWidth={1.5} aria-hidden="true" />
+              <span className={collapsed ? 'sr-only' : ''}>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
       {/* Bottom Section - User, Footer Logo */}
       <div>
         {/* User menu */}
@@ -383,10 +412,10 @@ export default function Sidebar() {
                 {session?.user.role === 'admin' && (
                   <DropdownMenu.Item asChild>
                     <Link
-                      href="/team"
+                      href="/users"
                       className="block px-4 py-2 text-sm text-gray-700 outline-none data-[highlighted]:bg-gray-100"
                     >
-                      Team - global users
+                      Users
                     </Link>
                   </DropdownMenu.Item>
                 )}

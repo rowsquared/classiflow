@@ -76,7 +76,7 @@ describe('audit trail', () => {
     expect(all).not.toContain('$2') // no bcrypt hash
   })
 
-  it("keeps the actor's name after the actor is deleted", async () => {
+  it('refuses to delete an actor with saved audit history', async () => {
     const otherAdmin = await createUser('admin')
     signInAs(otherAdmin)
     const created = await createViaApi()
@@ -88,12 +88,11 @@ describe('audit trail', () => {
           plainParams({ userId: otherAdmin.id })
         )
       ).status
-    ).toBe(200)
+    ).toBe(409)
 
     const [create] = await entries('user.created')
-    expect(create).toMatchObject({ actorId: null, actorName: otherAdmin.username, entityId: created.id })
-    const [deleted] = await entries('user.deleted')
-    expect(deleted).toMatchObject({ actorId: admin.id, entityId: otherAdmin.id })
+    expect(create).toMatchObject({ actorId: otherAdmin.id, actorName: otherAdmin.username, entityId: created.id })
+    expect(await entries('user.deleted')).toHaveLength(0)
   })
 
   it('records refused access by role and by record scope', async () => {

@@ -206,6 +206,9 @@ admin) with a valid session who does not have to reset their password.
 | `/api/workspaces` | POST | platform admin (creates the workspace and its first admin, who must be an enabled account) |
 | `/api/workspaces/[workspaceId]` | GET | member |
 | `/api/workspaces/[workspaceId]` | PUT (rename, archive, reopen) | workspace admin |
+| `/api/workspaces/[workspaceId]` | DELETE | platform admin; archived workspace and exact typed name required |
+| `/api/workspaces/[workspaceId]/deletion-preview` | GET | platform admin |
+| `/api/user-directory`, `/api/user-directory/[id]`, `/api/user-directory/export` | GET | platform admin: all accounts; workspace admin: members of administered workspaces, only those workspaces' membership details |
 | `/api/users`, `/api/users/[id]` | all | platform admin (accounts: platform role, email, temporary password, ban, delete) |
 | `/api/ai-endpoints`, `/api/ai-endpoints/[id]` | GET, POST, PUT (which workspaces may use it), DELETE (retire) | platform admin |
 | `/sentences`, `/sentences/stats` | GET | member; results limited to scope |
@@ -241,12 +244,21 @@ checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.
 
-## Global Team directory
+## Users directory and workspace lifecycle
 
-`/team` is platform-admin-only and `/accounts` redirects there. A person has
+`/users` is the common people page; `/team` and `/accounts` redirect there,
+and the former workspace member page redirects with its workspace selected.
+Platform admins see all accounts. Workspace admins see people with active or
+removed memberships in workspaces they currently administer, including when
+they are a labeller elsewhere. Search, totals, detail reads, access chips and
+directory exports apply that same scope; other workspaces' names and memberships
+are never returned. The "No workspace" filter and exact-email account lookup
+are platform-admin-only. Supervisors and labellers cannot use the directory.
+
+A person has
 one global identity identified by normalized email, and separate workspace
-memberships. Platform admins can edit those memberships from the user profile
-or enter a workspace's member page from `/workspaces`. Standard users cannot
+memberships. Admins edit membership role and supervisor together in the person
+editor; removal is confirmed and can unassign open work. Standard users cannot
 browse global accounts. New account forms may omit username; a random unique
 legacy alias is generated and email sign-in works as before. Adding an existing
 active member again is idempotent and never changes their role or password.
@@ -255,6 +267,37 @@ Removed memberships must be explicitly restored; their IDs and history remain.
 100) and `GET /api/users/[userId]` returns one account, both platform-admin
 only. Creating a user with an email in use answers 409 with that account's ID
 so the form opens it instead.
+
+Global profile, platform role, disable, password and session controls in the new
+editor are platform-admin-only. The existing narrow API exception for managing
+never-signed-in, single-workspace accounts remains; the new editor does not
+expose it (see the pending decision in `plans/open-items.md`). Workspace admins
+invite existing people without an account lookup. Without mail, they can create
+a new account with a temporary password, but must ask a platform admin to grant
+an existing account access. Several grants commit separately and report their
+own outcome; retry skips successful grants and reuses the created identity.
+
+Account deletion rejects active workspace memberships, saved annotations,
+comments, activity, audit history, imports, AI jobs, double-annotation tasks or
+reviews, and assignments. The server checks workspace history through each
+workspace's row-security context, with the account locked during deletion.
+Disabling preserves all work and revokes sessions. Self-deletion and the
+last-platform-admin guard remain.
+
+Workspace deletion is platform-admin-only and requires archival first. It locks
+and rechecks the workspace and exact name, deletes workspace-owned rows in one
+transaction, and writes a platform `workspace.deleted` audit entry with actual
+counts. A failure rolls back every deletion. Accounts, approved AI endpoints,
+other workspaces and their data remain. External AI clients are captured before
+connection deletion so cancellation can still be attempted after commit;
+external namespaces and training data are retained and the confirmation says so.
+The deletion table allowlist is checked against the database schema in integration
+tests. Rename, archive and reopen also lock and recheck the workspace and commit
+their audit entries with the change.
+
+Directory CSV export includes all pages matching its filters. The selected
+workspace's member CSV exports every member, including removed access, regardless
+of the current table filters; its control explains this scope.
 
 The CSV member import tells a workspace admin whether an email belongs to an
 account outside the workspace (the row becomes an invitation), as the import

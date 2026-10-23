@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { requirePlatformAdmin } from '@/lib/api-auth'
+import { deleteWorkspace } from '@/lib/server/workspaces'
+import { logError } from '@/lib/logger'
 import { notFound, requireWorkspace } from '@/lib/api-auth'
-import { setWorkspaceStatus, updateWorkspace } from '@/lib/server/workspaces'
+import { updateWorkspace } from '@/lib/server/workspaces'
 import { prisma } from '@/lib/prisma'
-import { audit } from '@/lib/audit'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -12,6 +14,22 @@ const updateSchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
   status: z.enum(['active', 'archived']).optional()
 })
+
+export async function DELETE(req: Request, { params }: Params) {
+  const { user, error } = await requirePlatformAdmin()
+  if (error) return error
+  const body = z.object({ name: z.string().min(1).max(200) }).safeParse(await req.json().catch(() => null))
+  if (!body.success)
+    return NextResponse.json({ error: 'Type the exact workspace name to confirm deletion' }, { status: 400 })
+  const { workspaceId } = await params
+  try {
+    const result = await deleteWorkspace(workspaceId, body.data.name, user.id)
+    return NextResponse.json(result, { status: result.status })
+  } catch (caught) {
+    await logError('Could not delete workspace', caught, { workspaceId })
+    return NextResponse.json({ error: 'Could not delete workspace. No local data was deleted.' }, { status: 500 })
+  }
+}
 
 // GET: the workspace and the caller's effective role in it.
 export async function GET(_req: Request, { params }: Params) {
@@ -43,36 +61,11 @@ export async function PUT(req: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
-  const { name, description, status } = parsed.data
-  if (name !== undefined || description !== undefined) {
-    if (actor.archived && status !== 'active') {
-      return NextResponse.json({ error: 'This workspace is archived and read-only' }, { status: 409 })
-    }
-    await updateWorkspace(workspaceId, { name, description })
-    await audit({
-      workspaceId,
-      actorId: actor.id,
-      action: 'workspace.updated',
-      entityType: 'workspace',
-      entityId: workspaceId,
-      payload: {
-        fields: Object.keys({
-          ...(name !== undefined && { name }),
-          ...(description !== undefined && { description })
-        })
-      }
-    })
+  try {
+    const result = await updateWorkspace(actor, parsed.data)
+    return NextResponse.json(result, { status: result.status })
+  } catch (caught) {
+    await logError('Could not update workspace', caught, { workspaceId })
+    return NextResponse.json({ error: 'Could not update workspace' }, { status: 500 })
   }
-  if (status !== undefined && (status === 'archived') !== actor.archived) {
-    const cancelledJobs = await setWorkspaceStatus(workspaceId, status)
-    await audit({
-      workspaceId,
-      actorId: actor.id,
-      action: status === 'archived' ? 'workspace.archived' : 'workspace.reopened',
-      entityType: 'workspace',
-      entityId: workspaceId,
-      payload: { authority: actor.authority, ...(status === 'archived' ? { cancelledJobs } : {}) }
-    })
-  }
-  return NextResponse.json({ ok: true })
 }

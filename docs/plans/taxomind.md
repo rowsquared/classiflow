@@ -13,7 +13,7 @@ classiflow gives every workspace its own model namespace,
 saved; users cannot change it. Each workspace stores its own Taxomind token,
 encrypted and write-only (never shown again after saving). Platform admins
 choose which approved Taxomind services each workspace may use ("Access" on
-the Workspaces page).
+the AI services page).
 
 On the Taxomind side (read 22 October 2026: `services/api/auth.py`,
 `config.py`, `request_source.py`, `routers/labeling.py`; the model storage was

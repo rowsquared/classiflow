@@ -14,6 +14,11 @@ export async function signIn(page: Page, password = ADMIN.password) {
   await page.getByLabel(/username or email/i).fill(ADMIN.username)
   await page.getByLabel(/password/i).fill(password)
   await page.getByRole('button', { name: /sign in|log in/i }).click()
+  if (password === ADMIN.password) {
+    await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
+    // Later journeys create more workspaces; keep shared record journeys on their fixture workspace.
+    if (new URL(page.url()).pathname === '/workspaces') await page.goto(pagePath('/queue'))
+  }
 }
 
 export const rows = (page: Page) => page.locator('tbody tr')

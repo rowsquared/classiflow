@@ -28,7 +28,13 @@ const roleText = (role: string, authority: string) => (authority === 'platform' 
  * the other workspaces the user may enter (from /api/workspaces). Keyboard:
  * type to filter, arrows to move, Enter to switch, Escape to close.
  */
-export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace: WorkspaceInfo; collapsed: boolean }) {
+export default function WorkspaceSwitcher({
+  workspace,
+  collapsed
+}: {
+  workspace: WorkspaceInfo | null
+  collapsed: boolean
+}) {
   const id = useId()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -38,13 +44,12 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
 
   const workspaces = useQuery({
     queryKey: queryKeys.workspaces(),
-    queryFn: ({ signal }) =>
-      fetchJson<{ workspaces: WorkspaceSummary[] }>('/api/workspaces', { signal }).then(d => d.workspaces),
+    queryFn: ({ signal }) => fetchJson<{ workspaces: WorkspaceSummary[] }>('/api/workspaces', { signal }),
     enabled: open
   })
 
   const needle = query.trim().toLowerCase()
-  const options = (workspaces.data ?? []).filter(w => !needle || w.name.toLowerCase().includes(needle))
+  const options = (workspaces.data?.workspaces ?? []).filter(w => !needle || w.name.toLowerCase().includes(needle))
   const active = Math.min(activeIndex, Math.max(options.length - 1, 0))
 
   const go = (target: WorkspaceSummary) => {
@@ -53,7 +58,7 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
     router.push(`/w/${target.id}/queue`)
   }
   const choose = (target: WorkspaceSummary) => {
-    if (target.id === workspace.id) {
+    if (target.id === workspace?.id) {
       setOpen(false)
       return
     }
@@ -82,7 +87,9 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
     }
   }
 
-  const label = `Workspace: ${workspace.name}, ${roleText(workspace.role, workspace.authority)}`
+  const label = workspace
+    ? `Workspace: ${workspace.name}, ${roleText(workspace.role, workspace.authority)}`
+    : 'Choose a workspace'
 
   return (
     <>
@@ -105,17 +112,19 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
                   className="w-5 h-5 flex items-center justify-center rounded bg-indigo-100 text-indigo-800 text-xs font-semibold"
                   aria-hidden="true"
                 >
-                  {workspace.name.slice(0, 1).toUpperCase()}
+                  {workspace?.name.slice(0, 1).toUpperCase() ?? 'W'}
                 </span>
                 <span className="sr-only">{`${label}. Switch workspace`}</span>
               </>
             ) : (
               <>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-gray-900 truncate">{workspace.name}</span>
+                  <span className="block text-sm font-medium text-gray-900 truncate">
+                    {workspace?.name ?? 'Choose a workspace'}
+                  </span>
                   <span className="block text-xs text-gray-600 truncate">
-                    {roleText(workspace.role, workspace.authority)}
-                    {workspace.archived ? ' · archived' : ''}
+                    {workspace ? roleText(workspace.role, workspace.authority) : 'Open a workspace'}
+                    {workspace?.archived ? ' · archived' : ''}
                   </span>
                 </span>
                 <ChevronsUpDown className="w-4 h-4 text-gray-500 flex-shrink-0" aria-hidden="true" />
@@ -160,7 +169,7 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
                   key={w.id}
                   id={`${id}-ws-${index}`}
                   role="option"
-                  aria-selected={w.id === workspace.id}
+                  aria-selected={w.id === workspace?.id}
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => choose(w)}
                   className={`px-3 py-2 cursor-pointer flex items-center gap-2 ${
@@ -174,7 +183,7 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
                       {w.status === 'archived' ? ' · archived' : ''}
                     </span>
                   </span>
-                  {w.id === workspace.id && (
+                  {w.id === workspace?.id && (
                     <span className="text-indigo-700" aria-hidden="true">
                       ✓
                     </span>
@@ -192,6 +201,15 @@ export default function WorkspaceSwitcher({ workspace, collapsed }: { workspace:
               </p>
             )}
             <div className="border-t border-gray-100 p-1">
+              {workspace?.role === 'admin' && (
+                <Link
+                  href={`/workspaces?edit=${workspace.id}`}
+                  onClick={() => setOpen(false)}
+                  className="block px-3 py-2 text-sm text-indigo-700 hover:bg-gray-50"
+                >
+                  Workspace settings
+                </Link>
+              )}
               <Link
                 href="/workspaces"
                 onClick={() => setOpen(false)}

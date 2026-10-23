@@ -30,18 +30,20 @@ test('invite a new member by email; they choose a password from the link and sig
   await page.getByLabel(/username or email/i).fill(ADMIN.username)
   await page.getByLabel(/password/i).fill(ADMIN.password)
   await page.getByRole('button', { name: /sign in/i }).click()
-  await expect(page).toHaveURL(/\/queue$/)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
 
   await page.goto(`/w/${WORKSPACE_ID}/admin/team`)
-  await expect(page.getByText('Email: on')).toBeVisible()
-  await page.getByRole('button', { name: 'Add member' }).click()
-  await page.getByLabel('Username', { exact: true }).fill('e2e-invited')
+  await page.getByRole('button', { name: 'Add user', exact: true }).click()
   await page.getByLabel('Email', { exact: true }).fill('e2e-invited@test.local')
   await page.getByLabel('Name', { exact: true }).fill('Ida Invited')
-  await expect(page.getByLabel('Email a link to choose a password')).toBeChecked()
-  await page.getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByText('e2e-invited created; an invitation link is on its way')).toBeVisible()
-  await expect(page.locator('tbody tr', { hasText: 'e2e-invited' })).toContainText('invited')
+  await expect(page.getByLabel('Email a link to set a password')).toBeChecked()
+  await page
+    .getByRole('dialog', { name: 'Add user', exact: true })
+    .getByRole('button', { name: 'Add user', exact: true })
+    .click()
+  await expect(page.getByText('Account created.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.locator('tbody tr', { hasText: 'e2e-invited' })).toContainText('Setup link pending')
 
   await expect.poll(() => mails.filter(m => m.to === 'e2e-invited@test.local').length).toBe(1)
   const mail = mails.find(m => m.to === 'e2e-invited@test.local')!
@@ -61,10 +63,10 @@ test('invite a new member by email; they choose a password from the link and sig
   await expect(invited.getByText(/You can now sign in as/)).toBeVisible()
 
   await invited.getByRole('link', { name: 'Sign in' }).click()
-  await invited.getByLabel(/username or email/i).fill('e2e-invited')
+  await invited.getByLabel(/username or email/i).fill('e2e-invited@test.local')
   await invited.getByLabel(/password/i).fill('my-own-chosen-words')
   await invited.getByRole('button', { name: /sign in/i }).click()
-  await expect(invited).toHaveURL(/\/queue$/)
+  await expect(invited).toHaveURL(/\/(?:queue|workspaces)$/)
   await context.close()
 })
 
@@ -76,16 +78,14 @@ test('a new person creates their account from a workspace invitation; the link t
   await page.getByLabel(/username or email/i).fill(ADMIN.username)
   await page.getByLabel(/password/i).fill(ADMIN.password)
   await page.getByRole('button', { name: /sign in/i }).click()
-  await expect(page).toHaveURL(/\/queue$/)
+  await expect(page).toHaveURL(/\/(?:queue|workspaces)$/)
 
   const email = `e2e-setup-${Date.now()}@test.local`
   await page.goto(`/w/${WORKSPACE_ID}/admin/team`)
-  await page.getByRole('button', { name: 'Add member' }).click()
-  await page.getByLabel('Invite by email').check()
-  await page.getByLabel('Email', { exact: true }).fill(email)
-  await page.getByRole('button', { name: 'Send invitation' }).click()
-  await expect(page.getByText(`Invitation sent to ${email}`)).toBeVisible()
-
+  const result = await page.request.post('/api/workspaces/' + WORKSPACE_ID + '/invitations', {
+    data: { email, role: 'labeller' }
+  })
+  expect(result.ok()).toBe(true)
   await expect.poll(() => mails.filter(m => m.to === email).length).toBe(1)
   const link = /href="([^"]*\/invitation#t=[^"]+)"/.exec(mails.find(m => m.to === email)!.body)?.[1]
   expect(link).toBeTruthy()
@@ -110,6 +110,6 @@ test('a new person creates their account from a workspace invitation; the link t
   await invited.getByLabel(/username or email/i).fill(email)
   await invited.getByLabel(/password/i).fill('amber-harbour-lantern-91')
   await invited.getByRole('button', { name: /sign in/i }).click()
-  await expect(invited).toHaveURL(/\/queue$/)
+  await expect(invited).toHaveURL(/\/(?:queue|workspaces)$/)
   await context.close()
 })

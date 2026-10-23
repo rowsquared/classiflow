@@ -6,12 +6,12 @@ import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import Modal from '@/components/Modal'
-import { workspaceApi } from '@/lib/workspace/urls'
 import { csvLine } from '@/lib/csv'
 import { mailStatusLabel } from '@/components/team/mail-status'
 import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 type Props = {
+  workspaceId?: string
   mailEnabled: boolean
   onClose: () => void
   /** Called when the person closes the result. */
@@ -63,8 +63,15 @@ const OUTCOME_LABEL: Record<PreviewRow['outcome'], string> = {
  * apply every row in one go. Rows whose email has an account reuse it. Generated passwords are shown once here and can be downloaded as
  * a CSV built in the browser; the server keeps none of them.
  */
-export default function MemberImportModal({ mailEnabled, onClose, onImported }: Props) {
-  const { workspaceId, api } = useWorkspacePaths()
+export default function MemberImportModal({
+  workspaceId: explicitWorkspaceId,
+  mailEnabled,
+  onClose,
+  onImported
+}: Props) {
+  const paths = useWorkspacePaths()
+  const workspaceId = explicitWorkspaceId ?? paths.workspaceId
+  const api = (path: string) => `/api/workspaces/${workspaceId}${path}`
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +91,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
       form.set('file', file)
       if (!dryRun) form.set('importKey', importKey)
       if (!dryRun && confirmRestore) form.set('confirmRestore', 'true')
-      const res = await fetch(workspaceApi(`/users/import?dryRun=${dryRun}`), { method: 'POST', body: form })
+      const res = await fetch(api(`/users/import?dryRun=${dryRun}`), { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
       if (data.fileErrors) {
         setFileErrors(data.fileErrors)
@@ -241,7 +248,7 @@ export default function MemberImportModal({ mailEnabled, onClose, onImported }: 
               . <code>supervisor</code> is the username of an admin or supervisor here or in the file. Members already
               here keep their role; at most 500 rows.
             </p>
-            <a href={workspaceApi('/users/import/template')} className="text-sm text-indigo-700 underline">
+            <a href={api('/users/import/template')} className="text-sm text-indigo-700 underline">
               Download template
             </a>
             <div>
