@@ -40,7 +40,7 @@ export default async function UsersPage({
     await logError('Could not load users page', caught)
   }
   return (
-    <GlobalShell scopeKey={`${user.id}:${scope.platform}:${scope.workspaces.map(w => w.id).join(',')}`}>
+    <GlobalShell user={user} scopeKey={`${user.id}:${scope.platform}:${scope.workspaces.map(w => w.id).join(',')}`}>
       {initial ? (
         <UsersClient
           currentUserId={user.id}

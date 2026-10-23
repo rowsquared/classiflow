@@ -20,6 +20,30 @@ test('sign-in refuses a wrong password and admits the right one', async ({ page 
   await expect(rows(page)).toHaveCount(RECORDS.length)
 })
 
+test('global administration keeps the last workspace navigation', async ({ page }) => {
+  await signIn(page)
+  await expect(page).toHaveURL(/\/queue$/)
+  const sidebar = page.getByRole('complementary', { name: 'Main' })
+  await sidebar.getByRole('link', { name: 'Users', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible()
+
+  for (const destination of ['/users', '/workspaces', '/ai-services']) {
+    await page.goto(destination)
+    const queue = sidebar.getByRole('link', { name: 'Queue', exact: true })
+    await expect(queue).toBeVisible()
+    await expect(queue).toHaveAttribute('href', pagePath('/queue'))
+    await expect(sidebar.getByRole('link', { name: 'Progress', exact: true })).toHaveAttribute(
+      'href',
+      pagePath('/progress')
+    )
+    await expect(page.getByRole('button', { name: /^Workspace:.*Switch workspace$/ })).toBeVisible()
+  }
+
+  await sidebar.getByRole('link', { name: 'Queue', exact: true }).click()
+  await expect(page).toHaveURL(pagePath('/queue'))
+  await expect(rows(page)).toHaveCount(RECORDS.length)
+})
+
 test.describe('queue', () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page)

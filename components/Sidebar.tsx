@@ -9,7 +9,6 @@ import { queryKeys } from '@/lib/query/keys'
 import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { ToastContainer, type Toast } from '@/components/Toast'
-import { useWorkspacePaths } from '@/lib/workspace/urls'
 import Image from 'next/image'
 import {
   ChartColumn,
@@ -59,7 +58,8 @@ export default function Sidebar() {
       fetchJson<{ workspaces: Array<{ id: string; role: string }> }>('/api/workspaces', { signal })
   })
   const workspace = useWorkspaceInfo()
-  const { href: workspaceHref } = useWorkspacePaths()
+  // Global pages keep the last workspace for navigation; data hooks still use the URL.
+  const workspaceHref = (path: string) => `/w/${workspace?.id ?? ''}${path}`
 
   // Read from data attribute and sync state, then remove CSS override
   useLayoutEffect(() => {

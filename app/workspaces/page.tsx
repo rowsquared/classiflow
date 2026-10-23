@@ -14,7 +14,7 @@ export default async function WorkspacesPage() {
     await logError('Could not load workspace directory', caught)
   }
   return (
-    <GlobalShell scopeKey={`${user.id}:${user.platformRole}`}>
+    <GlobalShell user={user} scopeKey={`${user.id}:${user.platformRole}`}>
       {workspaces ? (
         <WorkspacesClient workspaces={workspaces} platform={user.platformRole === 'admin'} />
       ) : (

@@ -116,7 +116,10 @@ The CSV member import reuses an account when the email has one
 workspace admins, restore only when confirmed, members unchanged).
 
 Global pages use `components/GlobalShell.tsx` with the same sidebar and a bounded
-scrolling main column. `/workspaces` is the chooser and management list;
+scrolling main column. The shell retains the last accessible active workspace
+in its sidebar links and header switcher (resolved server-side from the same
+account-scoped browser preference as `/`); global page data and permissions
+remain global. `/workspaces` is the chooser and management list;
 admins can rename/archive/reopen their workspaces. Platform admins can delete
 an archived workspace after a count preview and typed-name confirmation.
 `WORKSPACE_DELETE_TABLES` in `lib/server/workspaces.ts` is the child-first

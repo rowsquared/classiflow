@@ -16,22 +16,24 @@ const WorkspaceContext = createContext<WorkspaceInfo | null>(null)
 export function WorkspaceProvider({
   value,
   userId,
+  remember = true,
   children
 }: {
-  value: WorkspaceInfo
+  value: WorkspaceInfo | null
   userId: string
+  remember?: boolean
   children: ReactNode
 }) {
   useEffect(() => {
-    if (value.archived) return
+    if (!remember || !value || value.archived) return
     const secure = window.location.protocol === 'https:' ? '; Secure' : ''
     document.cookie = `classiflow-last-workspace=${encodeURIComponent(`${userId}:${value.id}`)}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`
-  }, [userId, value.id, value.archived])
+  }, [userId, value, remember])
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
 }
 
-/** The current workspace (null outside /w/[workspaceId]). */
+/** The current workspace, or the last accessible active workspace on global pages. */
 export function useWorkspaceInfo(): WorkspaceInfo | null {
   return useContext(WorkspaceContext)
 }

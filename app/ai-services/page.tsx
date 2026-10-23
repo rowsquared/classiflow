@@ -13,7 +13,7 @@ export default async function AIServicesPage() {
     listAccessibleWorkspaces(user)
   ])
   return (
-    <GlobalShell scopeKey={`${user.id}:${user.platformRole}`}>
+    <GlobalShell user={user} scopeKey={`${user.id}:${user.platformRole}`}>
       <div className="p-4 sm:p-8 max-w-5xl mx-auto">
         <h1 className="text-2xl font-semibold text-gray-900">AI services</h1>
         <AIEndpointsPanel
