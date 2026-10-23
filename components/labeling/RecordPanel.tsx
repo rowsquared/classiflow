@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { CopyRecordLink } from '@/components/CopyRecordLink'
 import { buttonClass } from '@/components/ui/styles'
+import Tooltip from '@/components/Tooltip'
 import ResizablePanel from '@/components/ResizablePanel'
 import { formatFieldName } from '@/lib/utils'
 import type { NavigationList } from '@/lib/labeling-navigation'
@@ -37,6 +38,40 @@ export default function RecordPanel({
   disabled = false
 }: RecordPanelProps) {
   const { sentenceIds, currentIndex } = navigation
+  const fields = Object.entries(record.fieldMapping ?? {}).filter(
+    ([num]) => record[`field${num}` as keyof LabelingRecord]
+  )
+  const resolved = commentSummary.total - commentSummary.unresolved
+  const commentsLabel = `Comments: ${commentSummary.unresolved} unresolved; ${resolved} resolved (C)`
+  const actions = (
+    <div className="flex shrink-0 items-start gap-1">
+      <Tooltip
+        content={`Comments (C)\n\n${commentSummary.unresolved} unresolved · ${resolved} resolved`}
+        delayDuration={300}
+      >
+        <button
+          type="button"
+          onClick={onComments}
+          aria-label={commentsLabel}
+          aria-expanded={commentsOpen}
+          aria-controls={commentsOpen ? 'record-comments' : undefined}
+          aria-keyshortcuts="C"
+          className={buttonClass('ghost', 'sm', 'relative min-h-9 min-w-9')}
+        >
+          <MessageSquare className="w-4 h-4" aria-hidden="true" />
+          {commentSummary.total > 0 && (
+            <span
+              className={`absolute -right-1 -top-1 min-w-4 px-1 text-xs ${commentSummary.unresolved > 0 ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+              aria-hidden="true"
+            >
+              {commentSummary.unresolved}
+            </span>
+          )}
+        </button>
+      </Tooltip>
+      <CopyRecordLink workspaceId={workspaceId} sentenceId={record.id} compact />
+    </div>
+  )
   return (
     <ResizablePanel
       defaultWidth={50}
@@ -46,42 +81,26 @@ export default function RecordPanel({
       storageKey="labeling-left-panel-width"
       className="bg-white border-r border-gray-200 relative flex flex-col"
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-3">
-        <button
-          type="button"
-          onClick={onComments}
-          aria-expanded={commentsOpen}
-          aria-controls={commentsOpen ? 'record-comments' : undefined}
-          aria-keyshortcuts="C"
-          title="Open comments (C)"
-          className={buttonClass(commentSummary.unresolved > 0 ? 'primary' : 'secondary', 'sm')}
-        >
-          <MessageSquare className="w-4 h-4" aria-hidden="true" />
-          Comments{commentSummary.total > 0 ? ` · ${commentSummary.unresolved}` : ''}
-          <kbd className="text-xs border border-gray-300 px-1">C</kbd>
-        </button>
-        <CopyRecordLink workspaceId={workspaceId} sentenceId={record.id} />
-        {commentSummary.total > commentSummary.unresolved && (
-          <span className="text-xs text-gray-600">{commentSummary.total - commentSummary.unresolved} resolved</span>
-        )}
-      </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {discussion}
         <div className="p-6">
+          {fields.length === 0 && <div className="flex justify-end mb-4">{actions}</div>}
           <div className="space-y-6">
             {/* Field Columns */}
-            {record.fieldMapping &&
-              Object.entries(record.fieldMapping).map(([num, name]) => {
-                const value = record[`field${num}` as keyof LabelingRecord] as string | null
-                if (!value) return null
+            {fields.map(([num, name], index) => {
+              const value = record[`field${num}` as keyof LabelingRecord] as string | null
+              if (!value) return null
 
-                return (
-                  <div key={num}>
-                    <h2 className="text-sm font-semibold text-indigo-700 mb-2">{formatFieldName(name)}</h2>
-                    <p className="text-gray-900 whitespace-pre-wrap leading-relaxed text-lg">{value}</p>
+              return (
+                <div key={num}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h2 className="min-w-0 break-words text-sm font-medium text-indigo-700">{formatFieldName(name)}</h2>
+                    {index === 0 && actions}
                   </div>
-                )
-              })}
+                  <p className="text-gray-900 whitespace-pre-wrap leading-relaxed text-lg">{value}</p>
+                </div>
+              )
+            })}
 
             {/* Support Columns */}
             {record.supportMapping && Object.keys(record.supportMapping).length > 0 && (
