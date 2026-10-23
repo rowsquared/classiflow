@@ -297,6 +297,7 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={workspaceHref(item.href)}
+                prefetch={item.href === '/queue' ? false : undefined}
                 className={`
                 flex items-center gap-4 py-3 transition-colors relative
                 ${active ? 'bg-indigo-50 text-indigo-800 font-semibold' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'}

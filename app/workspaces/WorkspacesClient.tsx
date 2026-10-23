@@ -83,7 +83,7 @@ export default function WorkspacesClient({
                 {w.name} {w.status === 'archived' && <span className={badgeClass()}>Archived · read-only</span>}
               </h2>
               <div className="flex items-center gap-2">
-                <Link className={buttonClass('secondary', 'sm')} href={`/w/${w.id}/queue`}>
+                <Link className={buttonClass('secondary', 'sm')} href={`/w/${w.id}/queue`} prefetch={false}>
                   Open<span className="sr-only"> {w.name}</span>
                 </Link>
                 {w.role === 'admin' && (

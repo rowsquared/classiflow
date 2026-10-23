@@ -110,10 +110,6 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   }
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
 
-  useEffect(() => {
-    router.prefetch?.(href('/queue'))
-  }, [router, href])
-
   // Warm the annotations route so the first flag/submit is not delayed by compilation.
   useEffect(() => {
     const controller = new AbortController()

@@ -1,5 +1,6 @@
 import {
   createLoader,
+  createSerializer,
   parseAsArrayOf,
   parseAsBoolean,
   parseAsInteger,
@@ -63,6 +64,7 @@ export type QueueUrlState = inferParserType<typeof queueParsers>
 
 /** Reads the queue state from a page's searchParams (server) or a URLSearchParams. */
 export const loadQueueUrlState = createLoader(queueParsers)
+export const serializeQueueUrlState = createSerializer(queueParsers)
 
 export const EMPTY_QUEUE_FILTERS: QueueFilterValues = {
   status: [],

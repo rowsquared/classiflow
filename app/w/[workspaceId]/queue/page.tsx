@@ -8,6 +8,10 @@ import { listActiveTaxonomies } from '@/lib/server/taxonomies'
 import { getVisibleUser, listVisibleUsers } from '@/lib/server/users'
 import { loadQueueUrlState, queueListParams, queueStatsParams } from '@/lib/queue-url'
 import { logError } from '@/lib/logger'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { queueParsers } from '@/lib/queue-url'
+import { queuePreferenceCookie, rememberedQueueSearch } from '@/lib/queue-preferences'
 
 export default async function QueuePage({
   params,
@@ -18,9 +22,15 @@ export default async function QueuePage({
 }) {
   const { workspaceId } = await params
   const user = await requirePageUser(workspaceId)
+  const requested = await searchParams
+  // Explicit URLs (including cleared/default values) always win over the preference.
+  if (!Object.keys(queueParsers).some(key => requested[key] !== undefined)) {
+    const saved = rememberedQueueSearch((await cookies()).get(queuePreferenceCookie(workspaceId))?.value, user)
+    if (saved) redirect(`/w/${workspaceId}/queue${saved}`)
+  }
 
   // The same view the client shows for this URL (tab, search, filters, page).
-  const view = await loadQueueUrlState(searchParams)
+  const view = await loadQueueUrlState(requested)
   const listParams = queueListParams(view)
   const statsParams = queueStatsParams(view)
 

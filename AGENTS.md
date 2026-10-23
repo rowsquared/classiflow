@@ -66,8 +66,11 @@ Browser: React client components
 - **URL state:** nuqs (`useQueryStates`, adapter in the workspace layout). A
   screen's parsers live in a shared module the server page also reads with
   `createLoader` (queue: `lib/queue-url.ts`, whose parameter names are the
-  API's), so the server renders the view the URL names. Client-only views keep
-  their parsers next to them (Team: `lib/team-url.ts`; audit log: in its
+  API's), so the server renders the view the URL names.
+  The queue remembers its applied URL view in an account/role-scoped browser
+  cookie per workspace (`lib/queue-preferences.ts`); a bare queue URL restores
+  it before loading data, while explicit queue parameters always take precedence.
+  Client-only views keep their parsers next to them (Team: `lib/team-url.ts`; audit log: in its
   page). Use `history: 'push'`
   for deliberate view changes (tab, filters, page), the default replace for
   typing.

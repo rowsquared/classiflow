@@ -53,3 +53,35 @@ test('the workspace switcher is keyboard operable and names the role', async ({ 
   await page.keyboard.press('Escape')
   await expect(trigger).toBeFocused()
 })
+
+test('leaving the queue restores the last view while explicit links and reset take precedence', async ({ page }) => {
+  await signIn(page)
+  const queuePath = `/w/${WORKSPACE_ID}/queue`
+  await page.goto(`${queuePath}?tab=all&q=nurse&flagged=false&limit=20`)
+  await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('nurse')
+  const sidebar = page.getByRole('complementary', { name: 'Main' })
+  await sidebar.getByRole('link', { name: 'Progress', exact: true }).click()
+  await sidebar.getByRole('link', { name: 'Queue', exact: true }).click()
+  await expect(page).toHaveURL(/[?&]flagged=false/)
+  expect(new URL(page.url()).searchParams.get('tab')).toBe('all')
+  expect(new URL(page.url()).searchParams.get('limit')).toBe('20')
+  await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('nurse')
+
+  // A shared URL replaces the remembered filter rather than merging with it.
+  await page.goto(`${queuePath}?tab=all&q=nurse`)
+  expect(new URL(page.url()).searchParams.has('flagged')).toBe(false)
+  await expect(rows(page)).toHaveCount(1)
+  await rows(page).first().click()
+  await page.getByRole('button', { name: /Back to queue/ }).click()
+  await expect(page).toHaveURL(/[?&]q=nurse/)
+  await expect(rows(page)).toHaveCount(1)
+
+  await page.getByRole('button', { name: 'Toggle filters' }).click()
+  await page.getByRole('button', { name: 'Reset', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('')
+  await sidebar.getByRole('link', { name: 'Progress', exact: true }).click()
+  await sidebar.getByRole('link', { name: 'Queue', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('')
+  expect(new URL(page.url()).searchParams.has('q')).toBe(false)
+  expect(new URL(page.url()).searchParams.has('flagged')).toBe(false)
+})

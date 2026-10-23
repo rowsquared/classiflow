@@ -14,6 +14,7 @@ import {
   queueListParams,
   queueParsers,
   queueStatsParams,
+  serializeQueueUrlState,
   type QueueFilterValues,
   type QueueTab
 } from '@/lib/queue-url'
@@ -27,6 +28,7 @@ import AssignmentModal from '@/components/queue/AssignmentModal'
 import { ToastContainer, type Toast } from '@/components/Toast'
 import { Loader2, Tag, Users } from 'lucide-react'
 import { buttonClass } from '@/components/ui/styles'
+import { queuePreferenceCookie, queuePreferenceValue } from '@/lib/queue-preferences'
 
 export type Sentence = {
   id: string
@@ -141,6 +143,18 @@ export default function QueuePageClient({
   // The view (tab, search, filters, page) is the URL: back/forward and shared
   // links reproduce it, and the server page rendered the same view.
   const [url, setUrl] = useQueryStates(queueParsers)
+  const rememberedSearch = serializeQueueUrlState(url)
+  const preference = currentUser ? queuePreferenceValue(currentUser, rememberedSearch) : null
+  useEffect(() => {
+    if (preference === null) return
+    const encoded = encodeURIComponent(preference)
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    // Overlong views still work through their URL; clear an older preference instead.
+    document.cookie =
+      encoded.length <= 3500
+        ? `${queuePreferenceCookie(workspaceId)}=${encoded}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`
+        : `${queuePreferenceCookie(workspaceId)}=; Path=/; Max-Age=0; SameSite=Lax${secure}`
+  }, [workspaceId, preference])
   const activeTab = url.tab
   const filters = pickQueueFilters(url)
   const activeFilterCount = countActiveFilters(filters)
