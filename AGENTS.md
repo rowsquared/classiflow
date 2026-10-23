@@ -106,6 +106,8 @@ platform-admin-only. The editor in `components/users/` uses
 `components/team/WorkspaceAccess.tsx`; membership mutations share
 `lib/server/memberships.ts`, account mutations `lib/server/global-user-admin.ts`.
 New global users can be created with email and name (a legacy username is generated).
+Account emails and password-link setup screens identify the account by its sign-in
+email, keeping the generated legacy alias out of those messages.
 The directory is filtered and paged by the server (`lib/server/global-users.ts`,
 query in `lib/contracts/users.ts`, view in the URL with nuqs). New workspaces
 take a chosen first admin (`/workspaces`, enabled accounts only).
@@ -209,8 +211,11 @@ Read `prisma/schema.prisma` before changing data behavior.
   agreed, reviewed or accepted. The single save route sends a labeller's save
   to their task and a manager's save on a disagreement to review; bulk label
   and skip refuse active rounds. Labellers of a round see it blind (own
-  answer and comments, no AI) in the record, comments and queue reads; keep
-  that when adding a read path. `LabelingActivity.kind` separates labelling
+  answer and comments, no AI) in the record, comments and queue reads, without
+  a notice or metadata identifying double annotation. Record edit locks use
+  neutral `labeling.editableTaxonomies` permissions; labeller assignment reads
+  show only themselves, and blind timestamps/counts and completion reports
+  reflect their own work. Keep that when adding a read path. `LabelingActivity.kind` separates labelling
   from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's

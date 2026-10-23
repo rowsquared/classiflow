@@ -176,14 +176,24 @@ narrow what some people may see and do, on top of record visibility:
 
 | Who | Sees | May write |
 | --- | --- | --- |
-| One of the round's two labellers (any role) | only their own answer and their own comments; no AI suggestions, no other labels, no last editor; label/AI queue filters skip the record; their queue tabs follow their own part | their own answer, once per taxonomy (final); skip their part; comments |
+| One of the round's two labellers (any role) | only their own answer, comments and edit information; no AI suggestions or other labels; label/AI queue filters skip the record; their queue tabs follow their own part | their own answer, once per taxonomy (final); skip their part; comments |
 | A labeller with access who is not in the round | no labels | nothing but comments and flags |
 | Admin not in the round | both answers, outcome, people | review decisions, accept single label, stop, hand over a part |
 | Supervisor not in the round | the same, when both labellers are in their subtree | the same; otherwise read-only (a person outside the team needs an admin) |
 
 Nobody reviews a round they label in. Bulk labels and bulk skips refuse a
 selection that contains an active round (409). The progress overview's
-double-annotation figures (agreement included) are null for labellers.
+double-annotation figures (agreement included) are null for labellers. Their
+workload and completion projection follow their own submitted answers while a
+round is active, rather than the agreement status.
+
+Labellers see no double-annotation notice, comparison, reviewer state or task
+metadata. Record responses use ordinary `labeling.editableTaxonomies` permissions
+to retain submission locks without naming the workflow. Their assignment reads
+show only themselves; blind record and queue reads expose only their own edit
+timestamps and comment counts. Comment filters use the same private audience;
+label/AI and editor/date filters exclude blind records. Bulk-action and label-save
+errors shown to labellers do not identify double annotation.
 
 ## Access matrix
 

@@ -107,6 +107,20 @@ export function recordStatus(statuses: TaxonomyAnnotationStatus[]): RecordAnnota
 
 type PathView = Array<{ level: number; nodeCode: string; nodeLabel: string | null }>
 
+/** Ordinary edit permissions, without disclosing the annotation workflow. */
+export type RecordLabelingAccess = { editableTaxonomies: string[] | null }
+
+export function recordLabelingAccess(view: DoubleRecordView | null): RecordLabelingAccess {
+  return {
+    editableTaxonomies:
+      view?.mode === 'task'
+        ? view.required.filter(key => !view.answered.includes(key))
+        : view?.mode === 'hidden'
+          ? []
+          : null
+  }
+}
+
 /** The record screen's view of an active round (record GET `double`; lib/server/double-annotation.ts recordView). */
 export type DoubleRecordView =
   | {

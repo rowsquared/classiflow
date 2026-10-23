@@ -202,7 +202,7 @@ describe('password links', () => {
 
     expect((await check(token)).status).toBe(200)
     expect((await check(token)).status).toBe(200)
-    expect((await (await check(token)).json()).username).toBe(user.username)
+    expect(await (await check(token)).json()).toMatchObject({ username: user.username, email: user.email })
 
     const weak = await confirm(token, 'password123')
     expect(weak.status).toBe(400)
@@ -211,6 +211,7 @@ describe('password links', () => {
 
     const ok = await confirm(token, 'violet-harbor-lantern')
     expect(ok.status).toBe(200)
+    expect(await ok.json()).toMatchObject({ ok: true, email: user.email })
     expect(await checkPassword(prisma, user.id, 'violet-harbor-lantern')).toBe(true)
     const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } })
     expect(after.mustResetPassword).toBe(false)

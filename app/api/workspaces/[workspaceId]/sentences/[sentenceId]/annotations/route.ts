@@ -119,7 +119,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
         let recordStatus = current.status
         let personal: { status: string; done: Set<string> } | null = null
         if (view.mode === 'hidden') {
-          throw new DoubleAnnotationError('This record is being labelled by two other people', 403)
+          throw new DoubleAnnotationError('You cannot edit labels on this record', 403)
         }
         if (view.mode === 'task') {
           if (taxonomy) {

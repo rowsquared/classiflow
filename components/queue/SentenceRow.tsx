@@ -9,6 +9,7 @@ import { MessageSquare } from 'lucide-react'
 import { badgeClass } from '@/components/ui/styles'
 import type { DoubleRowSummary } from '@/lib/double-annotation'
 import DoubleBadge from './DoubleBadge'
+import { userDisplayName } from '@/lib/user-display'
 
 // Custom AI suggestion icon
 function SolidSparkle({ className }: { className?: string }) {
@@ -64,6 +65,7 @@ type Sentence = {
       id: string
       username: string
       name: string | null
+      email?: string
     }
   }>
   annotations: Annotation[]
@@ -321,12 +323,15 @@ export default function SentenceRow({
 
       {/* Last Editor */}
       <td className="px-4 py-3 whitespace-nowrap">
-        {sentence.lastEditor?.username ? (
+        {sentence.lastEditor ? (
           <span
-            className={badgeClass('plain', getUserColor(sentence.lastEditor.username))}
-            title={sentence.lastEditor.username}
+            className={badgeClass(
+              'plain',
+              `${getUserColor(sentence.lastEditor.username ?? sentence.lastEditor.email)} max-w-48`
+            )}
+            title={userDisplayName(sentence.lastEditor)}
           >
-            {sentence.lastEditor.username}
+            <span className="truncate">{userDisplayName(sentence.lastEditor)}</span>
           </span>
         ) : (
           <span className="text-gray-500 text-sm">—</span>
@@ -341,10 +346,10 @@ export default function SentenceRow({
               {sentence.assignments.map((assignment, idx) => (
                 <span
                   key={idx}
-                  className={badgeClass('plain', getUserColor(assignment.user.username))}
-                  title={assignment.user.name || assignment.user.username}
+                  className={badgeClass('plain', `${getUserColor(assignment.user.username)} max-w-48`)}
+                  title={userDisplayName(assignment.user)}
                 >
-                  {assignment.user.username}
+                  <span className="truncate">{userDisplayName(assignment.user)}</span>
                 </span>
               ))}
             </div>

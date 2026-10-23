@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readMailConfig } from './config'
 import { escapeHtml, renderMail } from './layout'
 import { foldSubject, outcomeForStatus, sendViaN8n } from './n8n'
-import { credentialsMail, invitationMail } from './templates'
+import { credentialsMail, invitationMail, passwordLinkMail, passwordChangedMail, emailChangedMail } from './templates'
 
 const config = readMailConfig({
   N8N_EMAIL_WEBHOOK_SECRET: 'secret-value',
@@ -95,11 +95,44 @@ describe('n8n transport', () => {
 })
 
 describe('layout and templates', () => {
+  it('uses the email address as the sign-in identifier in account emails', () => {
+    const email = 'peter@example.org'
+    const account = { name: 'Peter', email }
+    const welcome = invitationMail({
+      ...account,
+      workspaceName: null,
+      role: null,
+      url: 'https://app/set-password#t=example',
+      hours: 72
+    })
+    const credentials = credentialsMail({
+      ...account,
+      password: 'temporary-example-73',
+      workspaceName: null,
+      role: null,
+      signInUrl: 'https://app/login'
+    })
+    const mails = [
+      welcome,
+      credentials,
+      passwordLinkMail({ ...account, url: 'https://app/set-password#t=example', minutes: 30 }),
+      passwordChangedMail({ ...account, signInUrl: 'https://app/login' }),
+      emailChangedMail({ email })
+    ]
+    for (const mail of mails) {
+      expect(mail.html).toContain(email)
+      expect(mail.text).toContain(email)
+      expect(mail.text).not.toMatch(/username|user_[a-f0-9]{32}/i)
+    }
+    expect(welcome.text).toContain(`Your sign-in email is ${email}`)
+    expect(credentials.text).toContain(`Email: ${email}`)
+  })
+
   it('escapes interpolated values', () => {
     expect(escapeHtml(`<script>&"'`)).toBe('&lt;script&gt;&amp;&quot;&#39;')
     const mail = invitationMail({
       name: '<script>alert(1)</script> & Co',
-      username: 'u',
+      email: 'u@example.com',
       workspaceName: 'A & B',
       role: 'labeller',
       url: 'https://app/set-password#t=abc"x',
@@ -114,7 +147,7 @@ describe('layout and templates', () => {
   it('keeps passwords and links out of the preheader', () => {
     const mail = credentialsMail({
       name: 'Ana',
-      username: 'ana',
+      email: 'ana@example.com',
       password: 'Zq9secretPw',
       workspaceName: 'W',
       role: 'labeller',

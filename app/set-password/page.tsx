@@ -15,8 +15,8 @@ const STORAGE_KEY = 'classiflow.password-link'
 type State =
   | { step: 'checking' }
   | { step: 'invalid' }
-  | { step: 'form'; username: string; purpose: 'invitation' | 'password_link' }
-  | { step: 'done'; username: string }
+  | { step: 'form'; email: string; purpose: 'invitation' | 'password_link' }
+  | { step: 'done'; email: string }
 
 /**
  * Choosing a password from an invitation or password link (signed out). The
@@ -43,8 +43,7 @@ export default function SetPasswordPage() {
           }).catch(() => null)
         : null
       const data = res?.ok ? await res.json() : null
-      if (active)
-        setState(data ? { step: 'form', username: data.username, purpose: data.purpose } : { step: 'invalid' })
+      if (active) setState(data ? { step: 'form', email: data.email, purpose: data.purpose } : { step: 'invalid' })
     }
     void check()
     return () => {
@@ -73,7 +72,7 @@ export default function SetPasswordPage() {
         return
       }
       forgetLinkToken(STORAGE_KEY)
-      setState({ step: 'done', username: data.username })
+      setState({ step: 'done', email: data.email })
     } finally {
       setBusy(false)
     }
@@ -103,7 +102,7 @@ export default function SetPasswordPage() {
     return (
       <AuthCard title="Password saved">
         <p role="status" className="text-sm text-gray-700 mb-4">
-          You can now sign in as <strong>{state.username}</strong> with your new password.
+          You can now sign in with <strong>{state.email}</strong> and your new password.
         </p>
         <Link href="/login" className={`${authButton} block text-center`}>
           Sign in
@@ -114,7 +113,7 @@ export default function SetPasswordPage() {
   return (
     <AuthCard
       title={state.purpose === 'invitation' ? 'Welcome to classiflow' : 'Choose a new password'}
-      subtitle={`For the account ${state.username}`}
+      subtitle={`For the account ${state.email}`}
     >
       <form onSubmit={submit} className="space-y-4">
         {error && (

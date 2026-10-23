@@ -190,7 +190,7 @@ async function buildMessage(row: ClaimedRow): Promise<Built> {
         to: user.email,
         ...invitationMail({
           name: user.name,
-          username: user.username,
+          email: user.email,
           workspaceName: membership?.workspace.name ?? null,
           role: membership?.role ?? null,
           url: `${base}/set-password#t=${token}`,
@@ -209,7 +209,7 @@ async function buildMessage(row: ClaimedRow): Promise<Built> {
         to: user.email,
         ...passwordLinkMail({
           name: user.name,
-          username: user.username,
+          email: user.email,
           url: `${base}/set-password#t=${token}`,
           minutes: config.passwordLinkMinutes
         })
@@ -218,11 +218,11 @@ async function buildMessage(row: ClaimedRow): Promise<Built> {
     case 'password_changed':
       return {
         to: user.email,
-        ...passwordChangedMail({ name: user.name, username: user.username, signInUrl: `${base}/login` })
+        ...passwordChangedMail({ name: user.name, email: user.email, signInUrl: `${base}/login` })
       }
     case 'email_changed':
       if (!row.recipient) return { skip: 'No previous address recorded' }
-      return { to: row.recipient, ...emailChangedMail({ username: user.username }) }
+      return { to: row.recipient, ...emailChangedMail({ email: row.recipient }) }
     default:
       return { skip: 'Not sent through the outbox' }
   }
@@ -311,7 +311,7 @@ async function sendCredentialMail(mailId: string, password: string) {
         to: user.email,
         ...credentialsMail({
           name: user.name,
-          username: user.username,
+          email: user.email,
           password,
           workspaceName: membership?.workspace.name ?? null,
           role: membership?.role ?? null,

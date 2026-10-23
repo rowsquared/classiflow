@@ -166,14 +166,14 @@ export async function saveTaskAnswer(opts: {
   const tx = db()
   const outcome = round.outcomes.find(o => o.taxonomyId === taxonomyId)
   if (!outcome) {
-    throw new DoubleAnnotationError('This taxonomy is not part of the double annotation of this record', 400)
+    throw new DoubleAnnotationError('This taxonomy is not available for labelling on this record', 400)
   }
 
   const existing = await taskLabels([task.id], taxonomyId)
   if (existing.length > 0) {
     if (sameLabels(existing, labels)) return taskResult(round, task) // replay of the same answer
     throw new DoubleAnnotationError(
-      'You already submitted this taxonomy. Answers are final; a supervisor can resolve differences.',
+      'You already submitted this taxonomy. Contact your supervisor if it needs a correction.',
       409
     )
   }
@@ -639,6 +639,7 @@ export async function ownAnswers(user: CurrentUser, sentenceIds: string[]) {
       id: true,
       sentenceId: true,
       status: true,
+      assignee: { select: { id: true, name: true, username: true, email: true } },
       labels: {
         select: { taxonomyId: true, level: true, nodeCode: true, labelingStartedAt: true, createdAt: true },
         orderBy: { level: 'asc' }

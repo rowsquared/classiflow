@@ -16,6 +16,7 @@ import {
 } from '@/lib/queue-url'
 import Combobox, { type ComboboxOption } from '@/components/ui/Combobox'
 import { badgeClass, buttonClass } from '@/components/ui/styles'
+import { userDisplayName } from '@/lib/user-display'
 
 interface FilterPanelProps {
   /** The applied filters (from the URL). The panel edits a draft until Apply. */
@@ -24,7 +25,7 @@ interface FilterPanelProps {
   onReset: () => void
   onClose: () => void
   taxonomies: Array<{ key: string; levelNames?: Record<string, string> | null }>
-  users?: Array<{ id: string; username: string; name: string | null }>
+  users?: Array<{ id: string; username: string; name: string | null; email?: string }>
   showAssignedToFilter?: boolean
 }
 
@@ -112,8 +113,8 @@ export default function FilterPanel({
 
   const userOptions: ComboboxOption[] = users.map(u => ({
     value: u.id,
-    label: u.username,
-    hint: u.name ?? undefined
+    label: userDisplayName(u),
+    hint: u.email
   }))
 
   const handleConfidenceChange = (field: 'aiConfidenceMin' | 'aiConfidenceMax', value: string) => {

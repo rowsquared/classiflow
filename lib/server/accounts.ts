@@ -104,7 +104,7 @@ export async function requestPasswordLink(email: string): Promise<void> {
   if (mailId) await deliverMail([mailId])
 }
 
-export type LinkCheck = { username: string; purpose: LinkPurpose }
+export type LinkCheck = { username: string; email: string; purpose: LinkPurpose }
 
 /** Whether a link is good, without using it up (mail scanners open links). */
 export async function checkAccountLink(token: unknown): Promise<LinkCheck | null> {
@@ -116,11 +116,11 @@ export async function checkAccountLink(token: unknown): Promise<LinkCheck | null
   })
   if (!user || user.banned) return null
   const link = await findAccountLink(prisma, token, user.email)
-  return link ? { username: user.username, purpose: link.purpose } : null
+  return link ? { username: user.username, email: user.email, purpose: link.purpose } : null
 }
 
 export type ConfirmResult =
-  { ok: true; username: string } | { ok: false; status: number; error: string; field?: 'newPassword' }
+  { ok: true; username: string; email: string } | { ok: false; status: number; error: string; field?: 'newPassword' }
 
 const INVALID = { ok: false as const, status: 400, error: 'This link is invalid, used or expired' }
 
@@ -176,11 +176,11 @@ export async function confirmAccountLink(token: unknown, newPassword: string): P
       link.purpose === 'password_link' && mailEnabled()
         ? await queueMail(tx, { purpose: 'password_changed', userId: user.id })
         : null
-    return { ok: true as const, username: user.username, notice }
+    return { ok: true as const, username: user.username, email: user.email, notice }
   })
   if (!outcome.ok) return outcome
   if (outcome.notice) deliverSoon([outcome.notice])
-  return { ok: true, username: outcome.username }
+  return { ok: true, username: outcome.username, email: outcome.email }
 }
 
 type EmailDb = Pick<Prisma.TransactionClient, 'user' | 'verification' | 'outgoingMail'>

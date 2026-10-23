@@ -81,7 +81,10 @@ describe('double annotation', () => {
     signInAs(alice)
     const view = await record(r.id)
     expect(view.annotations).toEqual([])
-    expect(view.double).toMatchObject({ mode: 'task', taskStatus: 'pending', answered: [] })
+    expect(view.double).toBeNull()
+    expect(view.labeling).toEqual({ editableTaxonomies: ['A', 'B'] })
+    expect(view.lastEditedAt).toBeNull()
+    expect(view.assignments).toEqual([{ userId: alice.id }])
 
     expect((await save(r.id, path('A', '01', '011'))).status).toBe(200)
     const both = await prisma.doubleOutcome.findFirstOrThrow({ where: { taxonomyId: taxA.id } })
@@ -227,6 +230,9 @@ describe('double annotation', () => {
       request('/x', { method: 'POST', body: { body: 'I chose 011' } }),
       params({ sentenceId: r.id })
     )
+    const ownProgress = await (await overviewRoute.GET(request('/x/progress/overview'), params())).json()
+    expect(ownProgress.workload).toMatchObject({ complete: 1, pending: 0 })
+    expect(ownProgress.double).toBeNull()
 
     const list = async (query: string) =>
       (await (await listRoute.GET(request(`/x/sentences?${query}`), params())).json()).sentences as Array<{
@@ -243,5 +249,61 @@ describe('double annotation', () => {
       await commentsRoute.GET(request(`/x?includeResolved=true`), params({ sentenceId: r.id }))
     ).json()
     expect(comments.comments).toEqual([])
+  })
+
+  it('keeps workflow metadata, other assignees, edits and comment counts out of labeller reads and filters', async () => {
+    const [r] = await createSentences(1, [alice.id, bob.id, carol.id])
+    signInAs(sam)
+    await start({ sentenceIds: [r.id], firstUserId: alice.id, secondUserId: bob.id })
+    signInAs(alice)
+    await save(r.id, path('A', '01', '011'))
+    await commentsRoute.POST(
+      request('/x', { method: 'POST', body: { body: 'Private answer note' } }),
+      params({ sentenceId: r.id })
+    )
+
+    signInAs(bob)
+    const detail = await record(r.id)
+    expect(detail.double).toBeNull()
+    expect(detail.labeling).toEqual({ editableTaxonomies: ['A', 'B'] })
+    expect(detail.assignments).toEqual([{ userId: bob.id }])
+    expect(detail.lastEditedAt).toBeNull()
+    expect(detail.commentSummary).toEqual({ total: 0, unresolved: 0 })
+    expect(detail._count.comments).toBe(0)
+    const list = async (query = '') =>
+      (await (await listRoute.GET(request(`/x/sentences?${query}`), params())).json()).sentences
+    const [row] = await list()
+    expect(row.double).toBeNull()
+    expect(row.assignments.map((a: { user: { id: string } }) => a.user.id)).toEqual([bob.id])
+    expect(row.lastEditor).toBeNull()
+    expect(row.lastEditedAt).toBeNull()
+    expect(row._count.comments).toBe(0)
+    expect(await list('hasComments=true')).toEqual([])
+    expect((await list('hasComments=false')).map((s: { id: string }) => s.id)).toEqual([r.id])
+    expect(await list(`assignedToUserId=${alice.id}`)).toEqual([])
+    expect(await list(`lastEditorId=${alice.id}`)).toEqual([])
+
+    await save(r.id, path('A', '02'))
+    const ownView = await record(r.id)
+    expect(ownView.labeling).toEqual({ editableTaxonomies: ['B'] })
+    expect(ownView.annotations.map((a: { nodeCode: string }) => a.nodeCode)).toEqual(['02'])
+    const resubmit = await save(r.id, path('A', '01', '012'))
+    expect(resubmit.status).toBe(409)
+    expect((await resubmit.json()).error).not.toMatch(/double|independent|differences|other people/i)
+    const bulk = await bulkRoute.POST(
+      request('/x', { method: 'POST', body: { sentenceIds: [r.id], taxonomyKey: 'B', annotations: path('B', '02') } }),
+      params()
+    )
+    expect(bulk.status).toBe(409)
+    expect((await bulk.json()).error).not.toMatch(/double|independent|other people/i)
+
+    signInAs(carol)
+    const hidden = await record(r.id)
+    expect(hidden.double).toBeNull()
+    expect(hidden.labeling).toEqual({ editableTaxonomies: [] })
+    expect(hidden.annotations).toEqual([])
+    const denied = await save(r.id, path('A', '02'))
+    expect(denied.status).toBe(403)
+    expect((await denied.json()).error).not.toMatch(/double|independent|other people/i)
   })
 })

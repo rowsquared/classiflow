@@ -47,6 +47,8 @@ test('invite a new member by email; they choose a password from the link and sig
 
   await expect.poll(() => mails.filter(m => m.to === 'e2e-invited@test.local').length).toBe(1)
   const mail = mails.find(m => m.to === 'e2e-invited@test.local')!
+  expect(mail.body).toContain('Your sign-in email is e2e-invited@test.local')
+  expect(mail.body).not.toContain('Your username is')
   const link = /href="([^"]*\/set-password#t=[^"]+)"/.exec(mail.body)?.[1]
   expect(link).toBeTruthy()
 
@@ -55,12 +57,15 @@ test('invite a new member by email; they choose a password from the link and sig
   const invited = await context.newPage()
   await invited.goto(link!)
   await expect(invited.getByRole('heading', { name: 'Welcome to classiflow' })).toBeVisible()
+  await expect(invited.getByText('For the account e2e-invited@test.local', { exact: true })).toBeVisible()
   // The token has left the address bar.
   expect(invited.url()).not.toContain('#t=')
   await invited.getByLabel('New password').fill('my-own-chosen-words')
   await invited.getByLabel('Repeat the password').fill('my-own-chosen-words')
   await invited.getByRole('button', { name: 'Save password' }).click()
-  await expect(invited.getByText(/You can now sign in as/)).toBeVisible()
+  await expect(invited.getByRole('status')).toHaveText(
+    'You can now sign in with e2e-invited@test.local and your new password.'
+  )
 
   await invited.getByRole('link', { name: 'Sign in' }).click()
   await invited.getByLabel(/username or email/i).fill('e2e-invited@test.local')

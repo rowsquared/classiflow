@@ -239,6 +239,8 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const activeOutcome =
     double?.mode === 'manager' ? double.outcomes.find(o => o.taxonomyKey === activeTaxonomy?.key) : undefined
   const locked =
+    (sentence?.labeling?.editableTaxonomies != null &&
+      (!activeTaxonomy || !sentence.labeling.editableTaxonomies.includes(activeTaxonomy.key))) ||
     double?.mode === 'hidden' ||
     (double?.mode === 'task' && Boolean(activeTaxonomy && double.answered.includes(activeTaxonomy.key))) ||
     (double?.mode === 'manager' &&
@@ -479,7 +481,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             </div>
           )}
 
-          {double && activeTaxonomy && (
+          {double?.mode === 'manager' && activeTaxonomy && (
             <DoublePanel
               view={double}
               taxonomyKey={activeTaxonomy.key}

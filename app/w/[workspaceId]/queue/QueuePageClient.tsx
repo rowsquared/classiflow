@@ -104,6 +104,7 @@ export type QueueUser = {
   id: string
   username: string
   name: string | null
+  email?: string
 }
 
 type UserRole = 'admin' | 'supervisor' | 'labeller'

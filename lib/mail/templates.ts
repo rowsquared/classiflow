@@ -12,7 +12,7 @@ function hoursText(hours: number) {
 /** A new account: choose a password through the link. */
 export function invitationMail(input: {
   name: string
-  username: string
+  email: string
   workspaceName: string | null
   role: string | null
   url: string
@@ -29,7 +29,7 @@ export function invitationMail(input: {
       heading: `Welcome, ${input.name}`,
       blocks: [
         { type: 'text', text: where },
-        { type: 'text', text: `Your username is ${input.username}. Choose a password to sign in:` },
+        { type: 'text', text: `Your sign-in email is ${input.email}. Choose a password to sign in:` },
         { type: 'button', label: 'Choose a password', url: input.url },
         { type: 'text', text: `The link works for ${hoursText(input.hours)}. If it has expired, ask your admin.` }
       ]
@@ -68,7 +68,7 @@ export function workspaceInvitationMail(input: {
   }
 }
 
-export function passwordLinkMail(input: { name: string; username: string; url: string; minutes: number }) {
+export function passwordLinkMail(input: { name: string; email: string; url: string; minutes: number }) {
   return {
     subject: 'Set a new classiflow password',
     ...renderMail({
@@ -77,7 +77,7 @@ export function passwordLinkMail(input: { name: string; username: string; url: s
       blocks: [
         {
           type: 'text',
-          text: `A new password was requested for the account ${input.username}. Use this link to choose one:`
+          text: `A new password was requested for the account ${input.email}. Use this link to choose one:`
         },
         { type: 'button', label: 'Choose a new password', url: input.url },
         {
@@ -89,7 +89,7 @@ export function passwordLinkMail(input: { name: string; username: string; url: s
   } satisfies MailTemplate
 }
 
-export function passwordChangedMail(input: { name: string; username: string; signInUrl: string }): MailTemplate {
+export function passwordChangedMail(input: { name: string; email: string; signInUrl: string }): MailTemplate {
   return {
     subject: 'Your classiflow password was changed',
     ...renderMail({
@@ -98,7 +98,7 @@ export function passwordChangedMail(input: { name: string; username: string; sig
       blocks: [
         {
           type: 'text',
-          text: `The password of the account ${input.username} was just changed, and every device was signed out.`
+          text: `The password of the account ${input.email} was just changed, and every device was signed out.`
         },
         {
           type: 'text',
@@ -111,7 +111,7 @@ export function passwordChangedMail(input: { name: string; username: string; sig
 }
 
 /** Sent to the previous address. */
-export function emailChangedMail(input: { username: string }): MailTemplate {
+export function emailChangedMail(input: { email: string }): MailTemplate {
   return {
     subject: 'Your classiflow email address was changed',
     ...renderMail({
@@ -120,7 +120,7 @@ export function emailChangedMail(input: { username: string }): MailTemplate {
       blocks: [
         {
           type: 'text',
-          text: `An admin changed the email address of the account ${input.username}. Mail for this account no longer goes to this address.`
+          text: `An admin changed the email address of the account ${input.email}. Mail for this account no longer goes to this address.`
         },
         { type: 'text', text: 'If you did not expect this, contact your admin.' }
       ]
@@ -134,7 +134,7 @@ export function emailChangedMail(input: { username: string }): MailTemplate {
  */
 export function credentialsMail(input: {
   name: string
-  username: string
+  email: string
   password: string
   workspaceName: string | null
   role: string | null
@@ -152,7 +152,7 @@ export function credentialsMail(input: {
       blocks: [
         { type: 'text', text: where },
         { type: 'text', text: 'Sign in with these details. You will be asked to choose your own password first.' },
-        { type: 'code', lines: [`Username: ${input.username}`, `Temporary password: ${input.password}`] },
+        { type: 'code', lines: [`Email: ${input.email}`, `Temporary password: ${input.password}`] },
         { type: 'button', label: 'Sign in', url: input.signInUrl },
         {
           type: 'text',

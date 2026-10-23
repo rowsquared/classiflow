@@ -1,6 +1,7 @@
 import type { PeopleSort, ProgressPeople } from '@/lib/contracts/progress'
 import { formatNumber, relativeTime } from './format'
 import { buttonClass } from '@/components/ui/styles'
+import { userDisplayName } from '@/lib/user-display'
 
 type Column = { sort: PeopleSort; label: string; numeric?: boolean }
 
@@ -82,18 +83,17 @@ export default function PeopleTable({ people, sort, dir, onSort, onSelectPerson,
                 <tr key={person.userId} className="border-t border-gray-100">
                   <td className="px-4 py-2">
                     {person.platformOnly ? (
-                      <span className="font-medium text-gray-900">{person.name || person.username}</span>
+                      <span className="font-medium text-gray-900">{userDisplayName(person)}</span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => onSelectPerson(person.userId)}
                         className="text-left font-medium text-indigo-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
-                        title={`Show ${person.name || person.username} only`}
+                        title={`Show ${userDisplayName(person)} only`}
                       >
-                        {person.name || person.username}
+                        {userDisplayName(person)}
                       </button>
                     )}
-                    <span className="ml-2 text-gray-600">@{person.username}</span>
                     {person.platformOnly && (
                       <span
                         className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700"

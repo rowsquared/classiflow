@@ -144,10 +144,24 @@ function activityWhere(workspaceId: string, { range, scope }: ReportContext) {
 /** A report, or the message for a 400 (invalid range or granularity). */
 export type Report<T> = { data: T; error?: undefined } | { data?: undefined; error: string }
 
+/** Labellers' completion reflects their own work, never another person's answer. */
+function workloadStatus(user: CurrentUser, sentence: Prisma.Sql) {
+  if (user.role !== 'labeller') return Prisma.sql`${sentence}.status::text`
+  return Prisma.sql`COALESCE((
+    SELECT COALESCE(t.status::text, 'pending')
+      FROM "DoubleRound" r
+      LEFT JOIN "DoubleTask" t ON t."roundId" = r.id AND t."workspaceId" = r."workspaceId"
+       AND t."assigneeId" = ${user.id} AND t.status <> 'cancelled'
+     WHERE r."sentenceId" = ${sentence}.id AND r."workspaceId" = ${sentence}."workspaceId" AND r.status = 'active'
+     LIMIT 1
+  ), ${sentence}.status::text)`
+}
+
 /** Workload now (cards) and records labeled in the period. */
 export async function getProgressOverview(user: CurrentUser, filter: ReportFilter): Promise<Report<ProgressOverview>> {
   const { data: context, error } = await reportContext(user, filter)
   if (error !== undefined) return { error }
+  const status = workloadStatus(user, Prisma.sql`s`)
   const [row] = await db().$queryRaw<
     Array<
       Omit<ProgressOverview['workload'], 'remaining'> & {
@@ -157,16 +171,16 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
     >
   >`
     SELECT count(*)::int AS total,
-           count(*) FILTER (WHERE s.status = 'submitted')::int AS complete,
-           count(*) FILTER (WHERE s.status = 'pending')::int AS pending,
-           count(*) FILTER (WHERE s.status = 'skipped')::int AS skipped,
-           count(*) FILTER (WHERE s.status = 'escalated')::int AS escalated,
+           count(*) FILTER (WHERE ${status} = 'submitted')::int AS complete,
+           count(*) FILTER (WHERE ${status} = 'pending')::int AS pending,
+           count(*) FILTER (WHERE ${status} = 'skipped')::int AS skipped,
+           count(*) FILTER (WHERE ${status} = 'escalated')::int AS escalated,
            count(*) FILTER (WHERE s.flagged)::int AS flagged,
            (SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
              WHERE ${activityWhere(user.workspaceId, context)}) AS "labeledRecords"
            ,(SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
                JOIN "Sentence" done ON done."workspaceId" = e."workspaceId" AND done.id = e."sentenceId"
-              WHERE ${activityWhere(user.workspaceId, context)} AND done.status = 'submitted'
+              WHERE ${activityWhere(user.workspaceId, context)} AND ${workloadStatus(user, Prisma.sql`done`)} = 'submitted'
                 ${assignedTo(context.scope.workload, Prisma.sql`done.id`)}) AS "completedInPeriod"
       FROM "Sentence" s
      WHERE s."workspaceId" = ${user.workspaceId} ${assignedTo(context.scope.workload, Prisma.sql`s.id`)}`

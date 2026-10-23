@@ -3,6 +3,7 @@ import {
   compareAnswers,
   firstDifferingLevel,
   recordStatus,
+  recordLabelingAccess,
   summarizeOutcomes,
   taxonomyStatus
 } from './double-annotation'
@@ -10,6 +11,13 @@ import {
 const path = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
 
 describe('double annotation rules', () => {
+  it('exposes edit permissions without task or comparison metadata', () => {
+    expect(
+      recordLabelingAccess({ mode: 'task', taskStatus: 'pending', required: ['A', 'B'], answered: ['A'] })
+    ).toEqual({ editableTaxonomies: ['B'] })
+    expect(recordLabelingAccess({ mode: 'hidden' })).toEqual({ editableTaxonomies: [] })
+    expect(recordLabelingAccess(null)).toEqual({ editableTaxonomies: null })
+  })
   it('compares complete paths with string codes', () => {
     expect(compareAnswers(path('01', '011'), path('01', '011'))).toEqual({ state: 'agreed', matched: true })
     expect(compareAnswers(path('01', '011'), path('1', '011')).state).toBe('disagreed') // leading zero matters

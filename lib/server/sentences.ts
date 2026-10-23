@@ -80,6 +80,9 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
 
   // Assigned to user filter
   if (assignedToUserId) {
+    if (user.role === 'labeller' && assignedToUserId !== user.id) {
+      and.push({ id: { in: [] } })
+    }
     if (assignedToUserId === 'unassigned') {
       // Filter for sentences with no assignments
       and.push({
@@ -132,7 +135,11 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     aiConfidenceMin ||
     aiConfidenceMax ||
     hasSubmittedLabels ||
-    hasAISuggestions
+    hasAISuggestions ||
+    userId ||
+    lastEditorId ||
+    lastEditedFrom ||
+    lastEditedTo
   ) {
     and.push(notBlindFor(user))
   }
@@ -234,17 +241,14 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   }
 
   // Has comments filter
-  if (hasComments === 'true') {
+  if (hasComments === 'true' || hasComments === 'false') {
+    const comments = hasComments === 'true' ? 'some' : 'none'
+    const visible = notBlindFor(user)
     and.push({
-      comments: {
-        some: {}
-      }
-    })
-  } else if (hasComments === 'false') {
-    and.push({
-      comments: {
-        none: {}
-      }
+      OR: [
+        { AND: [visible, { comments: { [comments]: {} } }] },
+        { AND: [{ NOT: visible }, { comments: { [comments]: { authorId: user.id } } }] }
+      ]
     })
   }
 
@@ -386,7 +390,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
       },
       assignments: {
         select: {
-          membership: { select: { user: { select: { id: true, username: true, name: true } } } }
+          membership: { select: { user: { select: { id: true, username: true, name: true, email: true } } } }
         }
       },
       _count: {
@@ -519,7 +523,9 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     const row = {
       ...s,
       commentSummary: summaries.get(s.id) ?? { total: 0, unresolved: 0 },
-      assignments: assignments.map(a => ({ user: a.membership.user })),
+      assignments: assignments
+        .filter(a => user.role !== 'labeller' || a.membership.user.id === user.id)
+        .map(a => ({ user: a.membership.user })),
       annotations: [
         ...s.annotations.map(a => ({ ...a, nodeLabel: nodeLabels.get(`${a.taxonomyId}-${a.nodeCode}`) || null })),
         ...(aiSuggestionsBySentence[s.id] ?? [])
@@ -528,11 +534,18 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     }
     if (!blind.has(s.id)) return row
     const task = own.get(s.id)
+    const ownEditedAt =
+      task?.labels.reduce<Date | null>(
+        (latest, label) => (!latest || label.createdAt > latest ? label.createdAt : latest),
+        null
+      ) ?? null
     return {
       ...row,
       status: (task && task.status !== 'cancelled' ? task.status : 'pending') as SentenceStatus,
-      lastEditor: null,
-      lastEditorId: null,
+      lastEditor: ownEditedAt ? (task?.assignee ?? null) : null,
+      lastEditorId: ownEditedAt ? user.id : null,
+      lastEditedAt: ownEditedAt,
+      _count: { comments: summaries.get(s.id)?.total ?? 0 },
       annotations: (task?.labels ?? []).map(l => ({
         id: `${task!.id}:${l.taxonomyId}:${l.level}`,
         workspaceId: s.workspaceId,

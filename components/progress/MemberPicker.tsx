@@ -8,6 +8,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import type { ProgressMemberOption, ProgressMembers } from '@/lib/contracts/progress'
+import { userDisplayName } from '@/lib/user-display'
 
 // The Progress page's team and person pickers search the server
 // (/progress/members), so a workspace with thousands of members never sends
@@ -15,7 +16,7 @@ import type { ProgressMemberOption, ProgressMembers } from '@/lib/contracts/prog
 
 const ROLE_HINT = { admin: 'admin', supervisor: 'supervisor', labeller: 'labeller' } as const
 
-export const memberName = (m: Pick<ProgressMemberOption, 'name' | 'username'>) => m.name || m.username
+export const memberName = (m: Pick<ProgressMemberOption, 'name' | 'username'>) => userDisplayName(m)
 
 const option = (m: ProgressMemberOption): ComboboxOption => ({
   value: m.userId,

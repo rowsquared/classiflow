@@ -230,7 +230,10 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       return NextResponse.json(
         {
           ok: false,
-          error: `${error.count} of the selected records are in double annotation. Label them one at a time, or leave them out of the selection.`
+          error:
+            user.role === 'labeller'
+              ? 'Some selected records must be labelled individually. Open each record to continue.'
+              : `${error.count} of the selected records are in double annotation. Label them one at a time, or leave them out of the selection.`
         },
         { status: 409 }
       )

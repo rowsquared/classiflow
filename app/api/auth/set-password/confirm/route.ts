@@ -19,5 +19,5 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error, field: result.field }, { status: result.status })
   }
-  return NextResponse.json({ ok: true, username: result.username })
+  return NextResponse.json({ ok: true, username: result.username, email: result.email })
 }

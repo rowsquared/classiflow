@@ -106,7 +106,13 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   ] as const) {
     const person = await signInAs(browser, username)
     await person.page.goto(view(`/queue/${record!.id}`))
-    await expect(person.page.getByText('Independent labelling: you see only your own answer.')).toBeVisible()
+    await expect(
+      person.page.getByText(/Independent labelling|Two other people|Once submitted, an answer is final/)
+    ).toHaveCount(0)
+    await expect(person.page.getByRole('region', { name: 'Double annotation' })).toHaveCount(0)
+    const detail = await (await person.page.request.get(api(`/sentences/${record!.id}`))).json()
+    expect(detail.double).toBeNull()
+    expect(detail.labeling).toEqual({ editableTaxonomies: ['A'] })
     await expect(person.page.getByRole('button', { name: /^Remove label/ })).toHaveCount(0)
     if (code === '011') await person.page.getByRole('button', { name: /^01\b/ }).click()
     await person.page.getByRole('button', { name: new RegExp(`^${code}\\b`) }).click()

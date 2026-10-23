@@ -28,7 +28,7 @@ const PART_STATUS: Record<string, string> = { submitted: 'done', pending: 'to do
 
 /**
  * Double annotation on the labelling screen.
- * - Labellers (task/hidden): a one-line notice; their own answer is all they see.
+ * - Participants get no workflow notice; their own answer is all they see.
  * - Managers: the active taxonomy's two answers side by side with the first
  *   difference marked, "Use this answer" buttons (or choose another path
  *   below and submit), and the record-level actions: accept the single label
@@ -47,22 +47,7 @@ export default function DoublePanel({
   onUseAnswer: (labels: Labels) => void
   onCommand: (body: DoubleCommand) => Promise<boolean>
 }) {
-  if (view.mode === 'task') {
-    const done = view.answered.includes(taxonomyKey)
-    return (
-      <div className="px-4 py-2 border-b border-gray-200 bg-[#E3EBFB] text-sm text-[#28498c]" role="note">
-        Independent labelling: you see only your own answer.{' '}
-        {done ? 'Your answer for this taxonomy is submitted and final.' : 'Once submitted, an answer is final.'}
-      </div>
-    )
-  }
-  if (view.mode === 'hidden') {
-    return (
-      <div className="px-4 py-2 border-b border-gray-200 bg-gray-100 text-sm text-gray-800" role="note">
-        Two other people are labelling this record independently, so its labels are hidden.
-      </div>
-    )
-  }
+  if (view.mode !== 'manager') return null
   return (
     <ManagerPanel view={view} taxonomyKey={taxonomyKey} busy={busy} onUseAnswer={onUseAnswer} onCommand={onCommand} />
   )

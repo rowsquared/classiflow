@@ -6,7 +6,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
 import type { RecordAnnotation } from '@/lib/labeling'
 import type { Taxonomy } from '@/components/TaxonomyBrowser'
-import type { DoubleRecordView } from '@/lib/double-annotation'
+import type { DoubleRecordView, RecordLabelingAccess } from '@/lib/double-annotation'
 
 // Data of the labelling screen: the record, the workspace's active
 // taxonomies and the record's comments, as TanStack Query queries.
@@ -34,6 +34,7 @@ export type LabelingRecord = {
   _count?: { comments: number }
   /** Double annotation in progress: the caller's own part, or the manager's view of both answers. */
   double?: DoubleRecordView | null
+  labeling?: RecordLabelingAccess
 }
 
 export type RecordComment = {

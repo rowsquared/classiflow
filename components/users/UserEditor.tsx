@@ -117,9 +117,7 @@ function Editor({
     <>
       <div>
         <h2 className="text-xl font-semibold">{user.name}</h2>
-        <p className="text-sm text-gray-600">
-          {user.email} · Sign-in alias: {user.username}
-        </p>
+        <p className="text-sm text-gray-600">Sign-in email: {user.email}</p>
         <p className="text-sm text-gray-600">
           Last sign-in: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
         </p>
