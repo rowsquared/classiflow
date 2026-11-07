@@ -247,9 +247,11 @@ All three stream like today (pages of 1000 records, re-authorised per page)
 and go through `lib/csv.ts`. The page downloads with a plain link (`<a
 href download>`) so the browser streams to disk instead of buffering a blob.
 
-Supervisors still cannot download CSVs (unchanged access matrix); they get
-the in-app figures from 3.5. Whether supervisors should be allowed the
-analysis pack for their team is a decision (section 7).
+Supervisors download the analysis files (not the records export) for their
+team: the records they can see, without records they labelled themselves
+(decided 8 November 2026; `analysisScope()` in `lib/export-double.ts`). A
+round with one labeller outside the team shows up when the record is visible
+to the supervisor, as it does on the record screen.
 
 ## 5. Data model and code changes
 
@@ -463,7 +465,7 @@ Open:
 | May labellers change a submitted double answer (C3)? | Yes, as revisions (section 5); otherwise lock submitted labels for *all* records in the workspace so behaviour is uniform |
 | After a round completes, does the labeller see the final result? | No, never: they keep seeing their own answer |
 | Status columns in the main export | Optional, default on only when the workspace used double annotation |
-| Analysis export for supervisors (their team) | Not yet; in-app figures first |
+| Analysis export for supervisors (their team) | **Decided 8 November 2026: yes**, built (their visible records, without their own parts) |
 | Blind review (no names for the reviewer) | Offer as a workspace setting, default off |
 | Sampling and automatic second person | Yes, in the start dialog |
 | Kappa | Still deferred; per-level agreement first |

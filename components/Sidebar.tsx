@@ -150,7 +150,7 @@ export default function Sidebar() {
       icon: <FileDown className="w-full h-full" strokeWidth={1.5} />,
       label: 'Export',
       href: '/admin/export',
-      roles: ['admin']
+      roles: ['admin', 'supervisor']
     },
     {
       icon: <Sparkles className="w-full h-full" strokeWidth={1.5} />,

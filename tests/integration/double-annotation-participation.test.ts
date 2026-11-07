@@ -22,6 +22,7 @@ import * as commandRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sen
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
 import * as listRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
+import * as summaryRoute from '@/app/api/workspaces/[workspaceId]/export/summary/route'
 import * as commandsRoute from '@/app/api/workspaces/[workspaceId]/sentences/double-annotation/commands/route'
 
 // Sticky participation (docs/plans/double-annotation-v2.md section 2): whoever
@@ -344,6 +345,43 @@ describe('double annotation participation', () => {
     expect(pairsCsv).toBe(await single('pairs'))
     expect(answersCsv).toBe(await single('details'))
     expect(agreementCsv).toBe(await single('agreement'))
+  })
+
+  it('supervisors download the analysis of their team, without records they labelled', async () => {
+    const r = await reviewedRecord()
+    // A second round in which Sam labels himself (started by the admin).
+    const [own] = await createSentences(1, [alice.id])
+    signInAs(ann)
+    const body = { sentenceIds: [own.id], firstUserId: sam.id, secondUserId: alice.id }
+    const preview = await (
+      await startRoute.POST(request('/x', { method: 'POST', body: { ...body, dryRun: true } }), params())
+    ).json()
+    expect(
+      (await startRoute.POST(request('/x', { method: 'POST', body: { ...body, expect: preview.counts } }), params()))
+        .status
+    ).toBe(200)
+
+    const download = async (format: string) => {
+      const res = await exportRoute.GET(request(`/x/export?format=${format}`), params())
+      return { status: res.status, text: res.status === 200 ? await res.text() : '' }
+    }
+    signInAs(sam)
+    expect((await download('records')).status).toBe(403)
+    const pairs = await download('pairs')
+    expect(pairs.status).toBe(200)
+    expect(pairs.text).toContain(r.recordKey)
+    expect(pairs.text).not.toContain(own.recordKey) // his own part: never the other answer
+    expect((await download('details')).text).not.toContain(own.recordKey)
+    expect((await download('analysis')).status).toBe(200)
+    const summary = await (await summaryRoute.GET(request('/x/export/summary'), params())).json()
+    expect(summary).toMatchObject({ rounds: 1, pairs: 2 })
+
+    // A supervisor without this team sees none of it; labellers cannot download.
+    const sue = await createUser('supervisor')
+    signInAs(sue)
+    expect((await download('pairs')).text).not.toContain(r.recordKey)
+    signInAs(alice)
+    expect((await download('pairs')).status).toBe(403)
   })
 
   it('flags stay with the person who set them; managers see them', async () => {

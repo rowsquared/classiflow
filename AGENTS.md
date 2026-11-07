@@ -263,7 +263,9 @@ browser-local `list` navigation key. Discussion content opens in a `Modal`
   side as compared, match per level, final result), `format=details`
   (answers, one row per person) and `format=agreement` (by level, pair,
   labeller; confusions), filtered by `rounds`, `taxonomy`, `comparedFrom/To`;
-  `format=analysis` streams all three as one ZIP (`lib/zip.ts`).
+  `format=analysis` streams all three as one ZIP (`lib/zip.ts`). Supervisors
+  may download these analysis formats for their team (`analysisScope()`:
+  visible records minus their own parts); the records export is admin only.
   All cells go through `lib/csv.ts` (escaping,
   formula neutralising for free text only). Record import does not accept all export columns;
   a full export is not directly round-trippable through that importer.

@@ -251,8 +251,8 @@ admin) with a valid session who does not have to reset their password.
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
 | `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
-| `/export` | GET (`labels=confirmed`, `statusColumns`, `format=details\|pairs\|agreement`) | admin; re-checked before every page of the stream |
-| `/export/summary` | GET | admin (record, round and pair counts) |
+| `/export` | GET (`labels=confirmed`, `statusColumns`, `format=details\|pairs\|agreement\|analysis`) | admin: every format; supervisor: the double annotation formats only, for records they can see (their team) except records they hold a part in; re-checked before every page of the stream |
+| `/export/summary` | GET | admin; supervisor (counts within the same scope) |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
 | `/progress/people` | GET | admin, supervisor (own subtree); same selector rule. Admins' unrestricted view also lists platform admins who labeled here without a membership |
 | `/progress/members` | GET | admin, supervisor; picker search within the caller's scope (names and roles only); a `teamId` outside it is a 403 |

@@ -4,11 +4,15 @@ import { csvLine, type CsvColumn } from '@/lib/csv'
 import { logError } from '@/lib/logger'
 import { agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
 import { pages, scoped, secondsSpent, type ExportScope } from '@/lib/export-csv'
+import type { CurrentUser } from '@/lib/api-auth'
+import { sentenceVisibilityFilter } from '@/lib/access'
+import { participantWhere } from '@/lib/server/double-annotation'
 
 /**
  * Double annotation analysis exports (GET /export?format=pairs|agreement,
- * docs/plans/double-annotation-v2.md section 4.2), admin only like every
- * export. Both stream in pages of records that have a matching round.
+ * docs/plans/double-annotation-v2.md section 4.2): admins for the whole
+ * workspace, supervisors for their team (analysisScope). Both stream in
+ * pages of records that have a matching round.
  *
  * pairs: one row per record, round and taxonomy with answer A (position 1)
  * and answer B side by side, the match per level, the final result and the
@@ -627,13 +631,25 @@ export async function agreementStream(
   )
 }
 
-/** Counts for the export page: records, and double annotation rounds and pairs. */
-export async function exportSummary(workspaceId: string) {
+/**
+ * The records whose analysis `user` may download: null (every record) for
+ * admins; for supervisors the records they can see (their team) except those
+ * they labelled themselves, whose other answer they must not see. Call inside
+ * a workspace transaction; the team is read once per download.
+ */
+export async function analysisScope(user: CurrentUser): Promise<Prisma.SentenceWhereInput | null> {
+  if (user.role === 'admin') return null
+  return { AND: [await sentenceVisibilityFilter(user), { NOT: participantWhere(user) }] }
+}
+
+/** Counts for the export page: records, and double annotation rounds and pairs (within `scope`). */
+export async function exportSummary(workspaceId: string, scope: Prisma.SentenceWhereInput | null = null) {
+  const sentence = scope ? { sentence: scope } : {}
   const [records, rounds, pairs, compared] = await Promise.all([
-    db().sentence.count(),
-    db().doubleRound.count(),
-    db().doubleOutcome.count(),
-    db().doubleOutcome.count({ where: { comparedAt: { not: null } } })
+    db().sentence.count(scope ? { where: scope } : undefined),
+    db().doubleRound.count({ where: sentence }),
+    db().doubleOutcome.count({ where: sentence }),
+    db().doubleOutcome.count({ where: { ...sentence, comparedAt: { not: null } } })
   ])
   return { workspaceId, records, rounds, pairs, compared }
 }

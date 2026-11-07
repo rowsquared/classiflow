@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { reloadWorkspaceUser, workspaceRoute } from '@/lib/api-auth'
 import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
 import { ExportColumnError, detailsStream, exportStream } from '@/lib/export-csv'
-import { agreementStream, pairsStream, type AnalysisFilter } from '@/lib/export-double'
+import { agreementStream, analysisScope, pairsStream, type AnalysisFilter } from '@/lib/export-double'
+import { withWorkspace } from '@/lib/workspace/db'
 import { audit } from '@/lib/audit'
 import { zipStream } from '@/lib/zip'
 import { logError } from '@/lib/logger'
@@ -18,6 +19,10 @@ import { logError } from '@/lib/logger'
  * statusColumns=true|false: the records export's annotation status columns
  *   (default: only when the workspace ever used double annotation).
  *
+ * Admins: every format. Supervisors: the double annotation formats (details,
+ * pairs, agreement, analysis) for their team's records, without records they
+ * labelled themselves (analysisScope); the records export stays admin only.
+ *
  * labels=confirmed keeps only records whose labels are confirmed: complete
  * ordinary work, and double annotation that agreed, was reviewed or accepted
  * as a single label. The default exports every record with its current labels.
@@ -28,10 +33,9 @@ import { logError } from '@/lib/logger'
  * (lib/csv.ts); ids and codes are never changed.
  */
 export const GET = workspaceRoute(
-  ['admin'],
+  ['admin', 'supervisor'],
   async (req, { user: actor }) => {
     try {
-      // Only admins can export
       const searchParams = req.nextUrl.searchParams
       const statusFilter = searchParams.get('status') || 'all'
       const dateRange = searchParams.get('dateRange') || 'all'
@@ -40,6 +44,9 @@ export const GET = workspaceRoute(
       const format = searchParams.get('format') || 'records'
       if (!['records', 'details', 'pairs', 'agreement', 'analysis'].includes(format)) {
         return NextResponse.json({ error: `Unknown format "${format}"` }, { status: 400 })
+      }
+      if (format === 'records' && actor.role !== 'admin') {
+        return NextResponse.json({ error: 'Only admins can export records' }, { status: 403 })
       }
       const statusColumnsParam = searchParams.get('statusColumns')
       const day = (value: string | null, end: boolean) => {
@@ -98,16 +105,21 @@ export const GET = workspaceRoute(
       }
 
       // Confirmed: submitted (every required taxonomy confirmed) and no round still open.
-      const filter: Prisma.SentenceWhereInput =
+      const confirmed: Prisma.SentenceWhereInput =
         labels === 'confirmed'
           ? { AND: [where, { status: 'submitted', doubleRounds: { none: { status: 'active' } } }] }
           : where
+      const team = await withWorkspace(actor.workspaceId, () => analysisScope(actor))
+      const filter: Prisma.SentenceWhereInput = team ? { AND: [confirmed, team] } : confirmed
 
       // Each page is read in its own short transaction after re-checking that
       // the caller is still an admin of this workspace.
       const scope = {
         workspaceId: actor.workspaceId,
-        stillAllowed: async () => (await reloadWorkspaceUser(actor.id, actor.workspaceId))?.role === 'admin'
+        stillAllowed: async () => {
+          const role = (await reloadWorkspaceUser(actor.id, actor.workspaceId))?.role
+          return role === 'admin' || (role === 'supervisor' && actor.role === 'supervisor' && format !== 'records')
+        }
       }
       const entityId = format === 'records' ? 'records' : `double-annotation-${format}`
       const streamOpts = {

@@ -11,5 +11,6 @@ added answer revisions, sticky participant views, review mode, analysis
 exports and per-level agreement. Still left out: repeat rounds, tracking
 whether a labeller had seen other labels, learning snapshots, revalidating
 open rounds after taxonomy changes, reviewer-visible private notes,
-chance-corrected agreement (kappa), and ending a participation explicitly
-("give back as ordinary work").
+and chance-corrected agreement (kappa). Ending a participation explicitly
+("give back as ordinary work"), the analysis as one ZIP and the supervisors'
+team analysis export were added on 8 November 2026.
