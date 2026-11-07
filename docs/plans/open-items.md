@@ -94,10 +94,14 @@ reach other workspaces' models.
       a platform admin. Backend coverage passed; the extra no-mail test server
       was blocked during local validation. See the archived
       [redesign validation](../archive/plans-2026-10/users-page-redesign-validation.md).
-- [ ] TanStack Table for the Users list (the hand-made table is small and
-      tested).
-- [ ] Remove hand-written `useMemo`/`useCallback` where the React Compiler
-      covers them (M01).
+- [x] ~~TanStack Table for the Users list~~: not adopted (8 November
+      2026). The React Compiler lists `useReactTable` as incompatible (its
+      functions cannot be memoized safely) and would skip the whole page.
+      The Users table now renders from one typed list of column definitions
+      (header, server sort key, cell) instead.
+- [x] Hand-written `useMemo`/`useCallback` removed where the React Compiler
+      covers them (8 November 2026). Kept on purpose: `useWorkspacePaths()`
+      in `lib/workspace/urls.ts`, whose stable result effects rely on.
 
 ## 5. Dependency maintenance
 

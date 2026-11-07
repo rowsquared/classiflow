@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -100,12 +100,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         labelsSignature(labels) !== labelsSignature(labelsFromAnnotations(sentence?.annotations ?? [], key))
     )
   )
-  const setSelectedLabels = useCallback(
-    (labels: SelectedLabel[]) => {
-      if (activeTaxonomy) setDrafts(previous => ({ ...previous, [activeTaxonomy.key]: labels }))
-    },
-    [activeTaxonomy]
-  )
+  const setSelectedLabels = (labels: SelectedLabel[]) => {
+    if (activeTaxonomy) setDrafts(previous => ({ ...previous, [activeTaxonomy.key]: labels }))
+  }
   // The level the taxonomy browser shows (where "Unknown" applies).
   const [currentTaxonomyLevel, setCurrentTaxonomyLevel] = useState(1)
   // Completion as the server reported it after the last save, until the record reloads.
@@ -141,7 +138,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     const id = `toast-${toastCounter.current++}`
     setToasts(prev => [...prev, { id, type: 'error', message, duration: 10_000 }])
   }
-  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
+  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id))
 
   // Warm the annotations route so the first flag/submit is not delayed by compilation.
   useEffect(() => {

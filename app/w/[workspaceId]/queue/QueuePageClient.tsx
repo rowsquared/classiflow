@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryStates } from 'nuqs'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -235,14 +235,14 @@ export default function QueuePageClient({
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastIdCounter = useRef(0)
 
-  const addToast = useCallback((type: Toast['type'], message: string, duration?: number) => {
+  const addToast = (type: Toast['type'], message: string, duration?: number) => {
     const id = `toast-${toastIdCounter.current++}`
     setToasts(prev => [...prev, { id, type, message, duration }])
-  }, [])
+  }
 
-  const removeToast = useCallback((id: string) => {
+  const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
-  }, [])
+  }
 
   const handleTabChange = (tab: QueueTab) => {
     setUrl({ tab, page: null }, { history: 'push' })

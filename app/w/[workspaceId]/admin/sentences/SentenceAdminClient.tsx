@@ -1,7 +1,7 @@
 'use client'
 import { workspaceApi } from '@/lib/workspace/urls'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import PageHeader from '@/components/PageHeader'
 import { formatDateTime } from '@/lib/utils'
 import Modal from '@/components/Modal'
@@ -30,7 +30,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
 
-  const refreshImports = useCallback(async () => {
+  const refreshImports = async () => {
     try {
       setLoadingImports(true)
       const res = await fetch(workspaceApi('/imports'), { cache: 'no-store' })
@@ -43,9 +43,9 @@ export default function SentenceAdminClient({ initialImports }: Props) {
     } finally {
       setLoadingImports(false)
     }
-  }, [])
+  }
 
-  const handleDeleteImport = useCallback(async () => {
+  const handleDeleteImport = async () => {
     if (!selectedImport || confirmText !== 'DELETE') return
 
     try {
@@ -73,9 +73,9 @@ export default function SentenceAdminClient({ initialImports }: Props) {
     } finally {
       setDeleting(false)
     }
-  }, [selectedImport, confirmText, refreshImports])
+  }
 
-  const handleSentenceUpload = useCallback(async () => {
+  const handleSentenceUpload = async () => {
     if (!sentenceFile) return
 
     setUploading(true)
@@ -127,7 +127,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
     } finally {
       setUploading(false)
     }
-  }, [sentenceFile, refreshImports])
+  }
 
   return (
     <>

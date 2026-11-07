@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useState, useLayoutEffect, useRef } from 'react'
+import { useState, useLayoutEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -50,7 +50,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), [])
+  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id))
   const { data: session } = useSession()
   const directory = useQuery({
     queryKey: queryKeys.workspaces(),

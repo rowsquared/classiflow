@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
 // A small per-browser preference in localStorage (panel open, label style).
 // useSyncExternalStore renders the server default during hydration and then
@@ -33,16 +33,13 @@ export function useStoredBoolean(key: string, fallback: boolean): [boolean, (val
     () => null
   )
   const value = raw === 'true' ? true : raw === 'false' ? false : fallback
-  const set = useCallback(
-    (next: boolean) => {
-      try {
-        window.localStorage.setItem(key, JSON.stringify(next))
-      } catch {
-        // Private mode or storage disabled: the preference just is not kept.
-      }
-      listeners.forEach(listener => listener())
-    },
-    [key]
-  )
+  const set = (next: boolean) => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(next))
+    } catch {
+      // Private mode or storage disabled: the preference just is not kept.
+    }
+    listeners.forEach(listener => listener())
+  }
   return [value, set]
 }

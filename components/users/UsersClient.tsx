@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQueryStates } from 'nuqs'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as Popover from '@radix-ui/react-popover'
@@ -19,6 +19,7 @@ import { controlClass, type DirectoryPage, type DirectoryUser, type Workspace } 
 import { formatRelativeTime } from '@/lib/utils'
 
 const when = (date: string | null) => (date ? formatRelativeTime(date) : 'Never')
+type Membership = DirectoryUser['memberships'][number]
 export default function UsersClient({
   currentUserId,
   platform,
@@ -90,6 +91,93 @@ export default function UsersClient({
     </button>
   )
   const activeWorkspace = selected?.status === 'active'
+  // One definition per column: header, server sort key and cell. A
+  // workspace's members show their membership there; the global directory
+  // shows each person's workspaces.
+  const columns: Array<{
+    id: string
+    header: string
+    sort?: typeof view.sort
+    cell: (user: DirectoryUser, membership: Membership | undefined) => ReactNode
+  }> = [
+    {
+      id: 'name',
+      header: 'Name',
+      sort: 'name',
+      cell: user => (
+        <>
+          {user.name}
+          {user.banned && <span className={`${badgeClass()} ml-2`}>Disabled</span>}
+          {user.mustResetPassword && <span className="block text-xs text-gray-600">Password change required</span>}
+          {user.invitedAt && !user.invitationAcceptedAt && (
+            <span className="block text-xs text-gray-600">Setup link pending</span>
+          )}
+        </>
+      )
+    },
+    { id: 'email', header: 'Email', sort: 'email', cell: user => user.email },
+    ...(selected
+      ? [
+          {
+            id: 'role',
+            header: 'Workspace role',
+            sort: 'role' as const,
+            cell: (user: DirectoryUser, m: Membership | undefined) => (
+              <>
+                {m?.role}
+                {m?.status === 'suspended' ? ' · removed' : ''}
+                {user.role === 'admin' && <span className="block text-xs">Platform admin: full access</span>}
+              </>
+            )
+          },
+          {
+            id: 'supervisor',
+            header: 'Supervisor',
+            sort: 'supervisor' as const,
+            cell: (_: DirectoryUser, m: Membership | undefined) => m?.supervisor?.user.name ?? '—'
+          },
+          {
+            id: 'team',
+            header: 'Team',
+            sort: 'team' as const,
+            cell: (_: DirectoryUser, m: Membership | undefined) => m?._count.reports ?? 0
+          },
+          {
+            id: 'assigned',
+            header: 'Assigned',
+            sort: 'assigned' as const,
+            cell: (user: DirectoryUser) => user.assigned ?? 0
+          },
+          {
+            id: 'lastSeen',
+            header: 'Last seen',
+            sort: 'lastSeen' as const,
+            cell: (_: DirectoryUser, m: Membership | undefined) => when(m?.lastSeenAt ?? null)
+          }
+        ]
+      : [
+          {
+            id: 'workspaces',
+            header: 'Workspaces',
+            cell: (user: DirectoryUser) => <AccessChips user={user} platform={platform} />
+          },
+          {
+            id: 'lastLogin',
+            header: 'Last sign-in',
+            sort: 'lastLogin' as const,
+            cell: (user: DirectoryUser) => when(user.lastLogin)
+          }
+        ]),
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: user => (
+        <button className="text-indigo-700 underline" onClick={() => setEditing(user.id)}>
+          Edit<span className="sr-only"> {user.name}</span>
+        </button>
+      )
+    }
+  ]
   return (
     <div className="px-4 py-6 sm:px-8 max-w-[100rem] mx-auto space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -295,71 +383,23 @@ export default function UsersClient({
         <table className={`w-full text-sm text-left ${directory.isPlaceholderData ? 'opacity-60' : ''}`}>
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th
-                className="p-3"
-                aria-sort={view.sort === 'name' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-              >
-                {sort('name', 'Name')}
-              </th>
-              <th
-                className="p-3"
-                aria-sort={view.sort === 'email' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-              >
-                {sort('email', 'Email')}
-              </th>
-              {selected ? (
-                <>
-                  <th
-                    className="p-3"
-                    aria-sort={view.sort === 'role' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  >
-                    {sort('role', 'Workspace role')}
-                  </th>
-                  <th
-                    className="p-3"
-                    aria-sort={
-                      view.sort === 'supervisor' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'
-                    }
-                  >
-                    {sort('supervisor', 'Supervisor')}
-                  </th>
-                  <th
-                    className="p-3"
-                    aria-sort={view.sort === 'team' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  >
-                    {sort('team', 'Team')}
-                  </th>
-                  <th
-                    className="p-3"
-                    aria-sort={
-                      view.sort === 'assigned' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'
-                    }
-                  >
-                    {sort('assigned', 'Assigned')}
-                  </th>
-                  <th
-                    className="p-3"
-                    aria-sort={
-                      view.sort === 'lastSeen' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'
-                    }
-                  >
-                    {sort('lastSeen', 'Last seen')}
-                  </th>
-                </>
-              ) : (
-                <>
-                  <th className="p-3">Workspaces</th>
-                  <th
-                    className="p-3"
-                    aria-sort={
-                      view.sort === 'lastLogin' ? (view.direction === 'asc' ? 'ascending' : 'descending') : 'none'
-                    }
-                  >
-                    {sort('lastLogin', 'Last sign-in')}
-                  </th>
-                </>
-              )}
-              <th className="p-3">Actions</th>
+              {columns.map(column => (
+                <th
+                  key={column.id}
+                  className="p-3"
+                  aria-sort={
+                    column.sort
+                      ? view.sort === column.sort
+                        ? view.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                      : undefined
+                  }
+                >
+                  {column.sort ? sort(column.sort, column.header) : column.header}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 text-gray-900">
@@ -367,48 +407,17 @@ export default function UsersClient({
               const m = user.memberships.find(m => m.workspace.id === selected?.id)
               return (
                 <tr key={user.id} className={user.banned ? 'text-gray-600 bg-gray-50' : ''}>
-                  <td className="p-3">
-                    {user.name}
-                    {user.banned && <span className={`${badgeClass()} ml-2`}>Disabled</span>}
-                    {user.mustResetPassword && (
-                      <span className="block text-xs text-gray-600">Password change required</span>
-                    )}
-                    {user.invitedAt && !user.invitationAcceptedAt && (
-                      <span className="block text-xs text-gray-600">Setup link pending</span>
-                    )}
-                  </td>
-                  <td className="p-3">{user.email}</td>
-                  {selected ? (
-                    <>
-                      <td className="p-3">
-                        {m?.role}
-                        {m?.status === 'suspended' ? ' · removed' : ''}
-                        {user.role === 'admin' && <span className="block text-xs">Platform admin: full access</span>}
-                      </td>
-                      <td className="p-3">{m?.supervisor?.user.name ?? '—'}</td>
-                      <td className="p-3">{m?._count.reports ?? 0}</td>
-                      <td className="p-3">{user.assigned ?? 0}</td>
-                      <td className="p-3">{when(m?.lastSeenAt ?? null)}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="p-3">
-                        <AccessChips user={user} platform={platform} />
-                      </td>
-                      <td className="p-3">{when(user.lastLogin)}</td>
-                    </>
-                  )}
-                  <td className="p-3">
-                    <button className="text-indigo-700 underline" onClick={() => setEditing(user.id)}>
-                      Edit<span className="sr-only"> {user.name}</span>
-                    </button>
-                  </td>
+                  {columns.map(column => (
+                    <td key={column.id} className="p-3">
+                      {column.cell(user, m)}
+                    </td>
+                  ))}
                 </tr>
               )
             })}
             {data?.users.length === 0 && (
               <tr>
-                <td colSpan={selected ? 9 : 5} className="p-6 text-gray-600">
+                <td colSpan={columns.length} className="p-6 text-gray-600">
                   No users match these filters.
                 </td>
               </tr>
