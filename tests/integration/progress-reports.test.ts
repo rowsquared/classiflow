@@ -21,9 +21,8 @@ const queries = vi.hoisted(() => ({ count: 0 }))
 vi.mock('@/lib/prisma', async importOriginal => {
   const original = await importOriginal<typeof import('@/lib/prisma')>()
   const { PrismaClient } = await import('@/lib/generated/prisma/client')
-  const { PrismaPg } = await import('@prisma/adapter-pg')
   const client = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 5 }),
+    adapter: new original.SerialTransactionPg({ connectionString: process.env.DATABASE_URL, max: 5 }),
     log: [{ emit: 'event', level: 'query' }]
   })
   client.$on('query', () => {

@@ -27,13 +27,15 @@ type AISuggestionView = {
  * q, status, userId, assignedToUserId, lastEditorId, lastEditedFrom/To,
  * taxonomyKey/level/code/source, aiTaxonomyKey/aiLevel/aiCode/aiConfidenceMin/Max,
  * hasSubmittedLabels, hasAISuggestions, flagged, hasComments, importId, support1-5,
- * double (managers: any | review | waiting | gap | done).
+ * double (managers: any | review | waiting | gap | done), disagreement (managers:
+ * `taxonomyKey,level,codeA,codeB`, see disagreementFilter).
  *
  * Double annotation: for the people who hold a part in a record (any round,
  * docs/plans/double-annotation-v2.md section 2), status, label, editor, flag
  * and comment filters apply to their own part; AI filters skip such records.
  */
 export async function queueWhere(user: CurrentUser, searchParams: URLSearchParams): Promise<Prisma.SentenceWhereInput> {
+  const parts = await holdsParts(user)
   const q = searchParams.get('q') || ''
   const statusParam = searchParams.getAll('status').join(',')
   const userId = searchParams.get('userId') || ''
@@ -67,7 +69,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       .split(',')
       .map(s => parseEnum(SentenceStatus, s.trim()))
       .filter((s): s is SentenceStatus => s !== undefined)
-    if (statuses.length > 0) and.push({ OR: statuses.flatMap(s => personalStatusFilter(user, s)) })
+    if (statuses.length > 0) and.push({ OR: statuses.flatMap(s => personalStatusFilter(user, s, parts)) })
   }
 
   // Visibility filtering based on role and assignments (admins: no filter)
@@ -101,6 +103,10 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   if (double && (user.role === 'admin' || user.role === 'supervisor')) {
     const filter = doubleFilter(double)
     if (filter) and.push(filter)
+  }
+  const disagreement = searchParams.get('disagreement') || ''
+  if (disagreement && (user.role === 'admin' || user.role === 'supervisor')) {
+    and.push(await disagreementFilter(disagreement))
   }
 
   // Filters on labels, editors, flags and comments. On records where the
@@ -222,7 +228,9 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     ownPart.push({ comments: { [comments]: { authorId: user.id } } })
   }
 
-  if (ordinary.length > 0 || partsExcluded) {
+  if (!parts) {
+    and.push(...ordinary)
+  } else if (ordinary.length > 0 || partsExcluded) {
     const part = participantWhere(user)
     and.push({
       OR: [{ AND: [{ NOT: part }, ...ordinary] }, ...(partsExcluded ? [] : [{ AND: [part, ...ownPart] }])]
@@ -247,8 +255,24 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   return and.length > 0 ? { AND: and } : {}
 }
 
+/**
+ * Whether `user` holds a live double annotation part in any record of the
+ * workspace. Most callers hold none (managers who only review, labellers
+ * outside double annotation): their queue filters are then the plain ones,
+ * without the per-row participant subqueries, which made a supervisor's
+ * counts several times slower on large workspaces (scripts/bench).
+ */
+async function holdsParts(user: CurrentUser): Promise<boolean> {
+  const part = await db().doubleTask.findFirst({
+    where: { assigneeId: user.id, status: { not: 'cancelled' } },
+    select: { id: true }
+  })
+  return part !== null
+}
+
 /** A record's status, or for the people who hold a double-annotation part in it, their own part's status. */
-function personalStatusFilter(user: CurrentUser, status: SentenceStatus): Prisma.SentenceWhereInput[] {
+function personalStatusFilter(user: CurrentUser, status: SentenceStatus, parts: boolean): Prisma.SentenceWhereInput[] {
+  if (!parts) return [{ status }]
   const mine = (taskStatus: Prisma.DoubleTaskWhereInput['status']): Prisma.SentenceWhereInput => ({
     doubleTasks: { some: { assigneeId: user.id, status: taskStatus } }
   })
@@ -280,6 +304,40 @@ function doubleFilter(value: string): Prisma.SentenceWhereInput | null {
     default:
       return null
   }
+}
+
+/**
+ * Managers: records whose double annotation answers, as compared, first differ
+ * at `level` of a taxonomy with the codes `codeA` and `codeB` (either way
+ * round): the progress page's "most frequent disagreements" (summarizePairs in
+ * lib/server/progress.ts) over all periods. Value `taxonomyKey,level,codeA,codeB`;
+ * a malformed value matches nothing.
+ */
+async function disagreementFilter(value: string): Promise<Prisma.SentenceWhereInput> {
+  const parts = value.split(',').map(decodeURIComponent)
+  const level = Number(parts[1])
+  if (parts.length !== 4 || !Number.isInteger(level) || level < 1 || level > 5) return { id: { in: [] } }
+  const [taxonomyKey, , codeA, codeB] = parts as [string, string, string, string]
+  const rows = await db().$queryRaw<Array<{ id: string }>>`
+    SELECT DISTINCT p."sentenceId" AS id FROM (
+      SELECT r."sentenceId",
+             ARRAY(SELECT l."nodeCode" FROM "DoubleTaskLabel" l
+                    WHERE l."taskId" = ta.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
+                      AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt") ORDER BY l.level) AS a,
+             ARRAY(SELECT l."nodeCode" FROM "DoubleTaskLabel" l
+                    WHERE l."taskId" = tb.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
+                      AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt") ORDER BY l.level) AS b
+        FROM "DoubleOutcome" o
+        JOIN "DoubleRound" r ON r.id = o."roundId"
+        JOIN "Taxonomy" tx ON tx.id = o."taxonomyId"
+        LEFT JOIN "DoubleTask" ta ON ta."roundId" = r.id AND ta.position = 1 AND ta.status <> 'cancelled'
+        LEFT JOIN "DoubleTask" tb ON tb."roundId" = r.id AND tb.position = 2 AND tb.status <> 'cancelled'
+       WHERE tx.key = ${taxonomyKey} AND o.matched = false AND r.status <> 'cancelled') p
+     WHERE p.a[1:${level - 1}::int] IS NOT DISTINCT FROM p.b[1:${level - 1}::int]
+       AND p.a[${level}::int] IS DISTINCT FROM p.b[${level}::int]
+       AND ((coalesce(p.a[${level}::int], '') = ${codeA} AND coalesce(p.b[${level}::int], '') = ${codeB})
+         OR (coalesce(p.a[${level}::int], '') = ${codeB} AND coalesce(p.b[${level}::int], '') = ${codeA}))`
+  return { id: { in: rows.map(r => r.id) } }
 }
 
 /** Above this many matches a search term is not selective: scan instead of listing ids. */
@@ -556,6 +614,7 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 /** Counts per status for the records matching the queue's filters. */
 export async function getQueueStats(user: CurrentUser, searchParams: URLSearchParams) {
   const where = await queueWhere(user, searchParams)
+  const parts = await holdsParts(user)
   const manager = user.role === 'admin' || user.role === 'supervisor'
   // Managers: double annotation counts for the filter chips, under the same
   // filters except the double filter itself.
@@ -569,19 +628,21 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
     any > 0 ? await Promise.all(['waiting', 'review', 'gap', 'done'].map(doubleCount)) : [0, 0, 0, 0]
   const [total, pending, submitted, skipped, flagged, needsReview] = await Promise.all([
     db().sentence.count({ where }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending') }] } }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'submitted') }] } }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'skipped') }] } }),
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending', parts) }] } }),
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'submitted', parts) }] } }),
+    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'skipped', parts) }] } }),
     db().sentence.count({
       where: {
         AND: [
           where,
-          {
-            OR: [
-              { AND: [{ NOT: participantWhere(user) }, { flagged: true }] },
-              { doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: true } } }
-            ]
-          }
+          parts
+            ? {
+                OR: [
+                  { AND: [{ NOT: participantWhere(user) }, { flagged: true }] },
+                  { doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: true } } }
+                ]
+              }
+            : { flagged: true }
         ]
       }
     }),

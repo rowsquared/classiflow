@@ -48,7 +48,9 @@ export const queueFilterParsers = {
   hasSubmittedLabels: parseAsBoolean,
   hasAISuggestions: parseAsBoolean,
   importId: parseAsString,
-  double: parseAsStringLiteral(DOUBLE_FILTERS)
+  double: parseAsStringLiteral(DOUBLE_FILTERS),
+  /** Managers: `[taxonomyKey, level, codeA, codeB]`, a disagreement from the progress page. */
+  disagreement: parseAsArrayOf(parseAsString)
 }
 
 export const queueParsers = {
@@ -86,7 +88,8 @@ export const EMPTY_QUEUE_FILTERS: QueueFilterValues = {
   hasSubmittedLabels: null,
   hasAISuggestions: null,
   importId: null,
-  double: null
+  double: null,
+  disagreement: null
 }
 
 /** Only the filter-panel values of a queue state. */
@@ -114,6 +117,7 @@ export function countActiveFilters(f: QueueFilterValues): number {
     f.hasAISuggestions !== null,
     Boolean(f.importId),
     Boolean(f.double),
+    Boolean(f.disagreement),
     f.status.length > 0
   ].filter(Boolean).length
 }
@@ -145,6 +149,9 @@ function appendFilters(params: URLSearchParams, f: QueueFilterValues) {
   }
   if (f.importId) params.set('importId', f.importId)
   if (f.double) params.set('double', f.double)
+  if (f.disagreement?.length === 4) {
+    params.set('disagreement', f.disagreement.map(encodeURIComponent).join(','))
+  }
 }
 
 /**

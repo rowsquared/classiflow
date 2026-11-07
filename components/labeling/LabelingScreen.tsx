@@ -562,7 +562,12 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
           {activeTaxonomy && (
             <div
-              className={`${taxonomies.length > 1 ? 'border-t border-gray-200 bg-white -mt-px' : ''} flex-1 overflow-y-auto`}
+              className={`${taxonomies.length > 1 ? 'border-t border-gray-200 bg-white -mt-px' : ''} flex-1 overflow-y-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500`}
+              // A locked browser has nothing to focus inside: keyboard users
+              // still need to scroll it (axe scrollable-region-focusable).
+              {...(locked
+                ? { tabIndex: 0, role: 'region', 'aria-label': `${activeTaxonomy.key} taxonomy (read only)` }
+                : {})}
             >
               <TaxonomyBrowser
                 key={activeTaxonomy.key}

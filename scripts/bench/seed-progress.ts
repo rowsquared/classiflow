@@ -12,7 +12,11 @@
 // levels), records assigned round robin with every fifth record shared by a
 // second labeller, 70% labeled in taxonomy A and 40% also in B over 180 days,
 // repeated saves, AI suggestions on 30%, a few comments, flags, skipped and
-// escalated records. Activity rows mirror the label saves.
+// escalated records. Activity rows mirror the label saves. Double annotation
+// in taxonomy A on every eighth record (a round per record, two parts, the
+// second person 11 labellers along): a quarter each waiting for the second
+// answer, needing review (differing at level 3 or level 2),
+// agreed and reviewed (both completed), compared over the last 90 days.
 import { connect } from '../lib/db.ts'
 
 const records = Number(process.argv[process.argv.indexOf('--records') + 1]) || 50_000
@@ -154,13 +158,54 @@ async function main() {
     SELECT 'c' || i, 'bench', 's' || i, 'u_lab' || (1 + i % 48), 'Please check', ${labeledAt}
       FROM generate_series(1, ${records}) i WHERE i % 50 = 1`)
 
+  // Double annotation (taxonomy A): k = (i / 8) % 4 picks waiting, disagreed, agreed, reviewed.
+  const k = `((i / 8) % 4)`
+  const comparedAt = `now() - ((i * 31) % 90) * interval '1 day'`
+  await run(`
+    INSERT INTO "DoubleRound" (id, "workspaceId", "sentenceId", status, "createdById", "createdAt", "closedAt", "closedById")
+    SELECT 'dr' || i, 'bench', 's' || i,
+           (CASE WHEN ${k} >= 2 THEN 'completed' ELSE 'active' END)::"DoubleRoundStatus", 'u_sup1',
+           ${comparedAt} - interval '3 days', CASE WHEN ${k} >= 2 THEN ${comparedAt} END,
+           CASE WHEN ${k} >= 2 THEN 'u_sup1' END
+      FROM generate_series(8, ${records}, 8) i`)
+  await run(`
+    INSERT INTO "DoubleTask" (id, "workspaceId", "roundId", "sentenceId", position, "assigneeId", status, "createdAt", "submittedAt")
+    SELECT 'dt' || i || '_' || p, 'bench', 'dr' || i, 's' || i, p,
+           'u_lab' || (CASE p WHEN 1 THEN 1 + i % 48 ELSE 1 + (i + 11) % 48 END),
+           (CASE WHEN p = 2 AND ${k} = 0 THEN 'pending' ELSE 'submitted' END)::"DoubleTaskStatus",
+           ${comparedAt} - interval '3 days',
+           CASE WHEN p = 1 OR ${k} > 0 THEN ${comparedAt} - (2 - p) * interval '1 day' END
+      FROM generate_series(8, ${records}, 8) i, generate_series(1, 2) p`)
+  // Answers: A's path as in SentenceAnnotation; B's differs in disagreed rounds.
+  const codeA = `CASE l WHEN 1 THEN ${pathA} WHEN 2 THEN ${pathA} || (i % 10) ELSE ${pathA} || (i % 10) || (i % 5) END`
+  const codeB = `CASE WHEN ${k} = 1 AND (i / 32) % 2 = 0 AND l >= 2
+                      THEN ${pathA} || ((i + 1) % 10) || (CASE l WHEN 3 THEN (i % 5)::text ELSE '' END)
+                      WHEN ${k} = 1 AND l = 3 THEN ${pathA} || (i % 10) || ((i + 1) % 5)
+                      ELSE ${codeA} END`
+  await run(`
+    INSERT INTO "DoubleTaskLabel" ("workspaceId", "taskId", "taxonomyId", level, "nodeCode", "labelingStartedAt", "createdAt")
+    SELECT 'bench', 'dt' || i || '_' || p, 't_a', l, CASE p WHEN 1 THEN ${codeA} ELSE ${codeB} END,
+           ${comparedAt} - (2 - p) * interval '1 day' - interval '90 seconds', ${comparedAt} - (2 - p) * interval '1 day'
+      FROM generate_series(8, ${records}, 8) i, generate_series(1, 2) p, generate_series(1, 3) l
+     WHERE p = 1 OR ${k} > 0`)
+  await run(`
+    INSERT INTO "DoubleOutcome" ("workspaceId", "roundId", "sentenceId", "taxonomyId", state, "sourceTaskId", matched,
+                                 "comparedAt", "reviewedById", "reviewedAt", "resultCodes")
+    SELECT 'bench', 'dr' || i, 's' || i, 't_a',
+           (CASE ${k} WHEN 0 THEN 'waiting' WHEN 1 THEN 'disagreed' WHEN 2 THEN 'agreed' ELSE 'reviewed' END)::"DoubleOutcomeState",
+           'dt' || i || '_1', CASE WHEN ${k} > 0 THEN ${k} <> 1 END, CASE WHEN ${k} > 0 THEN ${comparedAt} END,
+           CASE WHEN ${k} = 3 THEN 'u_sup1' END, CASE WHEN ${k} = 3 THEN ${comparedAt} + interval '1 hour' END,
+           CASE WHEN ${k} >= 2 THEN ARRAY(SELECT ${codeA} FROM generate_series(1, 3) l ORDER BY l) ELSE '{}' END
+      FROM generate_series(8, ${records}, 8) i`)
+
   await run('ANALYZE')
   const counts = await prisma.$queryRaw<Array<Record<string, number>>>`
     SELECT (SELECT count(*)::int FROM "Sentence") AS records,
            (SELECT count(*)::int FROM "SentenceAssignment") AS assignments,
            (SELECT count(*)::int FROM "SentenceAnnotation") AS annotations,
            (SELECT count(*)::int FROM "LabelingActivity") AS activity,
-           (SELECT count(*)::int FROM "SentenceAISuggestion") AS suggestions`
+           (SELECT count(*)::int FROM "SentenceAISuggestion") AS suggestions,
+           (SELECT count(*)::int FROM "DoubleRound") AS "doubleRounds"`
   console.log(`✓ Seeded workspace "bench" in ${((Date.now() - started) / 1000).toFixed(1)} s:`, counts[0])
 }
 

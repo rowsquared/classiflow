@@ -1,6 +1,7 @@
 # Double annotation v2: review findings and improvement plan
 
-**Status:** phases A-D implemented (7 November 2026, see section 6); phase E mostly done, see the handover below. **Date:** 7 November 2026.
+**Status:** phases A-E implemented (7 November 2026, see section 6); what is
+left is in the handover below. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
 [double-annotation.md](double-annotation.md) section 0).
 
@@ -362,23 +363,54 @@ the rest is skipped). The start route takes `secondUserId: 'auto'`
 `sample`/`seed`; its preview adds `people`, `mixed`, `losingAccess`. Queue
 stats add `double` counts (ignoring the double filter; four more counts only
 when the workspace has rounds). Blind review is a per-browser "Hide names
-while deciding" toggle, not a workspace setting. Not done: the "8 records ·
-0 confirmed" counter wording in double views, and links from the
-disagreement list to matching records (the queue cannot filter on both
-answers yet).
+while deciding" toggle, not a workspace setting. The counter reads "N records · M confirmed"
+in double views. Each row of "Most frequent disagreements" links to the queue
+filtered by `disagreement=<taxonomyKey>,<level>,<codeA>,<codeB>` (managers;
+the answers as compared, either way round, over all periods, so the queue can
+list more records than the period's count).
 
 ### Phase E: hygiene
 
-- [ ] Find the overlapping `pg` queries (K6).
-- [ ] Benchmark queue double filters at scale (open item from v1).
-- [ ] Update AGENTS.md, docs/security.md (participant rules), ENV/README
+- [x] Find the overlapping `pg` queries (K6).
+- [x] Benchmark queue double filters at scale (open item from v1).
+- [x] Update AGENTS.md, docs/security.md (participant rules), ENV/README
       only where behaviour changes.
+
+Implementation notes (phase E): the overlap was inside Prisma, not in our
+code: Prisma 7's query interpreter loads the relations of one query
+(`include`) with `Promise.all` on the transaction's connection. The
+`withWorkspace()` queue only orders whole Prisma operations, so
+`lib/prisma.ts` now wraps the `pg` adapter (`SerialTransactionPg`) and runs
+each transaction's statements one after another; the full integration suite
+shows no warning any more.
+
+Benchmark (`scripts/bench/seed-progress.ts` now seeds a round on every eighth
+record of 50,000: waiting, needs review, agreed, reviewed; cases in
+`tests/bench/progress.bench.test.ts`), local PostgreSQL 16, p50/p95 in ms:
+
+| Call | Viewer | p50 | p95 |
+| --- | --- | ---: | ---: |
+| queue list, double=review | admin / supervisor | 95 / 144 | 111 / 196 |
+| queue stats, double=review | admin / supervisor | 127 / 198 | 162 / 261 |
+| queue list + stats, double=done | admin | 167 | 225 |
+| queue list, disagreement | admin | 106 | 118 |
+| queue list + stats, default view | admin / supervisor / labeller | 137 / 388 / 196 | 180 / 481 / 226 |
+| queue list, own labels (code filter) | labeller | 139 | 159 |
+
+The benchmark found one regression from phase A: the participant branches of
+the status and flag filters (`own part` subqueries in an `OR`) made a
+supervisor's default queue take about 2 s (stats 1.7 s). People who hold no
+live part (most managers, labellers outside double annotation) now get the
+plain filters (`holdsParts()` in `lib/server/sentences.ts`, one indexed
+lookup): 2,055 to 388 ms. A manager who also labels double records still
+takes the slower path.
 
 ## Handover (7 November 2026)
 
 Commits on `staging` (not pushed): phase A `4dc4c5c`, B `5d485a0`, C
-`e417fa3`, D `afc3a92`, a format fix `6c797c6`, then phase E (docs, the
-workspace switcher's accessible name, e2e updates).
+`e417fa3`, D `afc3a92`, a format fix `6c797c6`, phase E docs and the
+workspace switcher (`26716bc`), then phase E (serial transaction statements,
+the benchmark and its queue fix, counter wording, disagreement links).
 
 Verified: typecheck, lint, unit tests, the double-annotation integration
 suites (participation, manage, original: all pass), the full integration
@@ -389,16 +421,24 @@ rerun**). Browser checks on the demo workspace: participant views, review
 mode with note and undo, history, export page and files, queue chips and
 Double column, progress.
 
+Second session (7 November 2026, evening): full integration suite 232/232
+before the changes; after them 231/232, the one failure a `TRUNCATE`
+deadlock in `ai-job-monitor.test.ts`'s reset against a job monitor of the
+previous test (passes 3/3 alone; harness race, not product code).
+The final run after all changes: 232/232, no `pg` warning.
+Full e2e suite 69/69 after the changes. Its double annotation journey found
+one more axe finding (the locked taxonomy browser under the review panel was
+a scroll region without a focusable element; it is now a focusable, labelled
+region while locked) and now also checks the double-view counter and the
+progress page's disagreement link.
+
 Open:
 
-- Rerun `tests/e2e/double-annotation.spec.ts` (and the full integration
-  suite once more after phases B-D).
 - Before deploying: run `scripts/sql/double-annotation-drift.sql` after the
   migration; a reviewer decides the listed records again.
-- Not built: "give back as ordinary work", the double-view counter wording,
-  links from the disagreement list to records, the ZIP of all analysis files.
-- The queue's "Needs review" toolbar shortcut was replaced by the chips;
-  `QueueToolbar` still accepts the props.
+- Not built: "give back as ordinary work", the ZIP of all analysis files.
+- The `ai-job-monitor` reset deadlock above (make `resetDatabase()` wait for
+  or stop running monitors) if it keeps showing up.
 - Local setup used: a throwaway PostgreSQL 16 cluster on port 5499
   (scratchpad), launch config `classiflow-double-local`. The Docker dev
   database container did not start (data from an older PostgreSQL major

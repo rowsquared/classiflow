@@ -15,10 +15,11 @@ interface QueueToolbarProps {
   statsStale?: boolean
   onToggleFilters: () => void
   activeFilterCount: number
-  /** Managers: records in double annotation with a disagreement, and the shortcut to them. */
-  needsReview?: number
-  needsReviewActive?: boolean
-  onToggleNeedsReview?: () => void
+  /**
+   * A double annotation view is applied: a record counts as done only when
+   * its result is confirmed, so the counter says so.
+   */
+  doubleView?: boolean
 }
 
 export default function QueueToolbar({
@@ -28,9 +29,7 @@ export default function QueueToolbar({
   statsStale = false,
   onToggleFilters,
   activeFilterCount,
-  needsReview = 0,
-  needsReviewActive = false,
-  onToggleNeedsReview
+  doubleView = false
 }: QueueToolbarProps) {
   return (
     <div className="bg-white border-b border-gray-200 p-4">
@@ -76,30 +75,25 @@ export default function QueueToolbar({
 
         {/* Progress Indicator */}
         <div className="text-sm text-gray-600">
-          <span className="font-medium text-gray-900">{stats.submitted.toLocaleString()}</span> of{' '}
-          <span className="font-medium text-gray-900">{stats.total.toLocaleString()}</span> labeled
-          <span className="text-gray-500 ml-2">({stats.progress}%)</span>
+          {doubleView ? (
+            <>
+              <span className="font-medium text-gray-900">{stats.total.toLocaleString()}</span>{' '}
+              {stats.total === 1 ? 'record' : 'records'} ·{' '}
+              <span className="font-medium text-gray-900">{stats.submitted.toLocaleString()}</span> confirmed
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-gray-900">{stats.submitted.toLocaleString()}</span> of{' '}
+              <span className="font-medium text-gray-900">{stats.total.toLocaleString()}</span> labeled
+              <span className="text-gray-500 ml-2">({stats.progress}%)</span>
+            </>
+          )}
           {statsStale && (
             <span className="ml-2 text-amber-700" role="status">
               · could not refresh, may be out of date
             </span>
           )}
         </div>
-
-        {onToggleNeedsReview && (needsReview > 0 || needsReviewActive) && (
-          <button
-            type="button"
-            onClick={onToggleNeedsReview}
-            aria-pressed={needsReviewActive}
-            className={`ml-auto px-3 py-1.5 text-sm font-medium border focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-              needsReviewActive
-                ? 'bg-indigo-600 border-indigo-600 text-white'
-                : 'bg-[#F7F3B3] border-[#d6cf6b] text-[#4d470b] hover:bg-[#efe98f]'
-            }`}
-          >
-            Needs review · {needsReview.toLocaleString()}
-          </button>
-        )}
       </div>
     </div>
   )

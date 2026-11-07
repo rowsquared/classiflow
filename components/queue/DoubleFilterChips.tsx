@@ -21,11 +21,16 @@ const CHIPS: Record<DoubleFilter, { label: string; tone: string }> = {
 export default function DoubleFilterChips({
   counts,
   active,
-  onChange
+  onChange,
+  disagreement,
+  onClearDisagreement
 }: {
   counts: DoubleCounts
   active: DoubleFilter | null
   onChange: (value: DoubleFilter | null) => void
+  /** `[taxonomyKey, level, codeA, codeB]`: the queue shows the records of one disagreement. */
+  disagreement?: string[] | null
+  onClearDisagreement?: () => void
 }) {
   return (
     <div
@@ -50,6 +55,24 @@ export default function DoubleFilterChips({
           </button>
         )
       })}
+      {disagreement?.length === 4 && (
+        <span className="inline-flex items-center gap-2 px-2 py-0.5 text-sm border border-gray-400 text-gray-900">
+          <span>
+            {disagreement[0]} level {disagreement[1]}: <span className="font-mono">{disagreement[2]}</span> ↔{' '}
+            <span className="font-mono">{disagreement[3]}</span>
+          </span>
+          {onClearDisagreement && (
+            <button
+              type="button"
+              onClick={onClearDisagreement}
+              aria-label="Clear disagreement filter"
+              className="text-gray-700 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              ✕
+            </button>
+          )}
+        </span>
+      )}
     </div>
   )
 }

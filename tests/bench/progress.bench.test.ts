@@ -20,9 +20,8 @@ const queries = vi.hoisted(() => ({ count: 0 }))
 vi.mock('@/lib/prisma', async importOriginal => {
   const original = await importOriginal<typeof import('@/lib/prisma')>()
   const { PrismaClient } = await import('@/lib/generated/prisma/client')
-  const { PrismaPg } = await import('@prisma/adapter-pg')
   const client = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 5 }),
+    adapter: new original.SerialTransactionPg({ connectionString: process.env.DATABASE_URL, max: 5 }),
     log: [{ emit: 'event', level: 'query' }]
   })
   client.$on('query', () => {
@@ -123,6 +122,44 @@ const current: Case[] = [
     name: 'queue list, q=a1b2',
     roles: ['admin'],
     run: u => listQueue(u, new URLSearchParams('q=a1b2&page=1&limit=50'))
+  },
+  // Double annotation (every eighth record has a round): the managers' views,
+  // the chips' counts and a labeller's queue with their own parts.
+  {
+    name: 'queue list, double=review',
+    roles: ['admin', 'supervisor'],
+    run: u => listQueue(u, new URLSearchParams('double=review&page=1&limit=100'))
+  },
+  {
+    name: 'queue stats, double=review',
+    roles: ['admin', 'supervisor'],
+    run: u => getQueueStats(u, new URLSearchParams('double=review'))
+  },
+  {
+    name: 'queue list + stats, double=done',
+    roles: ['admin'],
+    run: async u => [
+      await listQueue(u, new URLSearchParams('double=done&page=1&limit=100')),
+      await getQueueStats(u, new URLSearchParams('double=done'))
+    ]
+  },
+  {
+    name: 'queue list, disagreement',
+    roles: ['admin'],
+    run: u => listQueue(u, new URLSearchParams('disagreement=A,3,0100,0101&page=1&limit=100'))
+  },
+  {
+    name: 'queue list + stats, default view',
+    roles: ['admin', 'supervisor', 'labeller'],
+    run: async u => [
+      await listQueue(u, new URLSearchParams('status=pending&page=1&limit=100')),
+      await getQueueStats(u, new URLSearchParams(''))
+    ]
+  },
+  {
+    name: 'queue list, own labels (code filter)',
+    roles: ['labeller'],
+    run: u => listQueue(u, new URLSearchParams('taxonomyKey=A&level=1&code=01&page=1&limit=100'))
   }
 ]
 

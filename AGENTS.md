@@ -30,7 +30,8 @@ Browser: React client components
   `@prisma/adapter-pg` on the same version.
 - The Prisma client is generated into `lib/generated/prisma` (git-ignored; import
   from `@/lib/generated/prisma/client`, not `@prisma/client`). `lib/prisma.ts`
-  owns the shared client and pool size.
+  owns the shared client and pool size; its adapter (`SerialTransactionPg`)
+  runs each transaction's statements one at a time.
 - Data loading for the server pages lives in `lib/server/*` (`import 'server-only'`):
   `sentences` (queue filters, list, stats), `progress`, `taxonomies`, `users`,
   `imports`, `ai-jobs`. Each function takes the `CurrentUser` and applies its
@@ -226,7 +227,8 @@ Read `prisma/schema.prisma` before changing data behavior.
   `reopen` undoes a decision), see closed rounds as history, and run bulk
   commands (`/sentences/double-annotation/commands`); the queue shows a
   Double column and per-state chips (stats `double`), progress shows
-  agreement by level and labeller and the top disagreements. `LabelingActivity.kind` separates labelling
+  agreement by level and labeller and the top disagreements, each linked to
+  the queue (`disagreement` filter). `LabelingActivity.kind` separates labelling
   from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's

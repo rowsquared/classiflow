@@ -1,4 +1,7 @@
+import Link from 'next/link'
 import type { DoubleProgress } from '@/lib/contracts/progress'
+import { serializeQueueUrlState } from '@/lib/queue-url'
+import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { formatNumber, percent } from './format'
 
 const share = (part: number, whole: number) => {
@@ -19,6 +22,10 @@ const tdNum = `${td} text-right tabular-nums`
  * labeller, and the code pairs that disagree most.
  */
 export default function DoubleAnnotationCards({ double }: { double: DoubleProgress }) {
+  const { href } = useWorkspacePaths()
+  // The queue lists the records of a disagreement over all periods.
+  const recordsHref = (c: DoubleProgress['confusions'][number]) =>
+    href(`/queue${serializeQueueUrlState({ tab: 'all', disagreement: [c.taxonomyKey, String(c.level), c.a, c.b] })}`)
   const figures = [
     { label: 'In progress', value: double.inProgress, detail: 'Records waiting for labels or review' },
     { label: 'Needs review', value: double.needsReview, detail: 'The two labels differ' },
@@ -151,12 +158,15 @@ export default function DoubleAnnotationCards({ double }: { double: DoubleProgre
                 <th scope="col" className={thNum}>
                   Pairs
                 </th>
+                <th scope="col" className={th}>
+                  <span className="sr-only">Records</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {double.confusions.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="py-2 text-gray-600">
+                  <td colSpan={4} className="py-2 text-gray-600">
                     No disagreements in this period.
                   </td>
                 </tr>
@@ -169,6 +179,15 @@ export default function DoubleAnnotationCards({ double }: { double: DoubleProgre
                     </td>
                     <td className={tdNum}>{c.level}</td>
                     <td className={tdNum}>{formatNumber(c.count)}</td>
+                    <td className={td}>
+                      <Link
+                        href={recordsHref(c)}
+                        className="text-indigo-700 underline hover:text-indigo-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                        title="All records with this disagreement, from every period"
+                      >
+                        Show records<span className="sr-only">{` for ${c.taxonomyKey} ${c.a} and ${c.b}`}</span>
+                      </Link>
+                    </td>
                   </tr>
                 ))
               )}

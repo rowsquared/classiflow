@@ -65,8 +65,10 @@ in as its members; ENV_SETUP.md "Demo data").
 
 ### Benchmarks
 
-The progress reports and the queue search have a repeatable benchmark on
-seeded data (docs/archive/plans-2026-10/progress-dashboard.md records the results):
+The progress reports, the queue search and the double annotation queue views
+have a repeatable benchmark on seeded data (results in
+docs/archive/plans-2026-10/progress-dashboard.md and
+docs/plans/double-annotation-v2.md, phase E):
 
 ```bash
 createdb classiflow_bench_test     # once; _bench or _test, the seed empties every table

@@ -153,5 +153,14 @@ describe('managing double annotation', () => {
       expect.objectContaining({ taxonomyKey: 'A', level: 2, a: '011', b: '012', count: 1 })
     ])
     expect(double.waiting).toEqual({ over3: 0, over7: 0, over14: 0 })
+
+    // The disagreement links to its records in the queue (codes either way round).
+    const records = async (value: string) =>
+      (await (await listRoute.GET(request(`/x?disagreement=${value}`), params())).json()).sentences.map(
+        (s: { id: string }) => s.id
+      )
+    expect(await records('A,2,012,011')).toEqual([r1.id])
+    expect(await records('A,1,01,02')).toEqual([])
+    expect(await records('A,x,011,012')).toEqual([])
   })
 })

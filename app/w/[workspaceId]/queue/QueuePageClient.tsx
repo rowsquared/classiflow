@@ -397,13 +397,16 @@ export default function QueuePageClient({
             stats={stats}
             onToggleFilters={toggleFilterPanel}
             activeFilterCount={activeFilterCount}
+            doubleView={Boolean(url.double || url.disagreement)}
           />
 
-          {stats.double && (stats.double.any > 0 || url.double) && (
+          {stats.double && (stats.double.any > 0 || url.double || url.disagreement) && (
             <DoubleFilterChips
               counts={stats.double}
               active={url.double}
               onChange={value => setUrl({ double: value, tab: 'all', page: null }, { history: 'push' })}
+              disagreement={url.disagreement}
+              onClearDisagreement={() => setUrl({ disagreement: null, page: null }, { history: 'push' })}
             />
           )}
 

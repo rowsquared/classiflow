@@ -5,7 +5,8 @@ import { expectAccessible } from './a11y'
 
 // Double annotation end to end, in its own workspace (archived afterwards):
 // the admin starts it from the assignment dialog, two labellers answer blind
-// and disagree, the admin resolves it from the "Needs review" shortcut, and
+// and disagree, the admin finds it through the "Needs review" chip and the
+// progress page's disagreement link, resolves it, and
 // the confirmed-only export carries the decision. Changes nothing the other
 // specs use.
 failOnCspViolations()
@@ -128,6 +129,16 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   // The admin finds it through the shortcut and uses Ben's answer.
   await page.goto(view('/queue?tab=all'))
   await page.getByRole('group', { name: 'Double annotation' }).getByRole('button', { name: 'Needs review · 1' }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await expect(page.locator('body')).toContainText('1 record · 0 confirmed')
+  // Progress lists the disagreement and links to its records in the queue.
+  await page.goto(view('/progress'))
+  await page
+    .getByTestId('double-annotation')
+    .getByRole('link', { name: /^Show records/ })
+    .click()
+  await expect(page).toHaveURL(/disagreement=/)
+  await expect(page.getByRole('button', { name: 'Clear disagreement filter' })).toBeVisible()
   await expect(page.locator('tbody tr')).toHaveCount(1)
   await page.goto(view(`/queue/${record!.id}`))
   const panel = page.getByRole('region', { name: 'Double annotation' })
