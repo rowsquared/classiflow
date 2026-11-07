@@ -16,7 +16,8 @@ import { recordStatus, taxonomyStatus, type OutcomeState } from '@/lib/double-an
  * Columns: id (the record key from the import); field_<name> and support_<name> in the order the names first
  * occur; then per taxonomy (by key) <key>_<level> human labels and
  * <key>_ai<level>/<key>_ai<level>c AI suggestions; then status, flagged,
- * last_editor, last_edited, comments; then annotation_mode (single/double),
+ * last_editor, last_edited, comments; then (optional, by default only in
+ * workspaces that used double annotation) annotation_mode (single/double),
  * annotation_status (unlabelled, partial, provisional, needs_review,
  * confirmed) and <key>_annotation_status per taxonomy (lib/double-annotation.ts
  * taxonomyStatus). The label columns hold the record's current result, which
@@ -45,7 +46,7 @@ export type ExportScope = {
 }
 
 /** Runs one read in a fresh, re-authorised workspace transaction. */
-function scoped<T>(scope: ExportScope, read: () => Promise<T>): Promise<T> {
+export function scoped<T>(scope: ExportScope, read: () => Promise<T>): Promise<T> {
   return (async () => {
     if (!(await scope.stillAllowed())) throw new Error('Export no longer allowed for this user')
     return withWorkspace(scope.workspaceId, read)
@@ -54,7 +55,7 @@ function scoped<T>(scope: ExportScope, read: () => Promise<T>): Promise<T> {
 type FieldSlots = Record<`field${1 | 2 | 3 | 4 | 5}` | `support${1 | 2 | 3 | 4 | 5}`, string | null>
 
 /** Pages through the matching records in export order. */
-async function* pages<T extends { id: string }>(
+export async function* pages<T extends { id: string }>(
   where: Prisma.SentenceWhereInput,
   read: (args: {
     where: Prisma.SentenceWhereInput
@@ -94,6 +95,8 @@ type ColumnPlan = {
   taxonomies: Array<{ id: string; key: string; maxDepth: number }>
   /** Ordinary records are complete when every active taxonomy is labelled. */
   activeTaxonomyIds: string[]
+  /** annotation_mode, annotation_status and <key>_annotation_status are included. */
+  statusColumns: boolean
 }
 
 /** Refuses an export whose generated headers would collide (e.g. unusual taxonomy keys). */
@@ -107,7 +110,11 @@ function assertUniqueHeaders(columns: CsvColumn[]) {
 
 export class ExportColumnError extends Error {}
 
-async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput): Promise<ColumnPlan> {
+async function planColumns(
+  scope: ExportScope,
+  where: Prisma.SentenceWhereInput,
+  statusColumns: boolean
+): Promise<ColumnPlan> {
   const fields: string[] = []
   const supports: string[] = []
   const seen = new Set<string>()
@@ -172,12 +179,16 @@ async function planColumns(scope: ExportScope, where: Prisma.SentenceWhereInput)
     text('last_editor'),
     plain('last_edited'),
     text('comments'),
-    plain('annotation_mode'),
-    plain('annotation_status'),
-    ...taxonomies.map(t => plain(`${t.key}_annotation_status`))
+    ...(statusColumns
+      ? [
+          plain('annotation_mode'),
+          plain('annotation_status'),
+          ...taxonomies.map(t => plain(`${t.key}_annotation_status`))
+        ]
+      : [])
   ]
   assertUniqueHeaders(columns)
-  return { columns, fields, supports, taxonomies, activeTaxonomyIds }
+  return { columns, fields, supports, taxonomies, activeTaxonomyIds, statusColumns }
 }
 
 const exportCode = (code: string) => (isUnknownNodeCode(code) ? 'UNKNOWN' : code)
@@ -234,6 +245,7 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
     s.lastEditedAt ? s.lastEditedAt.toISOString() : '',
     s.comments.map(c => `[${c.author.name || 'Unknown'}]: ${c.body}`).join(' | ')
   )
+  if (!plan.statusColumns) return row
 
   const round = s.doubleRounds[0]
   const outcomes = new Map(round?.outcomes.map(o => [o.taxonomyId, o]))
@@ -268,10 +280,16 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
 export async function exportStream(
   scope: ExportScope,
   filter: Prisma.SentenceWhereInput,
-  opts: { neutralizeFormulas: boolean; onDone?: (records: number) => Promise<void> | void }
+  opts: {
+    neutralizeFormulas: boolean
+    /** Status columns; default: only when the workspace ever used double annotation. */
+    statusColumns?: boolean
+    onDone?: (records: number) => Promise<void> | void
+  }
 ): Promise<ReadableStream<Uint8Array>> {
   const where = { ...filter, workspaceId: scope.workspaceId }
-  const plan = await planColumns(scope, where)
+  const statusColumns = opts.statusColumns ?? (await scoped(scope, () => db().doubleRound.count())) > 0
+  const plan = await planColumns(scope, where, statusColumns)
   const encoder = new TextEncoder()
   const iterator = pages(where, args => scoped(scope, () => readRows(args)))
   let records = 0
@@ -320,6 +338,7 @@ const DETAIL_HEADERS = [
   'round_started',
   'position',
   'labeller',
+  'labeller_username',
   'labeller_status',
   'from_existing_labels',
   'taxonomy',
@@ -329,6 +348,7 @@ const DETAIL_HEADERS = [
   'code_4',
   'code_5',
   'answered_at',
+  'seconds',
   'revision',
   'original_match',
   'revised_after_compare',
@@ -339,7 +359,7 @@ const DETAIL_HEADERS = [
 ]
 const DETAIL_COLUMNS: CsvColumn[] = DETAIL_HEADERS.map(header => ({
   header,
-  text: header === 'labeller' || header === 'reviewed_by' || header === 'review_note'
+  text: header === 'labeller' || header === 'labeller_username' || header === 'reviewed_by' || header === 'review_note'
 }))
 
 async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'select'>) {
@@ -361,10 +381,17 @@ async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' 
               position: true,
               status: true,
               fromBaseline: true,
-              assignee: { select: { name: true } },
+              assignee: { select: { name: true, username: true } },
               labels: {
                 where: { supersededAt: null },
-                select: { taxonomyId: true, level: true, nodeCode: true, revision: true, createdAt: true }
+                select: {
+                  taxonomyId: true,
+                  level: true,
+                  nodeCode: true,
+                  revision: true,
+                  createdAt: true,
+                  labelingStartedAt: true
+                }
               }
             }
           },
@@ -383,6 +410,13 @@ async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' 
       }
     }
   })
+}
+
+/** Seconds between opening the record and saving the answer, when both are known. */
+export function secondsSpent(label: { labelingStartedAt: Date | null; createdAt: Date } | undefined): string {
+  if (!label?.labelingStartedAt) return ''
+  const seconds = Math.round((label.createdAt.getTime() - label.labelingStartedAt.getTime()) / 1000)
+  return seconds >= 0 ? String(seconds) : ''
 }
 
 /** Details CSV of double annotation: records that were ever in a round, admin export only. */
@@ -416,6 +450,7 @@ export async function detailsStream(
               round.createdAt.toISOString(),
               String(task.position),
               task.assignee?.name ?? '',
+              task.assignee?.username ?? '',
               task.status,
               task.fromBaseline ? 'true' : 'false',
               taxonomyKeys.get(outcome.taxonomyId) ?? '',
@@ -425,6 +460,7 @@ export async function detailsStream(
               code(4),
               code(5),
               answeredAt ? answeredAt.toISOString() : '',
+              secondsSpent(labels[0]),
               labels[0] ? String(labels[0].revision) : '',
               outcome.matched === null ? '' : String(outcome.matched),
               outcome.revisedAfterCompare ? 'true' : 'false',

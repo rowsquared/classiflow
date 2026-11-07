@@ -347,7 +347,9 @@ export async function saveTaskAnswer(opts: {
       level: l.level,
       nodeCode: l.nodeCode,
       revision,
-      labelingStartedAt
+      labelingStartedAt,
+      // The same instant as the comparison it may trigger (exports read answers as compared).
+      createdAt: now
     }))
   })
 
@@ -849,7 +851,14 @@ export async function startRounds(user: CurrentUser, plan: StartPlan): Promise<n
       taxonomyId: { in: taxonomyIds },
       source: 'user'
     },
-    select: { sentenceId: true, taxonomyId: true, level: true, nodeCode: true, labelingStartedAt: true }
+    select: {
+      sentenceId: true,
+      taxonomyId: true,
+      level: true,
+      nodeCode: true,
+      labelingStartedAt: true,
+      createdAt: true
+    }
   })
 
   for (const item of startable) {
@@ -882,7 +891,9 @@ export async function startRounds(user: CurrentUser, plan: StartPlan): Promise<n
             taxonomyId: l.taxonomyId,
             level: l.level,
             nodeCode: l.nodeCode,
-            labelingStartedAt: l.labelingStartedAt
+            labelingStartedAt: l.labelingStartedAt,
+            // When the labels were made, not when the round started.
+            createdAt: l.createdAt
           }))
       })
     }

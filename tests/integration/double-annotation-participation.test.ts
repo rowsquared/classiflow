@@ -200,6 +200,49 @@ describe('double annotation participation', () => {
     expect((await save(r.id, path('B', '01', '011'))).status).toBe(409)
   })
 
+  it('analysis exports: pairs side by side with the match per level, and the agreement summary', async () => {
+    const r = await reviewedRecord()
+    signInAs(alice)
+    await save(r.id, path('A', '02')) // a change after the comparison: the pair keeps the compared answer
+
+    const pairs = await exportRow(r, '?format=pairs')
+    const a = pairs.find(p => p.taxonomy === 'A')
+    expect(a).toMatchObject({
+      a_labeller: alice.name,
+      a_code_1: '01',
+      a_code_2: '011',
+      a_revised: 'true',
+      b_labeller: bob.name,
+      b_code_2: '012',
+      match_1: 'true',
+      match_2: 'false',
+      agreed_depth: '1',
+      first_diff_level: '2',
+      original_match: 'false',
+      final_code_1: '01',
+      final_code_2: '012',
+      final_source: 'b',
+      result_status: 'reviewed',
+      reviewed_by: sam.name,
+      field_text: 'record 0'
+    })
+    expect(pairs.find(p => p.taxonomy === 'B')).toMatchObject({ match_1: 'true', final_source: 'agreed' })
+    expect((await exportRow(r, '?format=pairs&taxonomy=B')).map(p => p.taxonomy)).toEqual(['B'])
+    expect(await exportRow(r, '?format=pairs&rounds=active')).toEqual([])
+
+    signInAs(ann)
+    const csv = await (await exportRoute.GET(request('/x/export?format=agreement'), params())).text()
+    const lines = csv.split('\n').map(line => line.split(',').map(cell => cell.replace(/^"|"$/g, '')))
+    const find = (...cells: string[]) => lines.find(l => cells.every((c, i) => c === '' || l[i] === c))
+    // section, taxonomy, level, labeller, labeller_b, code_a, label_a, code_b, label_b, compared, agreed, share
+    expect(find('level', 'A', '1')!.slice(9, 12)).toEqual(['1', '1', '1.0000'])
+    expect(find('level', 'A', '2')!.slice(9, 11)).toEqual(['1', '0'])
+    expect(find('level', 'A', 'full')!.slice(9, 11)).toEqual(['1', '0'])
+    expect(find('confusion', 'A', '2')!.slice(5, 10)).toEqual(['011', 'Item 011', '012', 'Item 012', '1'])
+    const bobRow = find('labeller', 'A', 'full', bob.name!)!
+    expect(bobRow.slice(9)).toEqual(['1', '0', '0.0000', '1', '1']) // the reviewer chose Bob's answer
+  })
+
   it('flags stay with the person who set them; managers see them', async () => {
     const [r] = await createSentences(1, [alice.id])
     await start([r.id])

@@ -158,7 +158,7 @@ test('the export contains the human label with its leading zero', async ({ page 
   await page.goto(pagePath('/admin/export'))
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Export CSV' }).click()
+    page.getByRole('link', { name: 'Download records CSV' }).click()
   ])
   expect(await download.failure()).toBeNull()
   expect(download.suggestedFilename()).toMatch(/\.csv$/)

@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server'
 import { reloadWorkspaceUser, workspaceRoute } from '@/lib/api-auth'
 import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
 import { ExportColumnError, detailsStream, exportStream } from '@/lib/export-csv'
+import { agreementStream, pairsStream, type AnalysisFilter } from '@/lib/export-double'
 import { audit } from '@/lib/audit'
 import { logError } from '@/lib/logger'
 
 /**
  * GET /api/workspaces/[workspaceId]/export?status=...&dateRange=...&labels=confirmed&formulaSafe=false
- * GET ...?format=details: double-annotation details (each person's answer)
+ * GET ...?format=details: double-annotation answers (each person's answer, one row each)
+ * GET ...?format=pairs: double-annotation pairs (A and B side by side, match per level, final)
+ * GET ...?format=agreement: double-annotation agreement summary (by level, pair, labeller; confusions)
+ *   Analysis filters: rounds=all|active|completed|cancelled, taxonomy=<key>,
+ *   comparedFrom/comparedTo=YYYY-MM-DD, text=false (pairs without record text).
+ * statusColumns=true|false: the records export's annotation status columns
+ *   (default: only when the workspace ever used double annotation).
  *
  * labels=confirmed keeps only records whose labels are confirmed: complete
  * ordinary work, and double annotation that agreed, was reviewed or accepted
@@ -28,7 +35,33 @@ export const GET = workspaceRoute(
       const dateRange = searchParams.get('dateRange') || 'all'
       const neutralizeFormulas = searchParams.get('formulaSafe') !== 'false'
       const labels = searchParams.get('labels') === 'confirmed' ? 'confirmed' : 'all'
-      const details = searchParams.get('format') === 'details'
+      const format = searchParams.get('format') || 'records'
+      if (!['records', 'details', 'pairs', 'agreement'].includes(format)) {
+        return NextResponse.json({ error: `Unknown format "${format}"` }, { status: 400 })
+      }
+      const statusColumnsParam = searchParams.get('statusColumns')
+      const day = (value: string | null, end: boolean) => {
+        if (!value) return null
+        const date = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`)
+        return Number.isNaN(date.getTime()) ? undefined : date
+      }
+      const rounds = searchParams.get('rounds') || 'all'
+      const comparedFrom = day(searchParams.get('comparedFrom'), false)
+      const comparedTo = day(searchParams.get('comparedTo'), true)
+      if (
+        !['all', 'active', 'completed', 'cancelled'].includes(rounds) ||
+        comparedFrom === undefined ||
+        comparedTo === undefined
+      ) {
+        return NextResponse.json({ error: 'Invalid analysis filter' }, { status: 400 })
+      }
+      const analysis: AnalysisFilter = {
+        rounds: rounds as AnalysisFilter['rounds'],
+        taxonomyKey: searchParams.get('taxonomy') || null,
+        comparedFrom,
+        comparedTo,
+        includeText: searchParams.get('text') !== 'false'
+      }
 
       // Build where clause
       const where: Prisma.SentenceWhereInput = {}
@@ -74,7 +107,8 @@ export const GET = workspaceRoute(
         workspaceId: actor.workspaceId,
         stillAllowed: async () => (await reloadWorkspaceUser(actor.id, actor.workspaceId))?.role === 'admin'
       }
-      const stream = await (details ? detailsStream : exportStream)(scope, filter, {
+      const entityId = format === 'records' ? 'records' : `double-annotation-${format}`
+      const streamOpts = {
         neutralizeFormulas,
         onDone: (records: number) =>
           audit({
@@ -82,17 +116,34 @@ export const GET = workspaceRoute(
             actorId: actor.id,
             action: 'export.downloaded',
             entityType: 'export',
-            entityId: details ? 'double-annotation-details' : 'records',
-            payload: { status: statusFilter, dateRange, labels, records, formulaSafe: neutralizeFormulas }
+            entityId,
+            payload: { status: statusFilter, dateRange, labels, records, formulaSafe: neutralizeFormulas, rounds }
           })
-      })
+      }
+      const stream =
+        format === 'details'
+          ? await detailsStream(scope, filter, streamOpts)
+          : format === 'pairs'
+            ? await pairsStream(scope, filter, analysis, streamOpts)
+            : format === 'agreement'
+              ? await agreementStream(scope, filter, analysis, streamOpts)
+              : await exportStream(scope, filter, {
+                  ...streamOpts,
+                  statusColumns: statusColumnsParam === null ? undefined : statusColumnsParam === 'true'
+                })
+      const fileName = {
+        records: 'export',
+        details: 'double-annotation-answers',
+        pairs: 'double-annotation-pairs',
+        agreement: 'double-annotation-agreement'
+      }[format]
 
       // Streamed: rows are read and sent in pages (lib/export-csv.ts), so large
       // exports do not build the whole file in memory.
       return new NextResponse(stream, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${details ? 'double-annotation' : 'export'}-${actor.workspaceId}-${new Date().toISOString()}.csv"`
+          'Content-Disposition': `attachment; filename="${fileName}-${actor.workspaceId}-${new Date().toISOString()}.csv"`
         }
       })
     } catch (error) {

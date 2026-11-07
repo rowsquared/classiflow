@@ -325,7 +325,11 @@ describe('record import and export', () => {
       'flagged',
       'last_editor',
       'last_edited',
-      'comments',
+      'comments'
+    ])
+    // Annotation status columns: only on request here (no double annotation in this workspace).
+    const withStatus = parse(await (await exportRoute.GET(request('/api/export?statusColumns=true'), params())).text())
+    expect((withStatus[0] as string[]).slice(-4)).toEqual([
       'annotation_mode',
       'annotation_status',
       'alpha_annotation_status',

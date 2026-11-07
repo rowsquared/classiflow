@@ -1,6 +1,6 @@
 # Double annotation v2: review findings and improvement plan
 
-**Status:** phases A and B implemented (7 November 2026, see section 6); phases C-E proposed. **Date:** 7 November 2026.
+**Status:** phases A-C implemented (7 November 2026, see section 6); phases D-E proposed. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
 [double-annotation.md](double-annotation.md) section 0).
 
@@ -328,12 +328,21 @@ records with a completed round for supervisors and admins.
 
 ### Phase C: export (P1)
 
-- [ ] Status columns optional (default by workspace usage).
-- [ ] Analysis card: pairs, answers, agreement summary; double-specific
+- [x] Status columns optional (default by workspace usage).
+- [x] Analysis card: pairs, answers, agreement summary; double-specific
       filters; counts; link download.
-- [ ] `agreedDepth`/`firstDiffLevel` columns and backfill.
-- [ ] Export integration tests (pairs columns, leading zeros, unknown codes,
+- [x] `agreedDepth`/`firstDiffLevel` columns and backfill.
+- [x] Export integration tests (pairs columns, leading zeros, unknown codes,
       formula safety, header collisions).
+
+Implementation notes (phase C): `GET /export?format=pairs|details|agreement`
+(`lib/export-double.ts`, answers = the extended details file) with
+`rounds`, `taxonomy`, `comparedFrom`, `comparedTo`, `text=false`;
+`statusColumns=true|false` on the records export (default: the workspace
+has rounds); `GET /export/summary` gives the page its counts. Per-level
+agreement is computed from the answers as compared (revisions current at
+`comparedAt`) instead of a stored `agreedDepth`; identical paths agree at
+every level. The ZIP of all three files is not built (three downloads).
 
 ### Phase D: queue, start dialog, progress (P1/P2)
 
