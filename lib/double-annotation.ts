@@ -41,6 +41,61 @@ export function agreementDepth(a: string[], b: string[]): number {
   return depth
 }
 
+/**
+ * Chance-corrected agreement of compared pairs: Fleiss' kappa for two ratings
+ * per record. Every record's pair is two different people, not the same two
+ * raters throughout, so the chance term uses the codes of all answers pooled
+ * (Cohen's kappa would assume one fixed rater per position). Feed one
+ * category per answer with add(); value() is null without pairs or when every
+ * answer has the same category (chance agreement 1).
+ */
+export class KappaTally {
+  private pairs = 0
+  private same = 0
+  private readonly counts = new Map<string, number>()
+
+  add(a: string, b: string) {
+    this.pairs++
+    if (a === b) this.same++
+    this.counts.set(a, (this.counts.get(a) ?? 0) + 1)
+    this.counts.set(b, (this.counts.get(b) ?? 0) + 1)
+  }
+
+  value(): number | null {
+    if (this.pairs === 0) return null
+    const ratings = this.pairs * 2
+    let expected = 0
+    for (const count of this.counts.values()) expected += (count / ratings) ** 2
+    if (expected >= 1) return null
+    return (this.same / this.pairs - expected) / (1 - expected)
+  }
+}
+
+/**
+ * Kappa per level and for the full path, from compared paths (codes by
+ * level). The category at level L is the path up to L, so two answers agree
+ * at L exactly when agreementDepth() reaches L (paths that end early included).
+ */
+export class LevelKappa {
+  private readonly levels = Array.from({ length: 5 }, () => new KappaTally())
+  private readonly full = new KappaTally()
+
+  add(a: string[], b: string[]) {
+    const prefix = (path: string[], level: number) => JSON.stringify(path.slice(0, level))
+    this.levels.forEach((tally, i) => tally.add(prefix(a, i + 1), prefix(b, i + 1)))
+    this.full.add(prefix(a, 5), prefix(b, 5))
+  }
+
+  /** Kappa for levels 1..depth (null where undefined). */
+  byLevel(depth: number): Array<number | null> {
+    return this.levels.slice(0, depth).map(t => t.value())
+  }
+
+  fullPath(): number | null {
+    return this.full.value()
+  }
+}
+
 /** First level at which two paths differ (1-based), or null when they are the same path. */
 export function firstDifferingLevel(a: LabelInput[], b: LabelInput[]): number | null {
   const byLevel = (labels: LabelInput[]) => new Map(labels.map(l => [l.level, l.nodeCode]))

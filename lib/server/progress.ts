@@ -1,5 +1,5 @@
 import 'server-only'
-import { agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
+import { LevelKappa, agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
 import { db } from '@/lib/workspace/db'
 import { projectCompletion } from '@/lib/progress-projection'
 import { Prisma } from '@/lib/generated/prisma/client'
@@ -310,7 +310,10 @@ function summarizePairs(
     bLabels: Record<string, string> | null
   }>
 ): Pick<DoubleProgress, 'agreementByLevel' | 'labellers' | 'confusions'> {
-  const byTaxonomy = new Map<string, { compared: number; agreed: number[]; depth: number; levelNames: string[] }>()
+  const byTaxonomy = new Map<
+    string,
+    { compared: number; agreed: number[]; depth: number; levelNames: string[]; kappa: LevelKappa }
+  >()
   const byLabeller = new Map<string, { compared: number; agreed: number; decided: number; chosen: number }>()
   const confusions = new Map<string, DoubleProgress['confusions'][number]>()
   const same = (x: string[], y: string[]) => x.length === y.length && x.every((c, i) => c === y[i])
@@ -321,6 +324,7 @@ function summarizePairs(
       compared: 0,
       agreed: [0, 0, 0, 0, 0],
       depth: 0,
+      kappa: new LevelKappa(),
       levelNames: Object.entries(p.levelNames ?? {})
         .sort(([x], [y]) => Number(x) - Number(y))
         .map(([, name]) => name)
@@ -329,6 +333,7 @@ function summarizePairs(
     t.depth = Math.max(t.depth, a.length, b.length)
     const depth = agreementDepth(a, b)
     for (let l = 0; l < depth; l++) t.agreed[l]!++
+    t.kappa.add(a, b)
     byTaxonomy.set(p.taxonomyKey, t)
 
     const decided = p.state === 'reviewed' && p.resultCodes.length > 0
@@ -379,7 +384,9 @@ function summarizePairs(
         taxonomyKey,
         compared: t.compared,
         agreed: t.agreed.slice(0, Math.max(1, t.depth)),
-        levelNames: t.levelNames.slice(0, Math.max(1, t.depth))
+        levelNames: t.levelNames.slice(0, Math.max(1, t.depth)),
+        kappa: t.kappa.byLevel(Math.max(1, t.depth)),
+        fullKappa: t.kappa.fullPath()
       })),
     labellers: [...byLabeller]
       .map(([name, e]) => ({ name, ...e }))

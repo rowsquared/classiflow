@@ -229,7 +229,8 @@ Read `prisma/schema.prisma` before changing data behavior.
   `reopen` undoes a decision), see closed rounds as history, and run bulk
   commands (`/sentences/double-annotation/commands`); the queue shows a
   Double column and per-state chips (stats `double`), progress shows
-  agreement by level and labeller and the top disagreements, each linked to
+  agreement by level (share and Fleiss' kappa) and labeller and the top
+  disagreements, each linked to
   the queue (`disagreement` filter). `LabelingActivity.kind` separates labelling
   from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI

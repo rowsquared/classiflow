@@ -131,6 +131,5 @@ Implemented as described in section 0 of [the plan](double-annotation.md).
 - [ ] **Before deploying v2:** run `scripts/sql/double-annotation-drift.sql`
       after the migration and have a reviewer decide the listed records again.
 - [x] **Analysis export for supervisors**: decided and built (8 November 2026).
-- [ ] **Decide** whether to add Cohen's kappa next to the per-level
-      agreement (v2 plan section 7).
+- [x] **Kappa** next to the per-level agreement: built (8 November 2026).
 - [x] **Upstream `pg` warning:** handled in `lib/prisma.ts` (section 5).

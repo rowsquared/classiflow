@@ -4,6 +4,8 @@ import { serializeQueueUrlState } from '@/lib/queue-url'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { formatNumber, percent } from './format'
 
+const kappaText = (value: number | null | undefined) => (value === null || value === undefined ? '–' : value.toFixed(2))
+
 const share = (part: number, whole: number) => {
   const value = percent(part, whole)
   return value === null ? '–' : `${value}%`
@@ -59,6 +61,10 @@ export default function DoubleAnnotationCards({ double }: { double: DoubleProgre
         <table className="w-full max-w-3xl text-sm">
           <caption className="text-left text-sm font-medium text-gray-900 mb-2">
             Agreement in the period (first two labels, before review)
+            <span className="block font-normal text-gray-600">
+              Share of pairs that agree, and kappa: agreement corrected for chance (Fleiss), 1 is perfect, 0 is no
+              better than chance.
+            </span>
           </caption>
           <thead>
             <tr className="border-b border-gray-200 text-left text-gray-700">
@@ -86,11 +92,13 @@ export default function DoubleAnnotationCards({ double }: { double: DoubleProgre
                 </td>
               </tr>
             ) : (
-              double.agreement.map(a => {
+              double.agreement.flatMap(a => {
                 const byLevel = double.agreementByLevel.find(t => t.taxonomyKey === a.taxonomyKey)
-                return (
-                  <tr key={a.taxonomyKey} className="border-b border-gray-100">
-                    <td className={`${td} text-gray-900`}>{a.taxonomyKey}</td>
+                return [
+                  <tr key={a.taxonomyKey}>
+                    <th scope="row" className={`${td} text-left font-normal text-gray-900`}>
+                      {a.taxonomyKey}
+                    </th>
                     {Array.from({ length: levels }, (_, i) => {
                       const agreed = byLevel?.agreed[i]
                       return (
@@ -103,8 +111,20 @@ export default function DoubleAnnotationCards({ double }: { double: DoubleProgre
                     <td className={`${tdNum} text-gray-700`}>
                       {formatNumber(a.agreed)} / {formatNumber(a.compared)}
                     </td>
+                  </tr>,
+                  <tr key={`${a.taxonomyKey}-kappa`} className="border-b border-gray-100 text-gray-700">
+                    <th scope="row" className={`${td} text-left font-normal`}>
+                      <span className="sr-only">{a.taxonomyKey} </span>kappa
+                    </th>
+                    {Array.from({ length: levels }, (_, i) => (
+                      <td key={i} className={tdNum}>
+                        {byLevel && i < byLevel.kappa.length ? kappaText(byLevel.kappa[i]) : ''}
+                      </td>
+                    ))}
+                    <td className={tdNum}>{kappaText(byLevel?.fullKappa)}</td>
+                    <td className={tdNum} />
                   </tr>
-                )
+                ]
               })
             )}
           </tbody>

@@ -328,7 +328,10 @@ describe('double annotation participation', () => {
     expect(find('level', 'A', 'full')!.slice(9, 11)).toEqual(['1', '0'])
     expect(find('confusion', 'A', '2')!.slice(5, 10)).toEqual(['011', 'Item 011', '012', 'Item 012', '1'])
     const bobRow = find('labeller', 'A', 'full', bob.name!)!
-    expect(bobRow.slice(9)).toEqual(['1', '0', '0.0000', '1', '1']) // the reviewer chose Bob's answer
+    expect(bobRow.slice(9, 14)).toEqual(['1', '0', '0.0000', '1', '1']) // the reviewer chose Bob's answer
+    // Kappa: one pair that disagrees is below chance; a single code everywhere has none.
+    expect(find('level', 'A', 'full')![14]).toBe('-1.0000')
+    expect(find('level', 'A', '1')![14]).toBe('')
 
     // All three in one ZIP, each file as its own download gives it.
     const res = await exportRoute.GET(request('/x/export?format=analysis&taxonomy=A'), params())

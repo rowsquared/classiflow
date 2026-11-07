@@ -10,7 +10,7 @@ someone picks it up; remove completed ideas from this list.
 added answer revisions, sticky participant views, review mode, analysis
 exports and per-level agreement. Still left out: repeat rounds, tracking
 whether a labeller had seen other labels, learning snapshots, revalidating
-open rounds after taxonomy changes, reviewer-visible private notes,
-and chance-corrected agreement (kappa). Ending a participation explicitly
-("give back as ordinary work"), the analysis as one ZIP and the supervisors'
-team analysis export were added on 8 November 2026.
+open rounds after taxonomy changes and reviewer-visible private notes.
+Ending a participation explicitly ("give back as ordinary work"), the
+analysis as one ZIP, the supervisors' team analysis export and kappa were
+added on 8 November 2026.

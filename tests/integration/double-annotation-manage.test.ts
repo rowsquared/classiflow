@@ -144,7 +144,15 @@ describe('managing double annotation', () => {
     const overview = await (await overviewRoute.GET(request('/x/overview'), params())).json()
     const double = overview.double
     expect(double.agreementByLevel).toEqual([
-      { taxonomyKey: 'A', compared: 2, agreed: [2, 1], levelNames: expect.any(Array) }
+      {
+        taxonomyKey: 'A',
+        compared: 2,
+        agreed: [2, 1],
+        levelNames: expect.any(Array),
+        // Fleiss: level 1 all agree (01/01, 02/02) = 1; level 2 p_o 0.5, p_e 0.375 = 0.2
+        kappa: [1, expect.closeTo(0.2, 10)],
+        fullKappa: expect.closeTo(0.2, 10)
+      }
     ])
     expect(double.labellers).toEqual(
       expect.arrayContaining([{ name: alice.name, compared: 2, agreed: 1, decided: 0, chosen: 0 }])

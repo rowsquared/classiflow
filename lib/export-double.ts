@@ -2,7 +2,7 @@ import type { Prisma } from '@/lib/generated/prisma/client'
 import { db } from '@/lib/workspace/db'
 import { csvLine, type CsvColumn } from '@/lib/csv'
 import { logError } from '@/lib/logger'
-import { agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
+import { KappaTally, LevelKappa, agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
 import { pages, scoped, secondsSpent, type ExportScope } from '@/lib/export-csv'
 import type { CurrentUser } from '@/lib/api-auth'
 import { sentenceVisibilityFilter } from '@/lib/access'
@@ -462,7 +462,8 @@ const AGREEMENT_HEADERS = [
   'agreed',
   'share',
   'decided',
-  'chosen_by_reviewer'
+  'chosen_by_reviewer',
+  'kappa'
 ]
 const AGREEMENT_COLUMNS: CsvColumn[] = AGREEMENT_HEADERS.map(header => ({
   header,
@@ -483,8 +484,11 @@ export async function agreementStream(
   let records = 0
   let finished = false
 
-  const byLevel = new Map<string, { compared: number; agreed: number[]; full: number }>()
-  const byPair = new Map<string, { taxonomyId: string; a: string; b: string; compared: number; agreed: number }>()
+  const byLevel = new Map<string, { compared: number; agreed: number[]; full: number; kappa: LevelKappa }>()
+  const byPair = new Map<
+    string,
+    { taxonomyId: string; a: string; b: string; compared: number; agreed: number; kappa: KappaTally }
+  >()
   const byLabeller = new Map<
     string,
     { taxonomyId: string; name: string; compared: number; agreed: number; decided: number; chosen: number }
@@ -497,8 +501,14 @@ export async function agreementStream(
     const a = pair.a.labels.map(l => l.nodeCode)
     const b = pair.b.labels.map(l => l.nodeCode)
     const t = pair.taxonomyId
-    const level = byLevel.get(t) ?? { compared: 0, agreed: Array(MAX_LEVELS).fill(0), full: 0 }
+    const level = byLevel.get(t) ?? {
+      compared: 0,
+      agreed: Array(MAX_LEVELS).fill(0),
+      full: 0,
+      kappa: new LevelKappa()
+    }
     level.compared++
+    level.kappa.add(a, b)
     // Identical paths agree at every level, also when they end early (e.g. unknown at level 1).
     const depth = agreementDepth(a, b)
     for (let l = 0; l < depth; l++) level.agreed[l]++
@@ -509,8 +519,9 @@ export async function agreementStream(
     const nameB = pair.b.task?.assignee?.name ?? 'Former member'
     const [x, y] = [nameA, nameB].sort()
     const pairKey = `${t}\u0001${x}\u0001${y}`
-    const p = byPair.get(pairKey) ?? { taxonomyId: t, a: x!, b: y!, compared: 0, agreed: 0 }
+    const p = byPair.get(pairKey) ?? { taxonomyId: t, a: x!, b: y!, compared: 0, agreed: 0, kappa: new KappaTally() }
     p.compared++
+    p.kappa.add(JSON.stringify(a), JSON.stringify(b))
     if (outcome.matched) p.agreed++
     byPair.set(pairKey, p)
 
@@ -543,15 +554,40 @@ export async function agreementStream(
   }
 
   const share = (agreed: number, compared: number) => (compared > 0 ? (agreed / compared).toFixed(4) : '')
+  const kappa = (value: number | null) => (value === null ? '' : value.toFixed(4))
   const summary = async () => {
     const key = (t: string) => keyOf.get(t) ?? ''
     const rows: Array<Array<string | number>> = []
     const blank = (n: number) => Array<string>(n).fill('')
     for (const [t, l] of [...byLevel].sort((x, y) => key(x[0]).localeCompare(key(y[0])))) {
-      l.agreed.slice(0, depthOf.get(t) ?? MAX_LEVELS).forEach((agreed, i) => {
-        rows.push(['level', key(t), i + 1, ...blank(6), l.compared, agreed, share(agreed, l.compared), '', ''])
+      const depth = depthOf.get(t) ?? MAX_LEVELS
+      const kappas = l.kappa.byLevel(depth)
+      l.agreed.slice(0, depth).forEach((agreed, i) => {
+        rows.push([
+          'level',
+          key(t),
+          i + 1,
+          ...blank(6),
+          l.compared,
+          agreed,
+          share(agreed, l.compared),
+          '',
+          '',
+          kappa(kappas[i] ?? null)
+        ])
       })
-      rows.push(['level', key(t), 'full', ...blank(6), l.compared, l.full, share(l.full, l.compared), '', ''])
+      rows.push([
+        'level',
+        key(t),
+        'full',
+        ...blank(6),
+        l.compared,
+        l.full,
+        share(l.full, l.compared),
+        '',
+        '',
+        kappa(l.kappa.fullPath())
+      ])
     }
     for (const p of [...byPair.values()].sort((x, y) => y.compared - x.compared)) {
       rows.push([
@@ -565,7 +601,8 @@ export async function agreementStream(
         p.agreed,
         share(p.agreed, p.compared),
         '',
-        ''
+        '',
+        kappa(p.kappa.value())
       ])
     }
     for (const e of [...byLabeller.values()].sort((x, y) => x.name.localeCompare(y.name))) {
@@ -608,7 +645,11 @@ export async function agreementStream(
         ''
       ])
     }
-    return rows.map(row => '\n' + csvLine(AGREEMENT_COLUMNS, row.map(String), opts)).join('')
+    // Rows without a kappa (labeller, confusion) leave the last column empty.
+    const width = AGREEMENT_HEADERS.length
+    return rows
+      .map(row => '\n' + csvLine(AGREEMENT_COLUMNS, [...row.map(String), ...blank(width - row.length)], opts))
+      .join('')
   }
 
   return streamOf(

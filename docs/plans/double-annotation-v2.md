@@ -194,8 +194,14 @@ mockup page.
 - **Most frequent disagreements:** top code pairs (`2221 ↔ 2222`, count),
   each linking to the queue filtered to those records.
 - **Waiting age:** open parts older than 3/7/14 days per person.
-- Cohen's kappa stays deferred; per-level percentage agreement with
-  denominators covers the immediate need.
+- Kappa (added 8 November 2026): Fleiss' kappa per taxonomy and level and
+  for the full path, next to the percentages. Fleiss rather than Cohen
+  because each record's pair is two different people, not the same two
+  raters throughout; the chance term uses the codes of all answers pooled.
+  The category at level L is the path up to L, so kappa and the percentage
+  agree on what counts as agreement (`KappaTally`/`LevelKappa` in
+  `lib/double-annotation.ts`). The agreement file has a `kappa` column for
+  level and pair rows.
 
 ## 4. Export: one clean file, one analysis pack
 
@@ -451,8 +457,8 @@ Open:
   (migration `20261108090000_double_annotation_release`), the ZIP of all
   analysis files, and a retry of the test reset's `TRUNCATE` on a deadlock
   (`tests/integration/helpers.ts`) for the `ai-job-monitor` race above.
-- Nothing from this plan is left to build. Still open from section 7: the
-  product owner decisions (analysis export for supervisors, kappa).
+- Nothing from this plan is left to build, and the section 7 decisions are
+  all taken (supervisor analysis export and kappa built on 8 November 2026).
 - Local setup used: a throwaway PostgreSQL 16 cluster on port 5499
   (scratchpad), launch config `classiflow-double-local`. The Docker dev
   database container did not start (data from an older PostgreSQL major
@@ -468,4 +474,4 @@ Open:
 | Analysis export for supervisors (their team) | **Decided 8 November 2026: yes**, built (their visible records, without their own parts) |
 | Blind review (no names for the reviewer) | Offer as a workspace setting, default off |
 | Sampling and automatic second person | Yes, in the start dialog |
-| Kappa | Still deferred; per-level agreement first |
+| Kappa | **Decided 8 November 2026: yes**, built (Fleiss' kappa by level, in progress and the agreement file) |

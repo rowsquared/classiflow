@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  KappaTally,
+  LevelKappa,
   compareAnswers,
   firstDifferingLevel,
   recordStatus,
@@ -54,5 +56,46 @@ describe('double annotation rules', () => {
     expect(recordStatus(['disagreed', 'unlabelled'])).toBe('needs_review')
     expect(recordStatus(['single', 'unlabelled'])).toBe('partial')
     expect(recordStatus(['unlabelled'])).toBe('unlabelled')
+  })
+})
+
+describe('kappa', () => {
+  it('matches a worked Fleiss example for two ratings per record', () => {
+    // 10 records: 8 agree (5 x/x, 3 y/y), 2 disagree (x/y). Pooled: x 12, y 8 of 20.
+    const t = new KappaTally()
+    for (let i = 0; i < 5; i++) t.add('x', 'x')
+    for (let i = 0; i < 3; i++) t.add('y', 'y')
+    t.add('x', 'y')
+    t.add('y', 'x')
+    // p_o = 0.8, p_e = 0.6^2 + 0.4^2 = 0.52, kappa = 0.28 / 0.48
+    expect(t.value()).toBeCloseTo(0.28 / 0.48, 10)
+  })
+
+  it('is 1 for perfect agreement, null when undefined, negative below chance', () => {
+    const perfect = new KappaTally()
+    perfect.add('a', 'a')
+    perfect.add('b', 'b')
+    expect(perfect.value()).toBe(1)
+    expect(new KappaTally().value()).toBeNull()
+    const one = new KappaTally()
+    one.add('a', 'a') // every answer the same code: chance agreement is 1
+    expect(one.value()).toBeNull()
+    const never = new KappaTally()
+    never.add('a', 'b')
+    never.add('b', 'a')
+    expect(never.value()).toBeLessThan(0)
+  })
+
+  it('per level follows the path prefix, like the agreement depth', () => {
+    const k = new LevelKappa()
+    k.add(['01', '011'], ['01', '012'])
+    k.add(['02', '021'], ['02', '021'])
+    k.add(['-9'], ['-9']) // identical short paths agree at every level
+    k.add(['01'], ['02']) // differ at 1, and so at 2
+    const [l1, l2] = k.byLevel(2)
+    // level 1: 3 of 4 agree; level 2: 2 of 4 agree
+    expect(l1).toBeGreaterThan(l2!)
+    expect(k.fullPath()).toBeCloseTo(l2!, 10)
+    expect(k.byLevel(3)).toHaveLength(3)
   })
 })
