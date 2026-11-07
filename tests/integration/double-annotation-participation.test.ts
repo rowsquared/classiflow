@@ -18,6 +18,7 @@ import * as commentsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[se
 import * as flagRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/flag/route'
 import * as startRoute from '@/app/api/workspaces/[workspaceId]/sentences/double-annotation/route'
 import * as commandRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/double-annotation/route'
+import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
 import * as listRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 
@@ -40,9 +41,14 @@ beforeEach(async () => {
 
 const path = (key: string, ...codes: string[]) =>
   codes.map((nodeCode, i) => ({ level: i + 1, nodeCode, taxonomyKey: key }))
-const save = (sentenceId: string, annotations: ReturnType<typeof path>, status = 'submitted') =>
+const save = (
+  sentenceId: string,
+  annotations: ReturnType<typeof path>,
+  status = 'submitted',
+  extra: Record<string, unknown> = {}
+) =>
   annotationsRoute.POST(
-    request(`/x/${sentenceId}/annotations`, { method: 'POST', body: { annotations, status } }),
+    request(`/x/${sentenceId}/annotations`, { method: 'POST', body: { annotations, status, ...extra } }),
     params({ sentenceId })
   )
 const start = async (sentenceIds: string[]) => {
@@ -147,12 +153,21 @@ describe('double annotation participation', () => {
     expect(await prisma.doubleTaskLabel.count({ where: { supersededAt: { not: null } } })).toBe(2)
   })
 
-  it('a reviewer can change a confirmed result; other changes export as ordinary labels', async () => {
+  it('a reviewer can change a confirmed result with a reason; other changes export as ordinary labels', async () => {
     const r = await reviewedRecord()
     signInAs(sam)
-    expect((await save(r.id, path('A', '02'))).status).toBe(200)
+    // Deliberately only: override and a reason.
+    expect((await save(r.id, path('A', '02'))).status).toBe(409)
+    expect((await save(r.id, path('A', '02'), 'submitted', { override: true })).status).toBe(400)
+    expect((await save(r.id, path('A', '02'), 'submitted', { override: true, reviewNote: 'Recode' })).status).toBe(200)
     const outcome = await prisma.doubleOutcome.findFirstOrThrow({ where: { sentenceId: r.id, taxonomyId: taxA.id } })
-    expect(outcome).toMatchObject({ state: 'reviewed', reviewedById: sam.id, resultCodes: ['02'] })
+    expect(outcome).toMatchObject({ state: 'reviewed', reviewedById: sam.id, resultCodes: ['02'], note: 'Recode' })
+    // Bulk labels never change a confirmed result.
+    const bulk = await bulkRoute.POST(
+      request('/x', { method: 'POST', body: { sentenceIds: [r.id], taxonomyKey: 'A', annotations: path('A', '02') } }),
+      params()
+    )
+    expect(bulk.status).toBe(409)
     expect((await exportRow(r))[0]).toMatchObject({ A_1: '02', A_annotation_status: 'reviewed' })
 
     // Labels that no longer match the confirmed path (written outside the workflow).
@@ -161,6 +176,28 @@ describe('double annotation participation', () => {
       data: { nodeCode: '03' }
     })
     expect((await exportRow(r))[0]).toMatchObject({ A_1: '03', A_annotation_status: 'single' })
+  })
+
+  it('undo a decision: the comparison and the first answer come back; the manager view keeps the history', async () => {
+    const r = await reviewedRecord()
+    signInAs(sam)
+    const history = (await record(r.id)).double
+    expect(history).toMatchObject({ mode: 'manager', status: 'completed', canReview: true })
+    const a = history.outcomes.find((o: { taxonomyKey: string }) => o.taxonomyKey === 'A')
+    expect(a).toMatchObject({ state: 'reviewed', reviewedBy: sam.name, resultCodes: ['01', '012'] })
+
+    const reopen = await commandRoute.POST(
+      request('/x', { method: 'POST', body: { action: 'reopen', taxonomyKey: 'A' } }),
+      params({ sentenceId: r.id })
+    )
+    expect(reopen.status).toBe(200)
+    const outcome = await prisma.doubleOutcome.findFirstOrThrow({ where: { sentenceId: r.id, taxonomyId: taxA.id } })
+    expect(outcome).toMatchObject({ state: 'disagreed', reviewedById: null, resultCodes: [] })
+    expect(await effective(r.id, taxA.id)).toEqual(['01', '011']) // Alice's, the first answer
+    expect((await prisma.sentence.findUniqueOrThrow({ where: { id: r.id } })).status).toBe('pending')
+    expect((await prisma.doubleRound.findFirstOrThrow({ where: { sentenceId: r.id } })).status).toBe('active')
+    // A decision on an agreed taxonomy is an override too.
+    expect((await save(r.id, path('B', '01', '011'))).status).toBe(409)
   })
 
   it('flags stay with the person who set them; managers see them', async () => {

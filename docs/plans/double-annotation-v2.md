@@ -1,6 +1,6 @@
 # Double annotation v2: review findings and improvement plan
 
-**Status:** phase A implemented (7 November 2026, see section 6); phases B-E proposed. **Date:** 7 November 2026.
+**Status:** phases A and B implemented (7 November 2026, see section 6); phases C-E proposed. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
 [double-annotation.md](double-annotation.md) section 0).
 
@@ -313,11 +313,18 @@ participation explicitly) is not built yet. Tests:
 
 ### Phase B: review mode (P1)
 
-- [ ] Tab states, comparison table, explicit decision with keys 1/2/3,
+- [x] Tab states, comparison table, explicit decision with keys 1/2/3,
       note, "Save decision and next", undo toast, empty browser for "Other".
-- [ ] Override on agreed outcomes with reason (K5).
-- [ ] Record history panel and "Change confirmed result…".
-- [ ] e2e + axe for review mode.
+- [x] Override on agreed outcomes with reason (K5).
+- [x] Record history panel and "Change confirmed result…".
+- [x] e2e + axe for review mode.
+
+Implementation notes (phase B): undo is an "Undo decision" button on the
+decided taxonomy (`reopen` command) rather than a toast, because the screen
+moves on to the next record after a decision. A manager's save on a
+confirmed taxonomy needs `override: true` and `reviewNote` (409/400
+otherwise), in an active round and on a completed one; bulk labels refuse
+records with a completed round for supervisors and admins.
 
 ### Phase C: export (P1)
 

@@ -10,7 +10,7 @@ import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/
 import { audit } from '@/lib/audit'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 import { logError } from '@/lib/logger'
-import { participation, recordChangedResult, setParticipantFlags } from '@/lib/server/double-annotation'
+import { participation, setParticipantFlags } from '@/lib/server/double-annotation'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
@@ -132,7 +132,12 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
         const inDouble = await tx.sentence.count({
           where: {
             id: { in: sentenceIds },
-            OR: [{ id: { in: [...parts] } }, { doubleRounds: { some: { status: 'active' } } }]
+            OR: [
+              { id: { in: [...parts] } },
+              { doubleRounds: { some: { status: 'active' } } },
+              // Confirmed double annotation changes one record at a time, with a reason.
+              ...(user.role === 'labeller' ? [] : [{ doubleRounds: { some: { status: 'completed' as const } } }])
+            ]
           }
         })
         if (inDouble > 0) throw new DoubleRecordsError(inDouble)
@@ -183,12 +188,6 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
             where: { id: taxonomy.id },
             data: { newAnnotationsSinceLastLearning: { increment: changedCount * annotations.length } }
           })
-        }
-        // Completed double annotation: a reviewer's change is their decision.
-        for (const id of sentenceIds) {
-          if (!sameLabels(existingBySentence.get(id) ?? [], annotations)) {
-            await recordChangedResult(user, id, taxonomy.id, annotations)
-          }
         }
       }
 

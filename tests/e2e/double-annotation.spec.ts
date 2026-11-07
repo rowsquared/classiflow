@@ -132,7 +132,11 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   const panel = page.getByRole('region', { name: 'Double annotation' })
   await expect(panel.getByText('Needs review')).toBeVisible()
   await expectAccessible(page, 'double annotation review')
-  await panel.getByRole('button', { name: 'Use this answer' }).nth(1).click()
+  // Nothing is chosen until the reviewer picks an answer.
+  await expect(page.getByRole('button', { name: /^Submit/ })).toBeDisabled()
+  await panel.getByRole('radio', { name: /^Use B/ }).check()
+  await panel.getByLabel('Note (optional, kept with the decision)').fill('Ben is right')
+  await page.getByRole('button', { name: /^Submit/ }).click()
   await expect
     .poll(async () => (await (await page.request.get(api(`/sentences/${record!.id}`))).json()).status)
     .toBe('submitted')

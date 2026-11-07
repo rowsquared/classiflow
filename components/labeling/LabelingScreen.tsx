@@ -25,8 +25,15 @@ import { useActiveTaxonomies, useComments, useRecord, type LabelingRecord } from
 import RecordPanel from './RecordPanel'
 import ActionBar from './ActionBar'
 import CommentsDialog from './CommentsDialog'
-import DoublePanel, { type DoubleCommand } from './DoublePanel'
-import { buttonClass } from '@/components/ui/styles'
+import DoublePanel, {
+  EMPTY_REVIEW,
+  OUTCOME_TONES,
+  reviewMode,
+  type DoubleCommand,
+  type ReviewState
+} from './DoublePanel'
+import { badgeClass, buttonClass } from '@/components/ui/styles'
+import { OUTCOME_LABELS } from '@/lib/double-annotation'
 
 // Tab colours per taxonomy index (match TaxonomyBrowser's chips).
 const TAB_COLORS = ['text-teal-600', 'text-[#3A67BB]', 'text-[#A14A76]', 'text-rose-600', 'text-orange-600']
@@ -59,7 +66,33 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const [drafts, setDrafts] = useState<Record<string, SelectedLabel[]>>({})
   const savedLabels = sentence && activeTaxonomy ? labelsFromAnnotations(sentence.annotations, activeTaxonomy.key) : []
   const draft = activeTaxonomy ? drafts[activeTaxonomy.key] : undefined
-  const selectedLabels = draft ?? savedLabels
+
+  // Double annotation, for managers: the outcome of the active taxonomy and
+  // the reviewer's choice (answer A, B or another label; or a change of a
+  // confirmed result with a reason).
+  const double = sentence?.double ?? null
+  const managerView = double?.mode === 'manager' ? double : null
+  const activeOutcome = managerView?.outcomes.find(o => o.taxonomyKey === activeTaxonomy?.key)
+  const mode = managerView ? reviewMode(managerView, activeOutcome) : null
+  const [reviews, setReviews] = useState<Record<string, ReviewState>>({})
+  const review = (activeTaxonomy && reviews[activeTaxonomy.key]) || EMPTY_REVIEW
+  const chosenAnswer =
+    mode === 'decide' && (review.choice === 'a' || review.choice === 'b')
+      ? activeOutcome?.answers.find(a => a.position === (review.choice === 'a' ? 1 : 2))
+      : undefined
+  const answerLabels: SelectedLabel[] | undefined =
+    chosenAnswer && activeTaxonomy
+      ? chosenAnswer.labels.map(l => ({
+          level: l.level,
+          nodeCode: l.nodeCode,
+          taxonomyKey: activeTaxonomy.key,
+          label: l.nodeLabel ?? undefined,
+          // A submitted answer is a validated complete path: its deepest level ends it.
+          isLeaf: l.level === Math.max(...chosenAnswer.labels.map(x => x.level))
+        }))
+      : undefined
+  // A disagreement starts with nothing chosen: no answer is pre-selected.
+  const selectedLabels = answerLabels ?? draft ?? (mode === 'decide' ? [] : savedLabels)
   // Chosen but not submitted: the workspace switcher asks before leaving.
   useUnsavedChanges(
     Object.entries(drafts).some(
@@ -230,20 +263,36 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     }
   }
 
-  // Double annotation: what this person may change for the active taxonomy.
-  const double = sentence?.double ?? null
-  const activeOutcome =
-    double?.mode === 'manager' ? double.outcomes.find(o => o.taxonomyKey === activeTaxonomy?.key) : undefined
+  // What this person may change for the active taxonomy. Managers change a
+  // double-annotated taxonomy only by deciding it or, with a reason, by
+  // changing its confirmed result (a stopped round is ordinary work again).
+  const editingDouble = (mode === 'decide' && review.choice === 'other') || (mode === 'change' && review.override)
   const locked =
     (sentence?.labeling?.editableTaxonomies != null &&
       (!activeTaxonomy || !sentence.labeling.editableTaxonomies.includes(activeTaxonomy.key))) ||
     double?.mode === 'hidden' ||
-    (double?.mode === 'manager' &&
-      (!double.canReview ||
-        !activeOutcome ||
-        activeOutcome.state === 'waiting' ||
-        activeOutcome.state === 'accepted_single'))
-  const canSubmit = !locked && canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
+    Boolean(managerView && managerView.status !== 'cancelled' && activeOutcome && !editingDouble)
+  const pathComplete = canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
+  const canSubmit =
+    mode === 'decide'
+      ? Boolean(review.choice) && pathComplete
+      : !locked && pathComplete && (!(mode === 'change' && review.override) || review.note.trim() !== '')
+
+  const setReview = (next: ReviewState) => {
+    if (!activeTaxonomy) return
+    const key = activeTaxonomy.key
+    const choosingAnew = (next.choice === 'other' && review.choice !== 'other') || (next.override && !review.override)
+    // "Other label" and a change of a confirmed result start from an empty browser.
+    if (choosingAnew) setDrafts(previous => ({ ...previous, [key]: [] }))
+    if (!next.override && review.override) {
+      setDrafts(previous => {
+        const rest = { ...previous }
+        delete rest[key]
+        return rest
+      })
+    }
+    setReviews(previous => ({ ...previous, [key]: next }))
+  }
 
   const handleDoubleCommand = async (body: DoubleCommand) => {
     try {
@@ -262,7 +311,8 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
   const handleSubmit = async (chosen: SelectedLabel[] = selectedLabels) => {
     if (saving) return
-    if (locked || !activeTaxonomy || !canSubmitLabels(chosen, activeTaxonomy.maxDepth)) {
+    const allowed = mode === 'decide' ? Boolean(review.choice) : !locked
+    if (!allowed || !activeTaxonomy || !canSubmitLabels(chosen, activeTaxonomy.maxDepth)) {
       showError('Please select a complete path or mark as unknown')
       return
     }
@@ -277,12 +327,16 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         status: 'submitted', // The server keeps 'pending' until every taxonomy is done
         annotations,
         labelingStartedAt,
+        ...(mode === 'decide' || (mode === 'change' && review.override)
+          ? { reviewNote: review.note.trim() || undefined, override: mode === 'change' || undefined }
+          : {}),
         // Sending the same labels again after a failure is the same save.
         operationId: saveOperation.idFor(JSON.stringify([sentenceId, annotations]))
       })
       saveOperation.succeeded()
 
       if (data.status) updateRecord({ status: data.status })
+      if (mode) setReviews(previous => ({ ...previous, [activeTaxonomy.key]: EMPTY_REVIEW }))
       if (data.completedTaxonomies) setSavedCompletion(new Set(data.completedTaxonomies))
       invalidateQueue()
       // Saved labels of the other tabs come from the record: reload it.
@@ -339,6 +393,14 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         case 'enter':
           if (canSubmit) void handleSubmit()
           break
+        case '1':
+        case '2':
+        case '3':
+          if (mode === 'decide') {
+            const choice = (['a', 'b', 'other'] as const)[Number(e.key) - 1]!
+            if (choice !== 'b' || (activeOutcome?.answers.length ?? 0) > 1) setReview({ ...review, choice })
+          }
+          break
       }
     }
   })
@@ -377,6 +439,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   if (taxonomies.length === 0) return message('No active taxonomies found', 'error')
 
   const isActiveTaxonomyCompleted = activeTaxonomy ? completedTaxonomies.has(activeTaxonomy.key) : false
+  const outcomeOf = (key: string) => managerView?.outcomes.find(o => o.taxonomyKey === key)
+  const toDecide =
+    managerView?.status === 'active' ? managerView.outcomes.filter(o => o.state === 'disagreed').length : 0
 
   const backButton = (
     <button
@@ -460,39 +525,37 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
                         }`}
                       >
                         {tax.key}
-                        {completedTaxonomies.has(tax.key) && (
-                          <span className={`ml-2 ${color}`} aria-label="completed">
-                            ✓
+                        {managerView && managerView.status !== 'cancelled' && outcomeOf(tax.key) ? (
+                          <span className={`ml-2 ${badgeClass(OUTCOME_TONES[outcomeOf(tax.key)!.state])}`}>
+                            {OUTCOME_LABELS[outcomeOf(tax.key)!.state]}
                           </span>
+                        ) : (
+                          completedTaxonomies.has(tax.key) && (
+                            <span className={`ml-2 ${color}`} aria-label="completed">
+                              ✓
+                            </span>
+                          )
                         )}
                       </button>
                     )
                   })}
                 </div>
                 <div className="text-xs text-gray-600 font-medium">
-                  {completedTaxonomies.size}/{taxonomies.length} taxonomies completed
+                  {toDecide > 0
+                    ? `${toDecide} of ${taxonomies.length} taxonomies to decide`
+                    : `${completedTaxonomies.size}/${taxonomies.length} taxonomies completed`}
                 </div>
               </div>
             </div>
           )}
 
-          {double?.mode === 'manager' && activeTaxonomy && (
+          {managerView && activeTaxonomy && (managerView.status === 'active' || activeOutcome) && (
             <DoublePanel
-              view={double}
+              view={managerView}
               taxonomyKey={activeTaxonomy.key}
               busy={saving}
-              onUseAnswer={labels =>
-                void handleSubmit(
-                  labels.map(l => ({
-                    level: l.level,
-                    nodeCode: l.nodeCode,
-                    taxonomyKey: activeTaxonomy.key,
-                    label: l.nodeLabel ?? undefined,
-                    // A submitted answer is a validated complete path: its deepest level ends it.
-                    isLeaf: l.level === Math.max(...labels.map(x => x.level))
-                  }))
-                )
-              }
+              review={review}
+              onReviewChange={setReview}
               onCommand={handleDoubleCommand}
             />
           )}

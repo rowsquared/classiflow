@@ -58,6 +58,15 @@ export async function activeRound(sentenceId: string): Promise<Round | null> {
   return db().doubleRound.findFirst({ where: { sentenceId, status: 'active' }, include: roundInclude })
 }
 
+/** The record's latest round of any status (managers' view and history). */
+export async function newestRound(sentenceId: string): Promise<Round | null> {
+  return db().doubleRound.findFirst({
+    where: { sentenceId },
+    orderBy: { createdAt: 'desc' },
+    include: roundInclude
+  })
+}
+
 /** The record's latest round that was not stopped (active or completed). */
 export async function latestRound(sentenceId: string): Promise<Round | null> {
   return db().doubleRound.findFirst({
@@ -427,10 +436,12 @@ export async function reviewTaxonomy(opts: {
   taxonomyId: string
   labels: LabelInput[]
   note?: string | null
+  /** Required to change a confirmed (agreed or reviewed) taxonomy, with a note. */
+  override?: boolean
   labelingStartedAt: Date | null
   operationId: string
 }): Promise<{ recordStatus: 'submitted' | 'pending' }> {
-  const { user, round, taxonomyId, labels, note, labelingStartedAt, operationId } = opts
+  const { user, round, taxonomyId, labels, note, override, labelingStartedAt, operationId } = opts
   const tx = db()
   if (!(await canReview(user, round))) {
     throw new DoubleAnnotationError(
@@ -452,11 +463,13 @@ export async function reviewTaxonomy(opts: {
     throw new DoubleAnnotationError('The single label was already accepted for this record', 409)
   }
 
+  const wasConfirmed = isConfirmed(outcome.state as OutcomeState)
+  requireOverride(wasConfirmed, override, note)
+
   const current = await tx.sentenceAnnotation.findMany({
     where: { sentenceId: round.sentenceId, taxonomyId, source: 'user' },
     select: { level: true, nodeCode: true }
   })
-  const wasConfirmed = isConfirmed(outcome.state as OutcomeState)
   await tx.doubleOutcome.update({
     where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
     data: {
@@ -483,35 +496,102 @@ export async function reviewTaxonomy(opts: {
   return { recordStatus: status }
 }
 
+/** Changing a confirmed result is deliberate: `override` with a reason. */
+function requireOverride(confirmed: boolean, override: boolean | undefined, note: string | null | undefined) {
+  if (!confirmed) return
+  if (!override) {
+    throw new DoubleAnnotationError('This label is confirmed. Use "Change confirmed result" to replace it.', 409)
+  }
+  if (!note?.trim()) throw new DoubleAnnotationError('Give a reason for changing a confirmed result', 400)
+}
+
+const pathOf = (codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
+
 /**
- * After an ordinary save on a record whose latest round is completed: a
- * manager who may review it has changed the confirmed result, which is
- * recorded as their decision (so the export status matches the codes). Any
- * other save leaves the outcome alone and the export reports the labels as
- * ordinary ones (lib/double-annotation.ts taxonomyStatus).
+ * Before an ordinary save by a supervisor or admin on a record whose latest
+ * round is completed: changing a confirmed taxonomy needs `override` and a
+ * reason, and only a manager who may review the round can do it. Labellers
+ * (who never see the round) are not checked; their changes export as
+ * ordinary labels (lib/double-annotation.ts taxonomyStatus).
+ * Returns the round to record the decision on after the save, if any.
  */
-export async function recordChangedResult(
+export async function guardConfirmedChange(
   user: CurrentUser,
   sentenceId: string,
   taxonomyId: string,
-  labels: LabelInput[]
-) {
+  labels: LabelInput[],
+  override: boolean | undefined,
+  note: string | null | undefined
+): Promise<Round | null> {
+  if (user.role !== 'admin' && user.role !== 'supervisor') return null
   const round = await latestRound(sentenceId)
-  if (!round || round.status !== 'completed') return
+  if (!round || round.status !== 'completed') return null
   const outcome = round.outcomes.find(o => o.taxonomyId === taxonomyId)
-  if (!outcome || !(await canReview(user, round))) return
-  if (
-    outcome.resultCodes.length > 0 &&
-    sameLabels(
-      labels,
-      outcome.resultCodes.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
+  if (!outcome) return null
+  if (outcome.resultCodes.length > 0 && sameLabels(labels, pathOf(outcome.resultCodes))) return null
+  if (!(await canReview(user, round))) {
+    throw new DoubleAnnotationError(
+      'You cannot change this result: you labelled it, or one of its labellers is outside your team',
+      403
     )
-  )
-    return
+  }
+  requireOverride(true, override, note)
+  return round
+}
+
+/** Records a manager's change of a confirmed result (after guardConfirmedChange) as their decision. */
+export async function recordChangedResult(
+  user: CurrentUser,
+  round: Round,
+  taxonomyId: string,
+  labels: LabelInput[],
+  note: string | null | undefined
+) {
   await db().doubleOutcome.update({
     where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
-    data: { state: 'reviewed', reviewedById: user.id, reviewedAt: new Date(), resultCodes: codesOf(labels) }
+    data: {
+      state: 'reviewed',
+      reviewedById: user.id,
+      reviewedAt: new Date(),
+      note: note?.trim() || null,
+      resultCodes: codesOf(labels)
+    }
   })
+}
+
+/**
+ * Undoes a review decision (the toast's Undo): the outcome returns to its
+ * comparison (agreed or disagreed), the result to the answer it came from,
+ * the round is active again when it had completed, and the record is pending
+ * until it is confirmed again.
+ */
+export async function reopenReview(user: CurrentUser, round: Round, taxonomyId: string) {
+  await requireManager(user, round)
+  const outcome = round.outcomes.find(o => o.taxonomyId === taxonomyId)
+  if (!outcome || outcome.state !== 'reviewed' || outcome.matched === null) {
+    throw new DoubleAnnotationError('There is no decision to undo for this taxonomy', 409)
+  }
+  if (round.status === 'cancelled') {
+    throw new DoubleAnnotationError('Double annotation was stopped for this record', 409)
+  }
+  const source = outcome.sourceTaskId ? await taskLabels([outcome.sourceTaskId], taxonomyId) : []
+  const state = outcome.matched ? 'agreed' : 'disagreed'
+  await db().doubleOutcome.update({
+    where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
+    data: {
+      state,
+      reviewedById: null,
+      reviewedAt: null,
+      note: null,
+      resultCodes: state === 'agreed' ? codesOf(source) : []
+    }
+  })
+  if (source.length > 0) await writeResult(round.sentenceId, taxonomyId, source, user.id, null)
+  if (round.status === 'completed') {
+    await db().doubleRound.update({ where: { id: round.id }, data: { status: 'active', closedAt: null } })
+  }
+  const { status } = await settleRound(round.id)
+  await db().sentence.update({ where: { id: round.sentenceId }, data: { status } })
 }
 
 /** Manager checks shared by the round commands: role, own participation, team. */
@@ -891,10 +971,19 @@ export async function recordView(user: CurrentUser, view: DoubleView): Promise<D
   const names = new Map([...people, ...reviewers].map(p => [p.id, p.name]))
   const labelNames = await nodeLabels(labels)
   const positionOf = new Map(round.tasks.map(t => [t.id, t.position]))
+  const former = await db().doubleTask.findMany({
+    where: { roundId: round.id, status: 'cancelled' },
+    orderBy: { createdAt: 'asc' },
+    select: { position: true, assignee: { select: { name: true } } }
+  })
   return {
     mode: 'manager',
     roundId: round.id,
+    status: round.status,
+    closeReason: round.closeReason,
+    closedAt: round.closedAt?.toISOString() ?? null,
     canReview: await canReview(user, round),
+    former: former.map(f => ({ position: f.position, name: f.assignee?.name ?? 'Former member' })),
     tasks: round.tasks.map(t => ({
       position: t.position,
       status: t.status,
@@ -911,7 +1000,10 @@ export async function recordView(user: CurrentUser, view: DoubleView): Promise<D
         revisedAfterCompare: o.revisedAfterCompare,
         sourcePosition: o.sourceTaskId ? (positionOf.get(o.sourceTaskId) ?? null) : null,
         reviewedBy: o.reviewedById ? (names.get(o.reviewedById) ?? 'Unknown') : null,
+        reviewedAt: o.reviewedAt?.toISOString() ?? null,
+        comparedAt: o.comparedAt?.toISOString() ?? null,
         note: o.note,
+        resultCodes: o.resultCodes,
         answers: round.tasks
           .map(t => ({
             position: t.position,

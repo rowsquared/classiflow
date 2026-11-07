@@ -10,14 +10,17 @@ import {
   DoubleAnnotationError,
   acceptSingle,
   activeRound,
+  latestRound,
   reassignTask,
+  reopenReview,
   stopRound
 } from '@/lib/server/double-annotation'
 
 const commandSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept_single'), reason: z.string().trim().min(1).max(500) }),
   z.object({ action: z.literal('stop'), reason: z.string().trim().min(1).max(500) }),
-  z.object({ action: z.literal('reassign'), position: z.number().int().min(1).max(2), userId: z.string().min(1) })
+  z.object({ action: z.literal('reassign'), position: z.number().int().min(1).max(2), userId: z.string().min(1) }),
+  z.object({ action: z.literal('reopen'), taxonomyKey: z.string().min(1) })
 ])
 
 /**
@@ -26,7 +29,8 @@ const commandSchema = z.discriminatedUnion('action', [
  * A supervisor's or admin's command on the record's active round:
  * - accept_single: waive the missing second label (with a reason);
  * - stop: end double annotation; the record becomes ordinary work again;
- * - reassign: hand a part nobody started to another person.
+ * - reassign: hand a part nobody started to another person;
+ * - reopen: undo a review decision for one taxonomy (also on a completed round).
  * Disagreements are decided through the annotations endpoint (a manager's save).
  */
 export const POST = workspaceRoute<'sentenceId'>(['admin', 'supervisor'], async (req, { user, params }) => {
@@ -39,6 +43,22 @@ export const POST = workspaceRoute<'sentenceId'>(['admin', 'supervisor'], async 
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
     if (denied) return denied
     await lockSentences(db(), [sentenceId])
+    if (command.action === 'reopen') {
+      const round = await latestRound(sentenceId)
+      const taxonomy = await db().taxonomy.findFirst({ where: { key: command.taxonomyKey }, select: { id: true } })
+      if (!round || !taxonomy) {
+        return NextResponse.json({ ok: false, error: 'There is no decision to undo' }, { status: 409 })
+      }
+      await reopenReview(user, round, taxonomy.id)
+      await audit({
+        actorId: user.id,
+        action: 'double.reopened',
+        entityType: 'sentence',
+        entityId: sentenceId,
+        payload: { roundId: round.id, taxonomyKey: command.taxonomyKey }
+      })
+      return NextResponse.json({ ok: true })
+    }
     const round = await activeRound(sentenceId)
     if (!round) {
       return NextResponse.json({ ok: false, error: 'This record is not in double annotation' }, { status: 409 })

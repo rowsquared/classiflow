@@ -6,7 +6,7 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { logError } from '@/lib/logger'
-import { activeRound, participation, recordView, viewFor } from '@/lib/server/double-annotation'
+import { activeRound, newestRound, participation, recordView, viewFor } from '@/lib/server/double-annotation'
 import { participantLabelingAccess, recordLabelingAccess } from '@/lib/double-annotation'
 
 export async function getRecord(user: CurrentUser, sentenceId: string) {
@@ -92,7 +92,8 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
         )
       })
     }
-    const round = await activeRound(sentenceId)
+    // Managers: the latest round, active or closed (history).
+    const round = user.role === 'labeller' ? await activeRound(sentenceId) : await newestRound(sentenceId)
     const double = round ? await recordView(user, viewFor(user, round)) : null
 
     // Fetch labels for annotations (including handling unknown/-99)

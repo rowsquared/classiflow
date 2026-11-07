@@ -12,6 +12,7 @@ import {
   DoubleAnnotationError,
   activeRound,
   answeredTaxonomies,
+  guardConfirmedChange,
   participantRound,
   recordChangedResult,
   reviewTaxonomy,
@@ -37,7 +38,8 @@ const annotationSchema = z.object({
   comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional(), // ISO timestamp when labeling started
   operationId: operationIdField, // retries of the same save record activity once
-  reviewNote: z.string().max(2000).optional() // double annotation: the reviewer's note on a decision
+  reviewNote: z.string().max(2000).optional(), // double annotation: the reviewer's note on a decision
+  override: z.boolean().optional() // double annotation: change a confirmed result (needs reviewNote)
 })
 
 class RequestError extends Error {}
@@ -71,7 +73,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
     }
-    const { annotations, status, flagged, comment, labelingStartedAt, operationId, reviewNote } = parsed.data
+    const { annotations, status, flagged, comment, labelingStartedAt, operationId, reviewNote, override } = parsed.data
 
     const taxonomyKeys = new Set(annotations.map(a => a.taxonomyKey))
     if (taxonomyKeys.size > 1) {
@@ -177,6 +179,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
               taxonomyId: taxonomy.id,
               labels: annotations,
               note: reviewNote,
+              override,
               labelingStartedAt: startTime,
               operationId: operationIdOrNew(operationId)
             })
@@ -206,6 +209,10 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
       }
 
       let wroteLabels = false
+      // A completed double annotation: changing a confirmed result is a reviewer's decision.
+      const decided = taxonomy
+        ? await guardConfirmedChange(user, sentenceId, taxonomy.id, annotations, override, reviewNote)
+        : null
       if (taxonomy) {
         const existing = await tx.sentenceAnnotation.findMany({
           where: { sentenceId, taxonomyId: taxonomy.id, source: 'user' },
@@ -230,6 +237,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
           }))
         })
         wroteLabels = true
+        if (decided) await recordChangedResult(user, decided, taxonomy.id, annotations, reviewNote)
         await recordLabelingActivity(tx, {
           workspaceId: scopeWorkspaceId(),
           sentenceIds: [sentenceId],
@@ -245,8 +253,6 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
             where: { id: taxonomy.id },
             data: { newAnnotationsSinceLastLearning: { increment: annotations.length } }
           })
-          // A completed double annotation: a reviewer's change is their decision.
-          await recordChangedResult(user, sentenceId, taxonomy.id, annotations)
         }
       }
 

@@ -139,7 +139,13 @@ export type DoubleRecordView =
   | {
       mode: 'manager'
       roundId: string
+      /** active, or closed: completed (confirmed) or cancelled (stopped); closed rounds are history. */
+      status: 'active' | 'completed' | 'cancelled'
+      closeReason: string | null
+      closedAt: string | null
       canReview: boolean
+      /** People who held a part before it was handed over. */
+      former: Array<{ position: number; name: string }>
       tasks: Array<{
         position: number
         status: string
@@ -154,7 +160,11 @@ export type DoubleRecordView =
         revisedAfterCompare: boolean
         sourcePosition: number | null
         reviewedBy: string | null
+        reviewedAt: string | null
+        comparedAt: string | null
         note: string | null
+        /** The confirmed path, by level (empty while not confirmed). */
+        resultCodes: string[]
         answers: Array<{ position: number; labels: PathView }>
       }>
     }
