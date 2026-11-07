@@ -43,10 +43,7 @@ describe('remembered queue views', () => {
   })
 
   it('strips unknown parameters and normalizes invalid tab and page values', () => {
-    const saved = queuePreferenceValue(
-      user,
-      '?next=https://example.org&list=private&tab=unknown&page=invalid&code=001'
-    )
+    const saved = queuePreferenceValue(user, '?next=https://example.org&list=private&tab=unknown&page=invalid&code=001')
     expect(rememberedQueueSearch(saved, user)).toBe('?code=001')
   })
 })
