@@ -175,13 +175,17 @@ Double annotation (`lib/server/double-annotation.ts`, rules in
 [docs/plans/double-annotation-v2.md](plans/double-annotation-v2.md) section 2)
 narrows what some people may see and do, on top of record visibility.
 Participation is sticky: whoever holds a live part in **any** round of a
-record (active, completed or stopped) is a participant for that record.
+record (active, completed or stopped) is a participant for that record,
+until a manager gives their part back as ordinary work (the `release`
+command, only once no round of the record is active; `DoubleTask.releasedAt`,
+audited as `double.released`). From then on they see and change the record
+like any other record they can see.
 
 | Who | Sees | May write |
 | --- | --- | --- |
 | A participant (any role) | only their own current answer, comments, flag, status and edit time, also after the round closed; no AI suggestions or other labels; queue tabs, label/editor/date/flag/comment filters apply to their own part; AI filters skip the record | their own answer (each change is a new revision; it never changes the result); skip their part; their own flag; comments |
 | A labeller who is not in an active round | nothing: the record is outside their visibility (`sentenceVisibilityFilter`), and starting a round, handing over a part, accepting a single label or stopping removes labellers' assignments to it unless they hold an answered part | — |
-| Admin not in the round | both answers, outcome, people (active round) | review decisions, accept single label, stop, hand over a part; on a completed round a label save is their new decision |
+| Admin not in the round | both answers, outcome, people (active round) | review decisions, accept single label, stop, hand over a part, give a part back as ordinary work (closed rounds); on a completed round a label save is their new decision |
 | Supervisor not in the round | the same, when both labellers are in their subtree | the same; otherwise read-only (a person outside the team needs an admin) |
 
 Nobody reviews a round they label in. Bulk labels and bulk skips refuse a
@@ -234,7 +238,7 @@ admin) with a valid session who does not have to reset their password.
 | `/sentences/bulk-label` | POST | member; **every** record in scope; none in an active double-annotation round and none of the caller's own parts when labelling or skipping |
 | `/sentences/double-annotation` | POST (preview with `dryRun`, start) | admin, supervisor; every record in scope and both people in the caller's team |
 | `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over, reopen a decision) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
-| `/sentences/double-annotation/commands` | POST (bulk accept single, stop, hand over; `dryRun`) | admin, supervisor; every record in scope; per record the same checks as the single command (records that fail them are skipped and counted) |
+| `/sentences/double-annotation/commands` | POST (bulk accept single, stop, hand over, release; `dryRun`) | admin, supervisor; every record in scope; per record the same checks as the single command (records that fail them are skipped and counted) |
 | `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |
 | `/sentences/import`, `/imports/[id]` DELETE | POST, DELETE | admin |
 | `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |

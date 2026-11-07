@@ -1,3 +1,4 @@
+import { inflateRawSync } from 'node:zlib'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Sentence, Taxonomy, User } from '@/lib/generated/prisma/client'
 import {
@@ -21,6 +22,7 @@ import * as commandRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sen
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
 import * as listRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
+import * as commandsRoute from '@/app/api/workspaces/[workspaceId]/sentences/double-annotation/commands/route'
 
 // Sticky participation (docs/plans/double-annotation-v2.md section 2): whoever
 // holds a part in a round sees only their own work on that record, for good,
@@ -87,6 +89,24 @@ const exportRow = async (r: Sentence, format = '') => {
     .map(row => Object.fromEntries(header!.map((h, i) => [h, row[i] ?? ''])))
 }
 
+/** The files of a ZIP (stored or deflated), from its central directory. */
+function unzip(zip: Buffer): Record<string, string> {
+  const end = zip.length - 22
+  let at = zip.readUInt32LE(end + 16)
+  const files: Record<string, string> = {}
+  for (let i = 0; i < zip.readUInt16LE(end + 10); i++) {
+    const compressed = zip.readUInt32LE(at + 20)
+    const nameLength = zip.readUInt16LE(at + 28)
+    const offset = zip.readUInt32LE(at + 42)
+    const start = offset + 30 + zip.readUInt16LE(offset + 26) + zip.readUInt16LE(offset + 28)
+    files[zip.subarray(at + 46, at + 46 + nameLength).toString('utf8')] = inflateRawSync(
+      zip.subarray(start, start + compressed)
+    ).toString('utf8')
+    at += 46 + nameLength
+  }
+  return files
+}
+
 /** Alice and Bob label A differently and B alike; Sam picks Bob's A. */
 async function reviewedRecord() {
   const [r] = await createSentences(1, [alice.id])
@@ -130,6 +150,73 @@ describe('double annotation participation', () => {
     expect((await list(`lastEditorId=${alice.id}`)).map(s => s.id)).toEqual([r.id])
     const comments = await (await commentsRoute.GET(request('/x'), params({ sentenceId: r.id }))).json()
     expect(comments.comments.map((c: { body: string }) => c.body)).toEqual(['Alice note'])
+  })
+
+  it('give back as ordinary work: the person then sees and changes the record like any other', async () => {
+    const r = await reviewedRecord()
+    const release = async (body: Record<string, unknown>) => {
+      const res = await commandsRoute.POST(
+        request('/x', {
+          method: 'POST',
+          body: { action: 'release', sentenceIds: [r.id], reason: 'left the study', ...body }
+        }),
+        params()
+      )
+      return { status: res.status, body: await res.json() }
+    }
+
+    // Labellers cannot; a person without a part is skipped.
+    signInAs(alice)
+    expect((await release({ userId: alice.id })).status).toBe(403)
+    signInAs(sam)
+    expect((await release({ userId: sam.id, dryRun: true })).body).toMatchObject({
+      applied: 0,
+      skipped: { 'The person has no part in it': 1 }
+    })
+    expect((await release({ userId: alice.id, dryRun: true })).body).toMatchObject({ applied: 1 })
+    expect((await release({ userId: alice.id })).body).toMatchObject({ applied: 1 })
+    const task = await prisma.doubleTask.findFirstOrThrow({ where: { sentenceId: r.id, assigneeId: alice.id } })
+    expect(task).toMatchObject({ status: 'submitted', releasedById: sam.id })
+    expect(await prisma.auditLog.count({ where: { action: 'double.released' } })).toBe(1)
+
+    // Alice now sees the confirmed result and every comment, like ordinary work.
+    signInAs(alice)
+    const view = await record(r.id)
+    expect(codes(view.annotations, 'A')).toEqual(['01', '012'])
+    expect(view.commentSummary.total).toBe(2)
+    expect((await list('taxonomyKey=A&code=012')).map(s => s.id)).toEqual([r.id])
+    // Her change is an ordinary label change: the result moves, the export says single.
+    expect((await save(r.id, path('A', '01', '011'))).status).toBe(200)
+    expect(await effective(r.id, taxA.id)).toEqual(['01', '011'])
+    const [row] = await exportRow(r)
+    expect(row).toMatchObject({ A_2: '011', A_annotation_status: 'single' })
+
+    // Bob still participates: he keeps seeing only his own work.
+    signInAs(bob)
+    expect((await record(r.id)).commentSummary.total).toBe(1)
+
+    // The manager's history names the release.
+    signInAs(sam)
+    const history = (await record(r.id)).double
+    expect(history.tasks.find((t: { position: number }) => t.position === 1).releasedAt).toEqual(expect.any(String))
+  })
+
+  it('give back is refused while a round is open', async () => {
+    const [r] = await createSentences(1, [alice.id])
+    await start([r.id])
+    signInAs(alice)
+    await save(r.id, path('A', '01', '011'))
+    signInAs(sam)
+    const res = await commandsRoute.POST(
+      request('/x', {
+        method: 'POST',
+        body: { action: 'release', sentenceIds: [r.id], userId: alice.id, reason: 'x', dryRun: true }
+      }),
+      params()
+    )
+    expect((await res.json()).skipped).toEqual({
+      'Still in an open round: hand the part over or stop double annotation first': 1
+    })
   })
 
   it('a labeller who changes a reviewed answer changes only their own answer', async () => {
@@ -241,6 +328,22 @@ describe('double annotation participation', () => {
     expect(find('confusion', 'A', '2')!.slice(5, 10)).toEqual(['011', 'Item 011', '012', 'Item 012', '1'])
     const bobRow = find('labeller', 'A', 'full', bob.name!)!
     expect(bobRow.slice(9)).toEqual(['1', '0', '0.0000', '1', '1']) // the reviewer chose Bob's answer
+
+    // All three in one ZIP, each file as its own download gives it.
+    const res = await exportRoute.GET(request('/x/export?format=analysis&taxonomy=A'), params())
+    expect(res.headers.get('content-type')).toBe('application/zip')
+    const files = unzip(Buffer.from(await res.arrayBuffer()))
+    expect(Object.keys(files).map(name => name.replace(/-[^-]+-\d{4}-.*\.csv$/, ''))).toEqual([
+      'double-annotation-pairs',
+      'double-annotation-answers',
+      'double-annotation-agreement'
+    ])
+    const single = async (format: string) =>
+      (await exportRoute.GET(request(`/x/export?format=${format}&taxonomy=A`), params())).text()
+    const [pairsCsv, answersCsv, agreementCsv] = Object.values(files)
+    expect(pairsCsv).toBe(await single('pairs'))
+    expect(answersCsv).toBe(await single('details'))
+    expect(agreementCsv).toBe(await single('agreement'))
   })
 
   it('flags stay with the person who set them; managers see them', async () => {

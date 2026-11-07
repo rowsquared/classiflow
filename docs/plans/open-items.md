@@ -101,17 +101,14 @@ reach other workspaces' models.
 
 ## 5. Dependency maintenance
 
-- [ ] **Before upgrading to `pg` 9:** verify that Prisma's PostgreSQL adapter
-      handles relation subqueries on an interactive transaction's connection
-      without concurrent `client.query()` calls. The October review observed
-      a deprecation warning with `pg` 8; `pg` 9 will reject that pattern.
-      Keep `pg` on 8 until the adapter handles it, and rerun the integration
-      suite when upgrading. Background is in the archived
-      [modernization plan](../archive/plans-2026-10/modernization-2026-10.md).
+- [x] **Overlapping queries on a transaction's connection** (the `pg` 8
+      deprecation warning that `pg` 9 turns into an error): Prisma's query
+      interpreter loads a query's relations in parallel; `lib/prisma.ts`
+      (`SerialTransactionPg`) now runs each transaction's statements one at a
+      time, and the integration suite shows no warning (7 November 2026).
+      Still rerun the integration suite when upgrading to `pg` 9.
 
-Independent double annotation now has a proposed
-[implementation plan](double-annotation.md); it is not implemented. Other
-product ideas are in [ideas.md](../ideas.md).
+Other product ideas are in [ideas.md](../ideas.md).
 
 ## 6. Double annotation (v1 on staging)
 
@@ -122,20 +119,17 @@ Implemented as described in section 0 of [the plan](double-annotation.md).
       accept single label, hand over a part), export "Confirmed records only"
       and "Export details CSV", Progress "Double annotation" section; as a
       labeller of a waiting record, check the blind view.
-- [ ] **Benchmark** the queue `double` filters and the labellers' own-part
-      status tabs on staging-like data with the runtime role.
-- [ ] **Full e2e suite** once on the merged code (only the new journey and the
-      accessibility spec were run before the merge).
+- [x] **Benchmark** the queue `double` filters and the own-part status tabs
+      locally on 50,000 records with the runtime role (v2 plan, phase E); a
+      run on staging is part of the progress benchmark in section 1.
+- [x] **Full e2e suite** on the v2 code (69/69, 7 November 2026).
 - [ ] **Decide** which deferred follow-ups (plan section 0) are wanted.
-- [x] **v2** phases A-D (7 November 2026): participants keep only their own
-      work for good, review mode, analysis exports, queue/bulk/start/progress
-      tools; see [double-annotation-v2.md](double-annotation-v2.md).
+- [x] **v2** phases A-E (7-8 November 2026): participants keep only their
+      own work for good (until given back as ordinary work), review mode,
+      analysis exports (also as one ZIP), queue/bulk/start/progress tools;
+      see [double-annotation-v2.md](double-annotation-v2.md).
 - [ ] **Before deploying v2:** run `scripts/sql/double-annotation-drift.sql`
       after the migration and have a reviewer decide the listed records again.
 - [ ] **Decide** the open questions in section 7 of the v2 plan (analysis
       export for supervisors, kappa).
-- [ ] **Upstream:** the `pg` "client.query() when the client is already
-      executing a query" warning comes from Prisma's query interpreter running
-      parts of one query plan in parallel on a transaction's connection
-      (adapter-pg `PgTransaction`), not from application code; check before
-      upgrading to pg 9.
+- [x] **Upstream `pg` warning:** handled in `lib/prisma.ts` (section 5).

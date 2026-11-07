@@ -66,6 +66,7 @@ export type AuditAction =
   | 'double.accepted_single'
   | 'double.stopped'
   | 'double.reassigned'
+  | 'double.released'
   | 'double.reopened'
   | 'export.downloaded'
   | 'ai.labeling_started'

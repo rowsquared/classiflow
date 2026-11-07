@@ -4,6 +4,7 @@ import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
 import { ExportColumnError, detailsStream, exportStream } from '@/lib/export-csv'
 import { agreementStream, pairsStream, type AnalysisFilter } from '@/lib/export-double'
 import { audit } from '@/lib/audit'
+import { zipStream } from '@/lib/zip'
 import { logError } from '@/lib/logger'
 
 /**
@@ -11,6 +12,7 @@ import { logError } from '@/lib/logger'
  * GET ...?format=details: double-annotation answers (each person's answer, one row each)
  * GET ...?format=pairs: double-annotation pairs (A and B side by side, match per level, final)
  * GET ...?format=agreement: double-annotation agreement summary (by level, pair, labeller; confusions)
+ * GET ...?format=analysis: the three double-annotation files above in one ZIP
  *   Analysis filters: rounds=all|active|completed|cancelled, taxonomy=<key>,
  *   comparedFrom/comparedTo=YYYY-MM-DD, text=false (pairs without record text).
  * statusColumns=true|false: the records export's annotation status columns
@@ -36,7 +38,7 @@ export const GET = workspaceRoute(
       const neutralizeFormulas = searchParams.get('formulaSafe') !== 'false'
       const labels = searchParams.get('labels') === 'confirmed' ? 'confirmed' : 'all'
       const format = searchParams.get('format') || 'records'
-      if (!['records', 'details', 'pairs', 'agreement'].includes(format)) {
+      if (!['records', 'details', 'pairs', 'agreement', 'analysis'].includes(format)) {
         return NextResponse.json({ error: `Unknown format "${format}"` }, { status: 400 })
       }
       const statusColumnsParam = searchParams.get('statusColumns')
@@ -120,6 +122,27 @@ export const GET = workspaceRoute(
             payload: { status: statusFilter, dateRange, labels, records, formulaSafe: neutralizeFormulas, rounds }
           })
       }
+      const stamp = `${actor.workspaceId}-${new Date().toISOString()}`
+      if (format === 'analysis') {
+        // One ZIP; each file is read (and audited) when its turn comes.
+        const stream = zipStream([
+          {
+            name: `double-annotation-pairs-${stamp}.csv`,
+            open: () => pairsStream(scope, filter, analysis, streamOpts)
+          },
+          { name: `double-annotation-answers-${stamp}.csv`, open: () => detailsStream(scope, filter, streamOpts) },
+          {
+            name: `double-annotation-agreement-${stamp}.csv`,
+            open: () => agreementStream(scope, filter, analysis, streamOpts)
+          }
+        ])
+        return new NextResponse(stream, {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="double-annotation-analysis-${stamp}.zip"`
+          }
+        })
+      }
       const stream =
         format === 'details'
           ? await detailsStream(scope, filter, streamOpts)
@@ -136,14 +159,14 @@ export const GET = workspaceRoute(
         details: 'double-annotation-answers',
         pairs: 'double-annotation-pairs',
         agreement: 'double-annotation-agreement'
-      }[format]
+      }[format as 'records' | 'details' | 'pairs' | 'agreement']
 
       // Streamed: rows are read and sent in pages (lib/export-csv.ts), so large
       // exports do not build the whole file in memory.
       return new NextResponse(stream, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${fileName}-${actor.workspaceId}-${new Date().toISOString()}.csv"`
+          'Content-Disposition': `attachment; filename="${fileName}-${stamp}.csv"`
         }
       })
     } catch (error) {

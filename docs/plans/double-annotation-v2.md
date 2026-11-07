@@ -308,8 +308,14 @@ Implementation notes (phase A): the snapshot is a `resultCodes` text array
 on `DoubleOutcome` rather than a separate table. A labeller who is assigned a
 record of a completed round they never took part in sees it as ordinary work;
 their label changes export as `single`. Stopping or accepting a single label
-cancels only parts without answers. "Give back as ordinary work" (ending a
-participation explicitly) is not built yet. Tests:
+cancels only parts without answers. "Give back as ordinary work" (built after
+phase E): the bulk command `release` (one person, a reason) sets
+`DoubleTask.releasedAt`/`releasedById` on that person's parts once no round of
+the record is active, audited as `double.released`; `PARTICIPATING` (live and
+not released) is the one participation predicate. The released part stays in
+the history (the panel names it), the comparisons and the exports; the person
+gets the record as ordinary work (assigned if it was not) and their changes
+export as `single`. Tests:
 `tests/integration/double-annotation-participation.test.ts`.
 
 ### Phase B: review mode (P1)
@@ -343,7 +349,10 @@ Implementation notes (phase C): `GET /export?format=pairs|details|agreement`
 has rounds); `GET /export/summary` gives the page its counts. Per-level
 agreement is computed from the answers as compared (revisions current at
 `comparedAt`) instead of a stored `agreedDepth`; identical paths agree at
-every level. The ZIP of all three files is not built (three downloads).
+every level. `format=analysis` (built after phase E) streams all three files
+as one ZIP (`lib/zip.ts`: deflate and data descriptors with Node's `zlib`, no
+dependency, each file read only when its turn comes; no ZIP64, so over 4 GiB
+it fails). The export page offers it as "All three".
 
 ### Phase D: queue, start dialog, progress (P1/P2)
 
@@ -436,9 +445,12 @@ Open:
 
 - Before deploying: run `scripts/sql/double-annotation-drift.sql` after the
   migration; a reviewer decides the listed records again.
-- Not built: "give back as ordinary work", the ZIP of all analysis files.
-- The `ai-job-monitor` reset deadlock above (make `resetDatabase()` wait for
-  or stop running monitors) if it keeps showing up.
+- Built after phase E (8 November 2026): "give back as ordinary work"
+  (migration `20261108090000_double_annotation_release`), the ZIP of all
+  analysis files, and a retry of the test reset's `TRUNCATE` on a deadlock
+  (`tests/integration/helpers.ts`) for the `ai-job-monitor` race above.
+- Nothing from this plan is left to build. Still open from section 7: the
+  product owner decisions (analysis export for supervisors, kappa).
 - Local setup used: a throwaway PostgreSQL 16 cluster on port 5499
   (scratchpad), launch config `classiflow-double-local`. The Docker dev
   database container did not start (data from an older PostgreSQL major

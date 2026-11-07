@@ -127,6 +127,15 @@ export default function DoublePanel({
           Handed over: {view.former.map(f => `${f.name} (${f.position === 1 ? 'A' : 'B'})`).join(', ')}
         </p>
       )}
+      {view.tasks.some(t => t.releasedAt) && (
+        <p className="text-sm text-gray-700">
+          Given back as ordinary work:{' '}
+          {view.tasks
+            .filter(t => t.releasedAt)
+            .map(t => `${t.assignee?.name ?? 'Former member'} on ${formatDate(t.releasedAt!)}`)
+            .join(', ')}
+        </p>
+      )}
 
       {outcome && outcome.answers.length > 0 && <Comparison view={view} outcome={outcome} anonymous={anonymous} />}
 

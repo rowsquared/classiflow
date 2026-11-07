@@ -44,6 +44,12 @@ export class DoubleAnnotationError extends Error {
 
 const LIVE = { not: 'cancelled' as const }
 
+/**
+ * A part that makes its person a participant of the record: not cancelled
+ * and not given back as ordinary work (releaseParts()).
+ */
+export const PARTICIPATING = { status: LIVE, releasedAt: null } satisfies Prisma.DoubleTaskWhereInput
+
 const roundInclude = {
   tasks: { where: { status: LIVE }, orderBy: { position: 'asc' } },
   outcomes: true
@@ -81,7 +87,7 @@ export async function latestRound(sentenceId: string): Promise<Round | null> {
 
 /** Records where `user` holds a live part in any round. */
 export function participantWhere(user: CurrentUser): Prisma.SentenceWhereInput {
-  return { doubleTasks: { some: { assigneeId: user.id, status: LIVE } } }
+  return { doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING } } }
 }
 
 /** Records where `user` holds a live part whose current answer matches `labels`. */
@@ -90,7 +96,7 @@ export function ownLabelsWhere(user: CurrentUser, labels: Prisma.DoubleTaskLabel
     doubleTasks: {
       some: {
         assigneeId: user.id,
-        status: LIVE,
+        ...PARTICIPATING,
         labels: labels === null ? { none: { supersededAt: null } } : { some: { supersededAt: null, ...labels } }
       }
     }
@@ -118,7 +124,7 @@ export async function participation(user: CurrentUser, sentenceIds: string[]): P
   const result = new Map<string, Participation>()
   if (sentenceIds.length === 0) return result
   const tasks = await db().doubleTask.findMany({
-    where: { sentenceId: { in: sentenceIds }, assigneeId: user.id, status: LIVE },
+    where: { sentenceId: { in: sentenceIds }, assigneeId: user.id, ...PARTICIPATING },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -159,7 +165,7 @@ export async function participantRound(
   sentenceId: string
 ): Promise<{ round: Round; task: Task } | null> {
   const task = await db().doubleTask.findFirst({
-    where: { sentenceId, assigneeId: user.id, status: LIVE },
+    where: { sentenceId, assigneeId: user.id, ...PARTICIPATING },
     orderBy: { createdAt: 'desc' },
     select: { roundId: true }
   })
@@ -206,7 +212,7 @@ export async function setParticipantFlags(
     const stillFlagged = new Set(
       (
         await tx.doubleTask.findMany({
-          where: { sentenceId: { in: ids }, status: LIVE, flagged: true },
+          where: { sentenceId: { in: ids }, ...PARTICIPATING, flagged: true },
           select: { sentenceId: true }
         })
       ).map(t => t.sentenceId)
@@ -710,6 +716,36 @@ export async function reassignTask(user: CurrentUser, round: Round, position: nu
   await ensureAccess([round.sentenceId], [userId], user.id)
 }
 
+/**
+ * "Give back as ordinary work": ends `personId`'s participation in the record
+ * once no round of it is open. Their parts stay in the history, comparisons
+ * and exports; from now on they see the record as ordinary work (its current
+ * result, every comment) and their saves change it like any other label.
+ * The record is assigned to them if it was not.
+ */
+export async function releaseParts(user: CurrentUser, sentenceId: string, personId: string, dryRun = false) {
+  const parts = await db().doubleTask.findMany({
+    where: { sentenceId, assigneeId: personId, ...PARTICIPATING },
+    select: { id: true, roundId: true }
+  })
+  if (parts.length === 0) throw new DoubleAnnotationError('The person has no part in it', 409)
+  if (await activeRound(sentenceId)) {
+    throw new DoubleAnnotationError('Still in an open round: hand the part over or stop double annotation first', 409)
+  }
+  for (const roundId of new Set(parts.map(p => p.roundId))) {
+    await requireManager(
+      user,
+      await db().doubleRound.findUniqueOrThrow({ where: { id: roundId }, include: roundInclude })
+    )
+  }
+  if (dryRun) return
+  await db().doubleTask.updateMany({
+    where: { id: { in: parts.map(p => p.id) } },
+    data: { releasedAt: new Date(), releasedById: user.id }
+  })
+  await ensureAccess([sentenceId], [personId], user.id)
+}
+
 /** Active members the caller may assign work to (their team for supervisors); returns user id -> membership id. */
 export async function requireAssignable(user: CurrentUser, userIds: string[]): Promise<Map<string, string>> {
   const ids = Array.from(new Set(userIds))
@@ -1089,6 +1125,7 @@ export async function recordView(user: CurrentUser, view: DoubleView): Promise<D
       position: t.position,
       status: t.status,
       fromBaseline: t.fromBaseline,
+      releasedAt: t.releasedAt?.toISOString() ?? null,
       assignee: t.assigneeId ? { id: t.assigneeId, name: names.get(t.assigneeId) ?? 'Unknown' } : null
     })),
     outcomes: round.outcomes

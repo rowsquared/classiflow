@@ -214,7 +214,9 @@ Read `prisma/schema.prisma` before changing data behavior.
   `Sentence.status` is `submitted` only when every required taxonomy is
   agreed, reviewed or accepted. Participation is sticky (v2 phase A,
   `docs/plans/double-annotation-v2.md` section 2): whoever holds a part in any
-  round of a record sees only their own work on it for good (own answer
+  round of a record sees only their own work on it for good, unless a manager
+  gives the part back as ordinary work (`release`, closed rounds only;
+  participation predicate `PARTICIPATING`) (own answer
   revision, comments, flag, status, edit time; no AI), with the same response
   shape as ordinary records, and their saves only add revisions of their own
   answer (`DoubleTaskLabel.revision`/`supersededAt`), never change the result.
@@ -260,7 +262,8 @@ browser-local `list` navigation key. Discussion content opens in a `Modal`
   separate formats in `lib/export-double.ts`: `format=pairs` (A and B side by
   side as compared, match per level, final result), `format=details`
   (answers, one row per person) and `format=agreement` (by level, pair,
-  labeller; confusions), filtered by `rounds`, `taxonomy`, `comparedFrom/To`.
+  labeller; confusions), filtered by `rounds`, `taxonomy`, `comparedFrom/To`;
+  `format=analysis` streams all three as one ZIP (`lib/zip.ts`).
   All cells go through `lib/csv.ts` (escaping,
   formula neutralising for free text only). Record import does not accept all export columns;
   a full export is not directly round-trippable through that importer.

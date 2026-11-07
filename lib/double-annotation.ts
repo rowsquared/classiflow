@@ -166,6 +166,8 @@ export type DoubleRecordView =
         position: number
         status: string
         fromBaseline: boolean
+        /** Given back as ordinary work (the person no longer participates). */
+        releasedAt: string | null
         assignee: { id: string; name: string } | null
       }>
       outcomes: Array<{

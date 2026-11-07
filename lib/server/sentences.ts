@@ -5,7 +5,7 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@/lib/generated/prisma/client'
 import { parseEnum } from '@/lib/utils'
-import { ownLabelsWhere, participantWhere, participation } from '@/lib/server/double-annotation'
+import { PARTICIPATING, ownLabelsWhere, participantWhere, participation } from '@/lib/server/double-annotation'
 import { doubleRowSummaries, type DoubleRowSummary } from '@/lib/server/double-queue'
 
 // Queue data for the queue page (app/queue), /api/sentences and
@@ -218,7 +218,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   if (flagged === 'true' || flagged === 'false') {
     const value = flagged === 'true'
     ordinary.push({ flagged: value })
-    ownPart.push({ doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: value } } })
+    ownPart.push({ doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, flagged: value } } })
   }
 
   // Has comments filter
@@ -264,7 +264,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
  */
 async function holdsParts(user: CurrentUser): Promise<boolean> {
   const part = await db().doubleTask.findFirst({
-    where: { assigneeId: user.id, status: { not: 'cancelled' } },
+    where: { assigneeId: user.id, ...PARTICIPATING },
     select: { id: true }
   })
   return part !== null
@@ -274,7 +274,7 @@ async function holdsParts(user: CurrentUser): Promise<boolean> {
 function personalStatusFilter(user: CurrentUser, status: SentenceStatus, parts: boolean): Prisma.SentenceWhereInput[] {
   if (!parts) return [{ status }]
   const mine = (taskStatus: Prisma.DoubleTaskWhereInput['status']): Prisma.SentenceWhereInput => ({
-    doubleTasks: { some: { assigneeId: user.id, status: taskStatus } }
+    doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, status: taskStatus } }
   })
   const filters: Prisma.SentenceWhereInput[] = [{ AND: [{ status }, { NOT: mine({ not: 'cancelled' }) }] }]
   if (status === 'pending' || status === 'submitted' || status === 'skipped') filters.push(mine(status))
@@ -639,7 +639,7 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
             ? {
                 OR: [
                   { AND: [{ NOT: participantWhere(user) }, { flagged: true }] },
-                  { doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: true } } }
+                  { doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, flagged: true } } }
                 ]
               }
             : { flagged: true }

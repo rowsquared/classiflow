@@ -8,7 +8,7 @@ import { fetchJson } from '@/lib/query/fetch'
 import { useActiveTaxonomies } from '@/components/labeling/data'
 
 type Summary = { records: number; rounds: number; pairs: number; compared: number }
-type AnalysisFormat = 'pairs' | 'details' | 'agreement'
+type AnalysisFormat = 'pairs' | 'details' | 'agreement' | 'analysis'
 
 const selectClass =
   'w-full px-3 py-2 border border-gray-500 text-gray-900 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500'
@@ -26,7 +26,8 @@ const ANALYSIS: Array<{ value: AnalysisFormat; title: string; detail: string }> 
     value: 'agreement',
     title: 'Agreement summary',
     detail: 'Agreement by level, by labeller pair and by labeller, and the most frequent disagreements.'
-  }
+  },
+  { value: 'analysis', title: 'All three', detail: 'Pairs, answers and the agreement summary in one ZIP file.' }
 ]
 
 /**
@@ -70,7 +71,7 @@ export default function ExportAdminPage() {
     if (taxonomy) params.set('taxonomy', taxonomy)
     if (comparedFrom) params.set('comparedFrom', comparedFrom)
     if (comparedTo) params.set('comparedTo', comparedTo)
-    if (format === 'pairs' && !includeText) params.set('text', 'false')
+    if ((format === 'pairs' || format === 'analysis') && !includeText) params.set('text', 'false')
     return api(`/export?${params}`)
   }
 
@@ -174,7 +175,7 @@ export default function ExportAdminPage() {
             <>
               <fieldset>
                 <legend className={labelClass}>File</legend>
-                <div className="grid gap-2 md:grid-cols-3">
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                   {ANALYSIS.map(option => (
                     <label
                       key={option.value}
@@ -258,7 +259,7 @@ export default function ExportAdminPage() {
                   />
                 </div>
               </div>
-              {format === 'pairs' && (
+              {(format === 'pairs' || format === 'analysis') && (
                 <label className="mt-4 flex items-center gap-2 text-sm text-gray-900">
                   <input type="checkbox" checked={includeText} onChange={e => setIncludeText(e.target.checked)} />
                   Include record text (field and support columns)
@@ -270,7 +271,9 @@ export default function ExportAdminPage() {
               </p>
               <div className="mt-4">
                 <a href={analysisUrl()} download className={buttonClass('secondary')}>
-                  Download {ANALYSIS.find(a => a.value === format)!.title.toLowerCase()} CSV
+                  {format === 'analysis'
+                    ? 'Download all three (ZIP)'
+                    : `Download ${ANALYSIS.find(a => a.value === format)!.title.toLowerCase()} CSV`}
                 </a>
               </div>
             </>

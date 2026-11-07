@@ -157,4 +157,8 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   const rows = parse(csv, { columns: true, bom: true }) as Array<Record<string, string>>
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({ A_1: '02', annotation_mode: 'double', A_annotation_status: 'reviewed' })
+  // The analysis files as one ZIP (a local file header first).
+  const zip = await page.request.get(api('/export?format=analysis'))
+  expect(zip.headers()['content-type']).toBe('application/zip')
+  expect((await zip.body()).readUInt32LE(0)).toBe(0x04034b50)
 })

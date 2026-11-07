@@ -758,6 +758,11 @@ model DoubleTask {
   flagged      Boolean          @default(false)
   createdAt    DateTime         @default(now())
   submittedAt  DateTime?
+  // "Give back as ordinary work": a manager ended this person's participation
+  // after the round closed. The part stays in the history and the exports;
+  // the person then sees the record as ordinary work.
+  releasedAt   DateTime?
+  releasedById String?
 
   round    DoubleRound       @relation(fields: [workspaceId, roundId], references: [workspaceId, id], onDelete: Cascade)
   sentence Sentence          @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)

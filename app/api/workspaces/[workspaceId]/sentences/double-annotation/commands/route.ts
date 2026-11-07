@@ -12,6 +12,7 @@ import {
   activeRound,
   canReview,
   reassignTask,
+  releaseParts,
   requireAssignable,
   stopRound
 } from '@/lib/server/double-annotation'
@@ -29,6 +30,13 @@ const schema = z.discriminatedUnion('action', [
     fromUserId: z.string().min(1),
     toUserId: z.string().min(1),
     dryRun: z.boolean().optional()
+  }),
+  z.object({
+    action: z.literal('release'),
+    sentenceIds: z.array(z.string().min(1)).min(1).max(1000),
+    userId: z.string().min(1),
+    reason: z.string().trim().min(1).max(500),
+    dryRun: z.boolean().optional()
   })
 ])
 
@@ -37,7 +45,9 @@ const schema = z.discriminatedUnion('action', [
  *
  * A manager's command on many records' active rounds at once (the queue's
  * "Double annotation…" bulk action): accept_single and stop with a reason,
- * or hand_over every unstarted part of one person to another. Records the
+ * hand_over every unstarted part of one person to another, or release one
+ * person's parts ("give back as ordinary work", once no round of the record
+ * is open: they then see it as ordinary work). Records the
  * command does not apply to (no active round, a disagreement to review, a
  * part already answered, outside the caller's team, ...) are skipped and
  * counted. `dryRun` returns the counts without changing anything.
@@ -65,6 +75,16 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
     const skip = (reason: string) => (skipped[reason] = (skipped[reason] ?? 0) + 1)
 
     for (const sentenceId of sentenceIds) {
+      if (command.action === 'release') {
+        try {
+          await releaseParts(user, sentenceId, command.userId, command.dryRun)
+          applied++
+        } catch (error) {
+          if (!(error instanceof DoubleAnnotationError)) throw error
+          skip(error.status === 403 ? 'Outside your team or labelled by you' : error.message)
+        }
+        continue
+      }
       const round = await activeRound(sentenceId)
       if (!round) {
         skip('Not in double annotation')
@@ -133,7 +153,9 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
             ? 'double.accepted_single'
             : command.action === 'stop'
               ? 'double.stopped'
-              : 'double.reassigned',
+              : command.action === 'release'
+                ? 'double.released'
+                : 'double.reassigned',
         entityType: 'sentence',
         entityId: sentenceIds[0]!,
         payload: {
@@ -141,7 +163,8 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
           skipped,
           ...(handOver
             ? { fromUserId: handOver.fromUserId, toUserId: handOver.toUserId }
-            : { reason: 'reason' in command ? command.reason : null })
+            : { reason: 'reason' in command ? command.reason : null }),
+          ...(command.action === 'release' ? { userId: command.userId } : {})
         }
       })
     }

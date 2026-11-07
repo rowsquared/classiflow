@@ -23,7 +23,18 @@ export async function resetDatabase() {
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`
   if (tables.length === 0) return
   const list = tables.map(t => `"public"."${t.tablename}"`).join(', ')
-  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} CASCADE`)
+  // Background work a test started after its commit (AI job monitors,
+  // admission, cancellation) can still hold row locks; PostgreSQL then aborts
+  // one side of the deadlock. When that is the reset, it simply tries again.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} CASCADE`)
+      return
+    } catch (error) {
+      if (attempt >= 5 || !/40P01|deadlock detected/.test(String(error))) throw error
+      await new Promise(resolve => setTimeout(resolve, 100 * attempt))
+    }
+  }
 }
 
 let workspaceId: string | null = null

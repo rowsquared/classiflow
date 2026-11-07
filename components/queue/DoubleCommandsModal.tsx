@@ -9,7 +9,7 @@ import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { queryKeys } from '@/lib/query/keys'
 import { fetchJson } from '@/lib/query/fetch'
 
-type Action = 'accept_single' | 'hand_over' | 'stop'
+type Action = 'accept_single' | 'hand_over' | 'stop' | 'release'
 type Result = { applied: number; skipped: Record<string, number> }
 type Person = { id: string; name: string | null; email: string; role: string }
 
@@ -28,6 +28,12 @@ const ACTIONS: Record<Action, { title: string; detail: string; button: string }>
     title: 'Stop double annotation',
     detail: 'Open parts end; the records become ordinary work with their current labels.',
     button: 'Stop double annotation'
+  },
+  release: {
+    title: 'Give back as ordinary work',
+    detail:
+      'After double annotation ended, one person sees the records as ordinary work again: the current result and every comment, and their changes update it.',
+    button: 'Give back'
   }
 }
 
@@ -63,8 +69,15 @@ export default function DoubleCommandsModal({
   const body = () =>
     action === 'hand_over'
       ? { action, sentenceIds, fromUserId, toUserId }
-      : { action, sentenceIds, reason: reason.trim() || 'preview' }
-  const ready = action === 'hand_over' ? Boolean(fromUserId && toUserId && fromUserId !== toUserId) : true
+      : action === 'release'
+        ? { action, sentenceIds, userId: fromUserId, reason: reason.trim() || 'preview' }
+        : { action, sentenceIds, reason: reason.trim() || 'preview' }
+  const ready =
+    action === 'hand_over'
+      ? Boolean(fromUserId && toUserId && fromUserId !== toUserId)
+      : action === 'release'
+        ? Boolean(fromUserId)
+        : true
   const preview = useQuery({
     queryKey: ['ws', workspaceId, 'double-commands-preview', action, sentenceIds.join(','), fromUserId, toUserId],
     queryFn: ({ signal }) =>
@@ -129,6 +142,18 @@ export default function DoubleCommandsModal({
             </label>
           ))}
         </fieldset>
+
+        {action === 'release' && (
+          <Combobox
+            label="Person"
+            options={options}
+            value={fromUserId}
+            onChange={setFromUserId}
+            placeholder="Choose a person"
+            loading={members.isPending}
+            disabled={submitting}
+          />
+        )}
 
         {action === 'hand_over' ? (
           <div className="grid gap-3 sm:grid-cols-2">
