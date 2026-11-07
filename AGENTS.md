@@ -221,7 +221,12 @@ Read `prisma/schema.prisma` before changing data behavior.
   their new decision; `DoubleOutcome.resultCodes` holds the confirmed path and
   the export reports drifted labels as `single`. Labellers without a part do
   not see records of active rounds. Use `participation()` /
-  `participantWhere()` for any new read path. `LabelingActivity.kind` separates labelling
+  `participantWhere()` for any new read path. Managers decide on the record
+  screen (A/B/other, note; `override` + reason to change a confirmed result;
+  `reopen` undoes a decision), see closed rounds as history, and run bulk
+  commands (`/sentences/double-annotation/commands`); the queue shows a
+  Double column and per-state chips (stats `double`), progress shows
+  agreement by level and labeller and the top disagreements. `LabelingActivity.kind` separates labelling
   from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's
@@ -246,9 +251,15 @@ browser-local `list` navigation key. Discussion content opens in a `Modal`
   `confirmOrphans=true`.
 - Export includes original field/support names, human labels as
   `{taxonomyKey}_{level}`, and AI codes/confidences as `{taxonomyKey}_ai{level}`
-  and `{taxonomyKey}_ai{level}c`, then `annotation_mode`, `annotation_status`
-  and `{taxonomyKey}_annotation_status`; `labels=confirmed` and
-  `format=details` (each double-annotation answer) are options. All cells go through `lib/csv.ts` (escaping,
+  and `{taxonomyKey}_ai{level}c`, then (`statusColumns`, by default only in
+  workspaces that used double annotation) `annotation_mode`,
+  `annotation_status` and `{taxonomyKey}_annotation_status`;
+  `labels=confirmed` is an option. Double-annotation analysis files are
+  separate formats in `lib/export-double.ts`: `format=pairs` (A and B side by
+  side as compared, match per level, final result), `format=details`
+  (answers, one row per person) and `format=agreement` (by level, pair,
+  labeller; confusions), filtered by `rounds`, `taxonomy`, `comparedFrom/To`.
+  All cells go through `lib/csv.ts` (escaping,
   formula neutralising for free text only). Record import does not accept all export columns;
   a full export is not directly round-trippable through that importer.
 

@@ -397,17 +397,6 @@ export default function QueuePageClient({
             stats={stats}
             onToggleFilters={toggleFilterPanel}
             activeFilterCount={activeFilterCount}
-            needsReview={stats.needsReview ?? 0}
-            needsReviewActive={url.double === 'review'}
-            onToggleNeedsReview={
-              currentUser?.role === 'admin' || currentUser?.role === 'supervisor'
-                ? () =>
-                    setUrl(
-                      { double: url.double === 'review' ? null : 'review', tab: 'all', page: null },
-                      { history: 'push' }
-                    )
-                : undefined
-            }
           />
 
           {stats.double && (stats.double.any > 0 || url.double) && (

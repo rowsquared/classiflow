@@ -23,7 +23,7 @@ AI labeling and learning are handled by the separate Taxomind service (https://g
 - Role-based access for admins, supervisors, and labellers
 - Progress analytics and team performance dashboards
 - Flexible workflows with assignments, skip and flag states
-- Double annotation: two people label selected records blind, matches confirm automatically, a supervisor resolves differences, and the first label stays exportable meanwhile
+- Double annotation: two people label selected records blind (and never learn that someone else did), matches confirm automatically, a supervisor resolves differences, the first label stays exportable meanwhile, and a separate analysis export reports agreement by level
 
 ## Getting started
 

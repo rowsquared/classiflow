@@ -233,7 +233,8 @@ admin) with a valid session who does not have to reset their password.
 | `/sentences/[id]/comments` | DELETE | record in scope **and** (comment author or admin) |
 | `/sentences/bulk-label` | POST | member; **every** record in scope; none in an active double-annotation round and none of the caller's own parts when labelling or skipping |
 | `/sentences/double-annotation` | POST (preview with `dryRun`, start) | admin, supervisor; every record in scope and both people in the caller's team |
-| `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
+| `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over, reopen a decision) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
+| `/sentences/double-annotation/commands` | POST (bulk accept single, stop, hand over; `dryRun`) | admin, supervisor; every record in scope; per record the same checks as the single command (records that fail them are skipped and counted) |
 | `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |
 | `/sentences/import`, `/imports/[id]` DELETE | POST, DELETE | admin |
 | `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |
@@ -246,7 +247,8 @@ admin) with a valid session who does not have to reset their password.
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
 | `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
-| `/export` | GET (`labels=confirmed`, `format=details`) | admin; re-checked before every page of the stream |
+| `/export` | GET (`labels=confirmed`, `statusColumns`, `format=details\|pairs\|agreement`) | admin; re-checked before every page of the stream |
+| `/export/summary` | GET | admin (record, round and pair counts) |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
 | `/progress/people` | GET | admin, supervisor (own subtree); same selector rule. Admins' unrestricted view also lists platform admins who labeled here without a membership |
 | `/progress/members` | GET | admin, supervisor; picker search within the caller's scope (names and roles only); a `teamId` outside it is a 403 |

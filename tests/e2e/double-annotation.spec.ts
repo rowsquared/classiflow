@@ -113,7 +113,7 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
     await expect(person.page.getByRole('region', { name: 'Double annotation' })).toHaveCount(0)
     const detail = await (await person.page.request.get(api(`/sentences/${record!.id}`))).json()
     expect(detail.double).toBeNull()
-    expect(detail.labeling).toEqual({ editableTaxonomies: ['A'] })
+    expect(detail.labeling).toEqual({ editableTaxonomies: null }) // as on any record
     await expect(person.page.getByRole('button', { name: /^Remove label/ })).toHaveCount(0)
     if (code === '011') await person.page.getByRole('button', { name: /^01\b/ }).click()
     await person.page.getByRole('button', { name: new RegExp(`^${code}\\b`) }).click()
@@ -127,7 +127,7 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
 
   // The admin finds it through the shortcut and uses Ben's answer.
   await page.goto(view('/queue?tab=all'))
-  await page.getByRole('button', { name: 'Needs review · 1' }).click()
+  await page.getByRole('group', { name: 'Double annotation' }).getByRole('button', { name: 'Needs review · 1' }).click()
   await expect(page.locator('tbody tr')).toHaveCount(1)
   await page.goto(view(`/queue/${record!.id}`))
   const panel = page.getByRole('region', { name: 'Double annotation' })

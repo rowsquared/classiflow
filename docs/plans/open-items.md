@@ -127,6 +127,15 @@ Implemented as described in section 0 of [the plan](double-annotation.md).
 - [ ] **Full e2e suite** once on the merged code (only the new journey and the
       accessibility spec were run before the merge).
 - [ ] **Decide** which deferred follow-ups (plan section 0) are wanted.
-- [ ] **v2:** confidentiality and integrity fixes after a round closes, review
-      mode, analysis export and per-level agreement; findings, plan and
-      decisions in [double-annotation-v2.md](double-annotation-v2.md).
+- [x] **v2** phases A-D (7 November 2026): participants keep only their own
+      work for good, review mode, analysis exports, queue/bulk/start/progress
+      tools; see [double-annotation-v2.md](double-annotation-v2.md).
+- [ ] **Before deploying v2:** run `scripts/sql/double-annotation-drift.sql`
+      after the migration and have a reviewer decide the listed records again.
+- [ ] **Decide** the open questions in section 7 of the v2 plan (analysis
+      export for supervisors, kappa).
+- [ ] **Upstream:** the `pg` "client.query() when the client is already
+      executing a query" warning comes from Prisma's query interpreter running
+      parts of one query plan in parallel on a transaction's connection
+      (adapter-pg `PgTransaction`), not from application code; check before
+      upgrading to pg 9.

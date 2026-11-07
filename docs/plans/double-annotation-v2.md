@@ -1,6 +1,6 @@
 # Double annotation v2: review findings and improvement plan
 
-**Status:** phases A-D implemented (7 November 2026, see section 6); phase E in progress. **Date:** 7 November 2026.
+**Status:** phases A-D implemented (7 November 2026, see section 6); phase E mostly done, see the handover below. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
 [double-annotation.md](double-annotation.md) section 0).
 
@@ -373,6 +373,36 @@ answers yet).
 - [ ] Benchmark queue double filters at scale (open item from v1).
 - [ ] Update AGENTS.md, docs/security.md (participant rules), ENV/README
       only where behaviour changes.
+
+## Handover (7 November 2026)
+
+Commits on `staging` (not pushed): phase A `4dc4c5c`, B `5d485a0`, C
+`e417fa3`, D `afc3a92`, a format fix `6c797c6`, then phase E (docs, the
+workspace switcher's accessible name, e2e updates).
+
+Verified: typecheck, lint, unit tests, the double-annotation integration
+suites (participation, manage, original: all pass), the full integration
+suite after phase A (one AI-monitor test failed under load and passed alone),
+production build, the full e2e suite after the switcher fix (68 of 69; the
+one failure, `double-annotation.spec.ts`, was fixed afterwards but **not
+rerun**). Browser checks on the demo workspace: participant views, review
+mode with note and undo, history, export page and files, queue chips and
+Double column, progress.
+
+Open:
+
+- Rerun `tests/e2e/double-annotation.spec.ts` (and the full integration
+  suite once more after phases B-D).
+- Before deploying: run `scripts/sql/double-annotation-drift.sql` after the
+  migration; a reviewer decides the listed records again.
+- Not built: "give back as ordinary work", the double-view counter wording,
+  links from the disagreement list to records, the ZIP of all analysis files.
+- The queue's "Needs review" toolbar shortcut was replaced by the chips;
+  `QueueToolbar` still accepts the props.
+- Local setup used: a throwaway PostgreSQL 16 cluster on port 5499
+  (scratchpad), launch config `classiflow-double-local`. The Docker dev
+  database container did not start (data from an older PostgreSQL major
+  version) and was left untouched.
 
 ## 7. Decisions for the product owner
 

@@ -100,10 +100,11 @@ export default function WorkspaceSwitcher() {
             type="button"
             className="flex shrink-0 items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             title={label}
-            aria-label={`${label}. Switch workspace`}
           >
             <Building2 className="h-5 w-5 text-gray-600" aria-hidden="true" />
-            <span className="hidden sm:block max-w-48 min-w-0">
+            {/* The accessible name is the visible text plus screen-reader words (axe label-content-name-mismatch). */}
+            <span className="sr-only sm:not-sr-only sm:block max-w-48 min-w-0">
+              {workspace && <span className="sr-only">Workspace: </span>}
               <span className="block text-sm font-medium text-gray-900 truncate">
                 {workspace?.name ?? 'Choose a workspace'}
               </span>
@@ -112,6 +113,7 @@ export default function WorkspaceSwitcher() {
                 {workspace?.archived ? ' · archived' : ''}
               </span>
             </span>
+            <span className="sr-only">. Switch workspace</span>
             <ChevronsUpDown className="w-4 h-4 text-gray-500 flex-shrink-0" aria-hidden="true" />
           </button>
         </Popover.Trigger>
