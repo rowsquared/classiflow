@@ -5,7 +5,7 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { sentenceVisibilityFilter } from '@/lib/access'
 import { AnnotationSource, SentenceStatus, type Prisma } from '@/lib/generated/prisma/client'
 import { parseEnum } from '@/lib/utils'
-import { blindSentenceIds, notBlindFor, ownAnswers } from '@/lib/server/double-annotation'
+import { ownLabelsWhere, participantWhere, participation } from '@/lib/server/double-annotation'
 import { doubleRowSummaries, type DoubleRowSummary } from '@/lib/server/double-queue'
 
 // Queue data for the queue page (app/queue), /api/sentences and
@@ -29,9 +29,9 @@ type AISuggestionView = {
  * hasSubmittedLabels, hasAISuggestions, flagged, hasComments, importId, support1-5,
  * double (managers: any | review | waiting | gap | done).
  *
- * Double annotation: for the people who label a record in an active round,
- * the status filter means their own part (pending, submitted or skipped), and
- * label/AI filters skip such records (they would reveal the other answer).
+ * Double annotation: for the people who hold a part in a record (any round,
+ * docs/plans/double-annotation-v2.md section 2), status, label, editor, flag
+ * and comment filters apply to their own part; AI filters skip such records.
  */
 export async function queueWhere(user: CurrentUser, searchParams: URLSearchParams): Promise<Prisma.SentenceWhereInput> {
   const q = searchParams.get('q') || ''
@@ -73,11 +73,6 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   // Visibility filtering based on role and assignments (admins: no filter)
   and.push(await sentenceVisibilityFilter(user))
 
-  // Additional user filter (for admins/supervisors to filter by specific user)
-  if (userId) {
-    and.push({ lastEditorId: userId })
-  }
-
   // Assigned to user filter
   if (assignedToUserId) {
     if (user.role === 'labeller' && assignedToUserId !== user.id) {
@@ -102,13 +97,31 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     }
   }
 
-  if (lastEditorId) {
-    and.push({ lastEditorId })
+  const double = searchParams.get('double') || ''
+  if (double && (user.role === 'admin' || user.role === 'supervisor')) {
+    const filter = doubleFilter(double)
+    if (filter) and.push(filter)
   }
+
+  // Filters on labels, editors, flags and comments. On records where the
+  // caller holds a double-annotation part they apply to that part (own
+  // answer, own flag, own comments): what the row shows. AI filters never
+  // match such records (their rows show no AI suggestions).
+  const ordinary: Prisma.SentenceWhereInput[] = []
+  const ownPart: Prisma.SentenceWhereInput[] = []
+  let partsExcluded = false
+  const byEditor = (editorId: string) => {
+    ordinary.push({ lastEditorId: editorId })
+    if (editorId === user.id) ownPart.push(ownLabelsWhere(user, {}))
+    else partsExcluded = true
+  }
+
+  if (userId) byEditor(userId)
+  if (lastEditorId) byEditor(lastEditorId)
 
   // Date range filter
   if (lastEditedFrom || lastEditedTo) {
-    const dateFilter: Prisma.DateTimeNullableFilter = {}
+    const dateFilter: Prisma.DateTimeFilter = {}
     if (lastEditedFrom) {
       // Start of the day (00:00:00.000)
       const fromDate = new Date(lastEditedFrom)
@@ -121,53 +134,31 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       toDate.setHours(23, 59, 59, 999)
       dateFilter.lte = toDate
     }
-    and.push({ lastEditedAt: dateFilter })
-  }
-
-  if (
-    taxonomyKey ||
-    level ||
-    code ||
-    source ||
-    aiTaxonomyKey ||
-    aiLevel ||
-    aiCode ||
-    aiConfidenceMin ||
-    aiConfidenceMax ||
-    hasSubmittedLabels ||
-    hasAISuggestions ||
-    userId ||
-    lastEditorId ||
-    lastEditedFrom ||
-    lastEditedTo
-  ) {
-    and.push(notBlindFor(user))
-  }
-
-  const double = searchParams.get('double') || ''
-  if (double && (user.role === 'admin' || user.role === 'supervisor')) {
-    const filter = doubleFilter(double)
-    if (filter) and.push(filter)
+    ordinary.push({ lastEditedAt: dateFilter })
+    ownPart.push(ownLabelsWhere(user, { createdAt: dateFilter }))
   }
 
   // Taxonomy/annotation filters
   if (taxonomyKey || level || code || source) {
     const annotationFilter: Prisma.SentenceAnnotationWhereInput = {}
+    const ownFilter: Prisma.DoubleTaskLabelWhereInput = {}
 
     if (taxonomyKey) {
-      annotationFilter.taxonomy = { key: taxonomyKey }
+      annotationFilter.taxonomy = ownFilter.taxonomy = { key: taxonomyKey }
     }
     if (level) {
-      annotationFilter.level = parseInt(level, 10)
+      annotationFilter.level = ownFilter.level = parseInt(level, 10)
     }
     if (code) {
-      annotationFilter.nodeCode = code
+      annotationFilter.nodeCode = ownFilter.nodeCode = code
     }
     if (source) {
       annotationFilter.source = parseEnum(AnnotationSource, source)
+      if (annotationFilter.source === AnnotationSource.ai) partsExcluded = true
     }
 
-    and.push({ annotations: { some: annotationFilter } })
+    ordinary.push({ annotations: { some: annotationFilter } })
+    ownPart.push(ownLabelsWhere(user, ownFilter))
   }
 
   // AI suggestion filters
@@ -198,57 +189,43 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     if (Object.keys(confidenceFilter).length > 0) {
       aiFilter.confidenceScore = confidenceFilter
     }
-    and.push({
-      aiSuggestions: {
-        some: aiFilter
-      }
-    })
+    ordinary.push({ aiSuggestions: { some: aiFilter } })
+    partsExcluded = true
   }
 
   if (hasSubmittedLabels === 'true') {
-    and.push({
-      annotations: {
-        some: {}
-      }
-    })
+    ordinary.push({ annotations: { some: {} } })
+    ownPart.push(ownLabelsWhere(user, {}))
   } else if (hasSubmittedLabels === 'false') {
-    and.push({
-      annotations: {
-        none: {}
-      }
-    })
+    ordinary.push({ annotations: { none: {} } })
+    ownPart.push(ownLabelsWhere(user, null))
   }
 
   if (hasAISuggestions === 'true') {
-    and.push({
-      aiSuggestions: {
-        some: {}
-      }
-    })
+    ordinary.push({ aiSuggestions: { some: {} } })
+    partsExcluded = true
   } else if (hasAISuggestions === 'false') {
-    and.push({
-      aiSuggestions: {
-        none: {}
-      }
-    })
+    ordinary.push({ aiSuggestions: { none: {} } })
   }
 
   // Flagged filter
-  if (flagged === 'true') {
-    and.push({ flagged: true })
-  } else if (flagged === 'false') {
-    and.push({ flagged: false })
+  if (flagged === 'true' || flagged === 'false') {
+    const value = flagged === 'true'
+    ordinary.push({ flagged: value })
+    ownPart.push({ doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: value } } })
   }
 
   // Has comments filter
   if (hasComments === 'true' || hasComments === 'false') {
     const comments = hasComments === 'true' ? 'some' : 'none'
-    const visible = notBlindFor(user)
+    ordinary.push({ comments: { [comments]: {} } })
+    ownPart.push({ comments: { [comments]: { authorId: user.id } } })
+  }
+
+  if (ordinary.length > 0 || partsExcluded) {
+    const part = participantWhere(user)
     and.push({
-      OR: [
-        { AND: [visible, { comments: { [comments]: {} } }] },
-        { AND: [{ NOT: visible }, { comments: { [comments]: { authorId: user.id } } }] }
-      ]
+      OR: [{ AND: [{ NOT: part }, ...ordinary] }, ...(partsExcluded ? [] : [{ AND: [part, ...ownPart] }])]
     })
   }
 
@@ -270,10 +247,10 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   return and.length > 0 ? { AND: and } : {}
 }
 
-/** A record's status, or for its labellers in an active round, their own part's status. */
+/** A record's status, or for the people who hold a double-annotation part in it, their own part's status. */
 function personalStatusFilter(user: CurrentUser, status: SentenceStatus): Prisma.SentenceWhereInput[] {
   const mine = (taskStatus: Prisma.DoubleTaskWhereInput['status']): Prisma.SentenceWhereInput => ({
-    doubleRounds: { some: { status: 'active', tasks: { some: { assigneeId: user.id, status: taskStatus } } } }
+    doubleTasks: { some: { assigneeId: user.id, status: taskStatus } }
   })
   const filters: Prisma.SentenceWhereInput[] = [{ AND: [{ status }, { NOT: mine({ not: 'cancelled' }) }] }]
   if (status === 'pending' || status === 'submitted' || status === 'skipped') filters.push(mine(status))
@@ -485,14 +462,14 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
     )
   })()
 
-  // Double annotation: rows its labellers see blind show their own answer only.
+  // Double annotation: rows the caller holds a part in show their own answer only.
   const pageIds = sentences.map(s => s.id)
-  const blind = await blindSentenceIds(user, pageIds)
-  const [annotationNodes, aiSuggestionsBySentence, summaries, own, doubleRows] = await Promise.all([
+  const own = await participation(user, pageIds)
+  const blind = new Set(own.keys())
+  const [annotationNodes, aiSuggestionsBySentence, summaries, doubleRows] = await Promise.all([
     annotationNodesPromise,
     aiSuggestionsPromise,
     commentSummaries(pageIds, { authorId: user.id, sentenceIds: blind }),
-    ownAnswers(user, Array.from(blind)),
     user.role === 'labeller' ? Promise.resolve(new Map<string, DoubleRowSummary>()) : doubleRowSummaries(pageIds, blind)
   ])
   const ownLabels = [...own.values()].flatMap(t => t.labels)
@@ -541,13 +518,14 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
       ) ?? null
     return {
       ...row,
-      status: (task && task.status !== 'cancelled' ? task.status : 'pending') as SentenceStatus,
+      status: (task && task.task.status !== 'cancelled' ? task.task.status : 'pending') as SentenceStatus,
+      flagged: task?.task.flagged ?? false,
       lastEditor: ownEditedAt ? (task?.assignee ?? null) : null,
       lastEditorId: ownEditedAt ? user.id : null,
       lastEditedAt: ownEditedAt,
       _count: { comments: summaries.get(s.id)?.total ?? 0 },
       annotations: (task?.labels ?? []).map(l => ({
-        id: `${task!.id}:${l.taxonomyId}:${l.level}`,
+        id: `${task!.task.id}:${l.taxonomyId}:${l.level}`,
         workspaceId: s.workspaceId,
         sentenceId: s.id,
         taxonomyId: l.taxonomyId,
@@ -584,7 +562,19 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
     db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending') }] } }),
     db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'submitted') }] } }),
     db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'skipped') }] } }),
-    db().sentence.count({ where: { AND: [where, { flagged: true }] } }),
+    db().sentence.count({
+      where: {
+        AND: [
+          where,
+          {
+            OR: [
+              { AND: [{ NOT: participantWhere(user) }, { flagged: true }] },
+              { doubleTasks: { some: { assigneeId: user.id, status: { not: 'cancelled' }, flagged: true } } }
+            ]
+          }
+        ]
+      }
+    }),
     manager ? db().sentence.count({ where: { AND: [where, doubleFilter('review')!] } }) : Promise.resolve(0)
   ])
 

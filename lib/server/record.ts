@@ -6,8 +6,8 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { logError } from '@/lib/logger'
-import { doubleViewFor, ownAnswers, recordView } from '@/lib/server/double-annotation'
-import { recordLabelingAccess } from '@/lib/double-annotation'
+import { activeRound, participation, recordView, viewFor } from '@/lib/server/double-annotation'
+import { participantLabelingAccess, recordLabelingAccess } from '@/lib/double-annotation'
 
 export async function getRecord(user: CurrentUser, sentenceId: string) {
   try {
@@ -39,42 +39,39 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
       return NextResponse.json({ error: 'Sentence not found' }, { status: 404 })
     }
 
-    // Double annotation: its labellers see the record blind (own answer only,
-    // no AI suggestions, own comments); managers get both answers.
-    const doubleView = await doubleViewFor(user, sentenceId)
-    const double = doubleView ? await recordView(user, doubleView) : null
-    if (doubleView && doubleView.mode !== 'manager') {
-      const own = (await ownAnswers(user, [sentenceId])).get(sentenceId)
-      const taxonomies = await db().taxonomy.findMany({
-        where: { id: { in: own?.labels.map(l => l.taxonomyId) ?? [] } },
-        select: { id: true, key: true }
-      })
+    // Double annotation: whoever holds a part in a round of this record sees it
+    // as their own work, for good (own answer, comments, flag and edit time;
+    // no AI suggestions); managers get both answers of an active round.
+    const own = (await participation(user, [sentenceId])).get(sentenceId)
+    if (own) {
+      const taxonomies = await db().taxonomy.findMany({ select: { id: true, key: true, isActive: true } })
       const keyOf = new Map(taxonomies.map(t => [t.id, t.key]))
       const nodes = await db().taxonomyNode.findMany({
-        where: { taxonomyId: { in: taxonomies.map(t => t.id) }, code: { in: own?.labels.map(l => l.nodeCode) ?? [] } },
+        where: { taxonomyId: { in: own.labels.map(l => l.taxonomyId) }, code: { in: own.labels.map(l => l.nodeCode) } },
         select: { taxonomyId: true, code: true, label: true, definition: true, isLeaf: true }
       })
       const nodeOf = new Map(nodes.map(n => [`${n.taxonomyId}:${n.code}`, n]))
       const summaries = await commentSummaries([sentenceId], { authorId: user.id, sentenceIds: new Set([sentenceId]) })
+      const lastEditedAt = own.labels.reduce<Date | null>(
+        (latest, label) => (!latest || label.createdAt > latest ? label.createdAt : latest),
+        null
+      )
       return NextResponse.json({
         ...sentence,
         // The person's own part, not the record's (which would reveal the other answer).
-        status: double?.mode === 'task' ? double.taskStatus : 'pending',
-        lastEditedAt:
-          own?.labels.reduce<Date | null>(
-            (latest, label) => (!latest || label.createdAt > latest ? label.createdAt : latest),
-            null
-          ) ?? null,
-        lastEditorId: null,
+        status: own.task.status === 'cancelled' ? 'pending' : own.task.status,
+        flagged: own.task.flagged,
+        lastEditedAt,
+        lastEditorId: lastEditedAt ? user.id : null,
         commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
         assignments: sentence.assignments
           .filter(a => a.membership.userId === user.id)
           .map(a => ({ userId: a.membership.userId })),
         _count: { comments: summaries.get(sentenceId)?.total ?? 0 },
-        annotations: (own?.labels ?? []).map(l => {
+        annotations: own.labels.map(l => {
           const node = nodeOf.get(`${l.taxonomyId}:${l.nodeCode}`)
           return {
-            id: `${own!.id}:${l.taxonomyId}:${l.level}`,
+            id: `${own.task.id}:${l.taxonomyId}:${l.level}`,
             sentenceId,
             taxonomyId: l.taxonomyId,
             level: l.level,
@@ -88,10 +85,15 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
             isLeaf: node?.isLeaf ?? false
           }
         }),
-        double: user.role === 'labeller' ? null : double,
-        labeling: recordLabelingAccess(double)
+        double: null,
+        labeling: participantLabelingAccess(
+          own.required.map(id => keyOf.get(id) ?? ''),
+          taxonomies.filter(t => t.isActive).map(t => t.key)
+        )
       })
     }
+    const round = await activeRound(sentenceId)
+    const double = round ? await recordView(user, viewFor(user, round)) : null
 
     // Fetch labels for annotations (including handling unknown/-99)
     // Optimize: fetch all nodes in one query instead of N queries

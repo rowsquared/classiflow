@@ -82,7 +82,7 @@ describe('double annotation', () => {
     const view = await record(r.id)
     expect(view.annotations).toEqual([])
     expect(view.double).toBeNull()
-    expect(view.labeling).toEqual({ editableTaxonomies: ['A', 'B'] })
+    expect(view.labeling).toEqual({ editableTaxonomies: null }) // as on any record
     expect(view.lastEditedAt).toBeNull()
     expect(view.assignments).toEqual([{ userId: alice.id }])
 
@@ -110,8 +110,8 @@ describe('double annotation', () => {
     await save(r.id, path('A', '01', '012'))
     await save(r.id, path('B', '02'))
 
-    // Answers are final.
-    expect((await save(r.id, path('A', '02'))).status).toBe(409)
+    // Saving the same answer again changes nothing.
+    expect((await save(r.id, path('A', '01', '012'))).status).toBe(200)
     expect(await effective(r.id, taxA.id)).toEqual(['01', '011']) // Alice's, the first
     expect(await statusOf(r.id)).toBe('pending')
 
@@ -156,7 +156,7 @@ describe('double annotation', () => {
     signInAs(ann)
     await start({ sentenceIds: [r2.id], firstUserId: sam.id, secondUserId: alice.id })
     signInAs(sam)
-    expect((await record(r2.id)).double.mode).toBe('task')
+    expect((await record(r2.id)).double).toBeNull() // their own part, like a labeller
   })
 
   it('a second annotation for labelled records keeps the first labels and only asks the other person', async () => {
@@ -202,6 +202,11 @@ describe('double annotation', () => {
     expect((await command(r1.id, { action: 'reassign', position: 2, userId: alice.id })).status).toBe(400)
     expect((await command(r1.id, { action: 'reassign', position: 2, userId: outsider.id })).status).toBe(403)
     expect((await command(r1.id, { action: 'reassign', position: 2, userId: carol.id })).status).toBe(200)
+    // Bob's part is kept as history; he no longer sees the record.
+    expect(await prisma.doubleTask.count({ where: { sentenceId: r1.id, position: 2, status: 'cancelled' } })).toBe(1)
+    signInAs(bob)
+    expect((await recordRoute.GET(request('/x'), params({ sentenceId: r1.id }))).status).toBe(403)
+    signInAs(sam)
 
     signInAs(alice)
     await save(r1.id, path('A', '02'))
@@ -214,7 +219,10 @@ describe('double annotation', () => {
     )
 
     expect((await command(r2.id, { action: 'stop', reason: 'not needed' })).status).toBe(200)
+    // Unanswered parts end with the round: their people lose access.
     signInAs(alice)
+    expect((await save(r2.id, path('A', '02'))).status).toBe(403)
+    signInAs(ann)
     expect((await save(r2.id, path('A', '02'))).status).toBe(200) // ordinary work again
     expect(await effective(r2.id, taxA.id)).toEqual(['02'])
   })
@@ -265,7 +273,7 @@ describe('double annotation', () => {
     signInAs(bob)
     const detail = await record(r.id)
     expect(detail.double).toBeNull()
-    expect(detail.labeling).toEqual({ editableTaxonomies: ['A', 'B'] })
+    expect(detail.labeling).toEqual({ editableTaxonomies: null })
     expect(detail.assignments).toEqual([{ userId: bob.id }])
     expect(detail.lastEditedAt).toBeNull()
     expect(detail.commentSummary).toEqual({ total: 0, unresolved: 0 })
@@ -285,11 +293,10 @@ describe('double annotation', () => {
 
     await save(r.id, path('A', '02'))
     const ownView = await record(r.id)
-    expect(ownView.labeling).toEqual({ editableTaxonomies: ['B'] })
+    expect(ownView.labeling).toEqual({ editableTaxonomies: null }) // still editable, as on any record
     expect(ownView.annotations.map((a: { nodeCode: string }) => a.nodeCode)).toEqual(['02'])
-    const resubmit = await save(r.id, path('A', '01', '012'))
-    expect(resubmit.status).toBe(409)
-    expect((await resubmit.json()).error).not.toMatch(/double|independent|differences|other people/i)
+    expect((await save(r.id, path('A', '01', '012'))).status).toBe(200) // a revision of his own answer
+    expect((await record(r.id)).annotations.map((a: { nodeCode: string }) => a.nodeCode)).toEqual(['01', '012'])
     const bulk = await bulkRoute.POST(
       request('/x', { method: 'POST', body: { sentenceIds: [r.id], taxonomyKey: 'B', annotations: path('B', '02') } }),
       params()
@@ -297,11 +304,10 @@ describe('double annotation', () => {
     expect(bulk.status).toBe(409)
     expect((await bulk.json()).error).not.toMatch(/double|independent|other people/i)
 
+    // Carol was assigned but has no part: the record left her queue.
     signInAs(carol)
-    const hidden = await record(r.id)
-    expect(hidden.double).toBeNull()
-    expect(hidden.labeling).toEqual({ editableTaxonomies: [] })
-    expect(hidden.annotations).toEqual([])
+    expect((await recordRoute.GET(request('/x'), params({ sentenceId: r.id }))).status).toBe(403)
+    expect(await list()).toEqual([])
     const denied = await save(r.id, path('A', '02'))
     expect(denied.status).toBe(403)
     expect((await denied.json()).error).not.toMatch(/double|independent|other people/i)

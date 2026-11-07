@@ -24,7 +24,12 @@ import { recordStatus, taxonomyStatus, type OutcomeState } from '@/lib/double-an
  * Unknown codes export as UNKNOWN.
  *
  * detailsStream(): the double-annotation details, one row per record, round,
- * labeller and taxonomy, with each person's own answer.
+ * labeller and taxonomy, with each person's current answer (`revision` 1 is
+ * the original; `revised_after_compare` when someone changed theirs after the
+ * comparison, which itself stays as it was).
+ *
+ * A confirmed taxonomy whose labels were later changed by someone who could
+ * not decide it reports as `single` (lib/double-annotation.ts taxonomyStatus).
  */
 
 const BATCH_SIZE = 1000
@@ -190,7 +195,7 @@ async function readRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'sel
         where: { status: { not: 'cancelled' } },
         orderBy: { createdAt: 'desc' },
         take: 1,
-        select: { outcomes: { select: { taxonomyId: true, state: true } } }
+        select: { outcomes: { select: { taxonomyId: true, state: true, resultCodes: true } } }
       }
     }
   })
@@ -231,13 +236,23 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
   )
 
   const round = s.doubleRounds[0]
-  const outcomes = new Map(round?.outcomes.map(o => [o.taxonomyId, o.state as OutcomeState]))
+  const outcomes = new Map(round?.outcomes.map(o => [o.taxonomyId, o]))
   const labelled = new Set(s.annotations.map(a => a.taxonomyId))
-  const statusOf = (taxonomyId: string) =>
-    taxonomyStatus({
-      outcome: round ? { state: outcomes.get(taxonomyId) ?? 'waiting' } : null,
-      hasLabels: labelled.has(taxonomyId)
+  const codesOf = (taxonomyId: string) =>
+    s.annotations
+      .filter(a => a.taxonomyId === taxonomyId)
+      .sort((a, b) => a.level - b.level)
+      .map(a => a.nodeCode)
+  const statusOf = (taxonomyId: string) => {
+    const outcome = outcomes.get(taxonomyId)
+    return taxonomyStatus({
+      outcome: round
+        ? { state: (outcome?.state as OutcomeState | undefined) ?? 'waiting', resultCodes: outcome?.resultCodes }
+        : null,
+      hasLabels: labelled.has(taxonomyId),
+      codes: codesOf(taxonomyId)
     })
+  }
   const required = round ? round.outcomes.map(o => o.taxonomyId) : plan.activeTaxonomyIds
   row.push(round ? 'double' : 'single', recordStatus(required.map(statusOf)))
   for (const t of plan.taxonomies) {
@@ -314,7 +329,9 @@ const DETAIL_HEADERS = [
   'code_4',
   'code_5',
   'answered_at',
+  'revision',
   'original_match',
+  'revised_after_compare',
   'result_status',
   'reviewed_by',
   'reviewed_at',
@@ -345,7 +362,10 @@ async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' 
               status: true,
               fromBaseline: true,
               assignee: { select: { name: true } },
-              labels: { select: { taxonomyId: true, level: true, nodeCode: true, createdAt: true } }
+              labels: {
+                where: { supersededAt: null },
+                select: { taxonomyId: true, level: true, nodeCode: true, revision: true, createdAt: true }
+              }
             }
           },
           outcomes: {
@@ -353,6 +373,7 @@ async function readDetailRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' 
               taxonomyId: true,
               state: true,
               matched: true,
+              revisedAfterCompare: true,
               reviewedAt: true,
               note: true,
               reviewedBy: { select: { name: true } }
@@ -404,7 +425,9 @@ export async function detailsStream(
               code(4),
               code(5),
               answeredAt ? answeredAt.toISOString() : '',
+              labels[0] ? String(labels[0].revision) : '',
               outcome.matched === null ? '' : String(outcome.matched),
+              outcome.revisedAfterCompare ? 'true' : 'false',
               outcome.state,
               outcome.reviewedBy?.name ?? '',
               outcome.reviewedAt ? outcome.reviewedAt.toISOString() : '',

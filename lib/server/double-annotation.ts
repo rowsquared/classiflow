@@ -16,15 +16,21 @@ import { recordLabelingActivity } from '@/lib/labeling-activity'
 
 /**
  * Double annotation workflow (prisma/schema.prisma DoubleRound and friends,
- * rules in lib/double-annotation.ts). Every function runs inside the
- * workspace transaction (db()); writers lock the record first
- * (lockSentences in lib/annotation-status.ts), so saves, reviews and manager
- * actions on one record run one after the other.
+ * rules in lib/double-annotation.ts, plan in docs/plans/double-annotation-v2.md).
+ * Every function runs inside the workspace transaction (db()); writers lock
+ * the record first (lockSentences in lib/annotation-status.ts), so saves,
+ * reviews and manager actions on one record run one after the other.
  *
  * SentenceAnnotation stays the record's current result (what the queue,
  * export and learning read): the first answer while waiting or disagreeing,
  * the agreed or reviewed path when confirmed. Sentence.status is `submitted`
  * only once every required taxonomy is confirmed.
+ *
+ * Participation is sticky: whoever holds a live part (task) in any round of a
+ * record sees that record as their own work for good (own answer, comments,
+ * flag and edit time; no AI suggestions, nothing of anyone else), also after
+ * the round completed or was stopped. Their saves always change their own
+ * answer (a new revision), never the result.
  */
 
 export class DoubleAnnotationError extends Error {
@@ -36,48 +42,181 @@ export class DoubleAnnotationError extends Error {
   }
 }
 
+const LIVE = { not: 'cancelled' as const }
+
 const roundInclude = {
-  tasks: { where: { status: { not: 'cancelled' } }, orderBy: { position: 'asc' } },
+  tasks: { where: { status: LIVE }, orderBy: { position: 'asc' } },
   outcomes: true
 } satisfies Prisma.DoubleRoundInclude
 
-export type ActiveRound = Prisma.DoubleRoundGetPayload<{ include: typeof roundInclude }>
-type Task = ActiveRound['tasks'][number]
+export type Round = Prisma.DoubleRoundGetPayload<{ include: typeof roundInclude }>
+/** @deprecated name kept for callers: any round with its live tasks and outcomes. */
+export type ActiveRound = Round
+type Task = Round['tasks'][number]
 
-export async function activeRound(sentenceId: string): Promise<ActiveRound | null> {
+export async function activeRound(sentenceId: string): Promise<Round | null> {
   return db().doubleRound.findFirst({ where: { sentenceId, status: 'active' }, include: roundInclude })
 }
 
-/**
- * How `user` meets a record in double annotation:
- * - task: they label it (blind: only their own answer, no AI, no others' comments);
- * - manager: admin or supervisor who is not one of its labellers;
- * - hidden: anyone else with access (a labeller assigned before the round),
- *   who sees no labels and cannot label it.
- */
-export type DoubleView =
-  | { mode: 'task'; round: ActiveRound; task: Task }
-  | { mode: 'manager'; round: ActiveRound }
-  | { mode: 'hidden'; round: ActiveRound }
+/** The record's latest round that was not stopped (active or completed). */
+export async function latestRound(sentenceId: string): Promise<Round | null> {
+  return db().doubleRound.findFirst({
+    where: { sentenceId, status: { not: 'cancelled' } },
+    orderBy: { createdAt: 'desc' },
+    include: roundInclude
+  })
+}
 
-export function viewFor(user: CurrentUser, round: ActiveRound): DoubleView {
-  const task = round.tasks.find(t => t.assigneeId === user.id)
-  if (task) return { mode: 'task', round, task }
+// ---------------------------------------------------------------------------
+// Participation.
+
+/** Records where `user` holds a live part in any round. */
+export function participantWhere(user: CurrentUser): Prisma.SentenceWhereInput {
+  return { doubleTasks: { some: { assigneeId: user.id, status: LIVE } } }
+}
+
+/** Records where `user` holds a live part whose current answer matches `labels`. */
+export function ownLabelsWhere(user: CurrentUser, labels: Prisma.DoubleTaskLabelWhereInput | null) {
+  return {
+    doubleTasks: {
+      some: {
+        assigneeId: user.id,
+        status: LIVE,
+        labels: labels === null ? { none: { supersededAt: null } } : { some: { supersededAt: null, ...labels } }
+      }
+    }
+  } satisfies Prisma.SentenceWhereInput
+}
+
+export type Participation = {
+  task: Pick<Task, 'id' | 'status' | 'flagged' | 'roundId'>
+  roundStatus: string
+  /** Taxonomy ids the round requires. */
+  required: string[]
+  /** Current answer (latest revision) per taxonomy. */
+  labels: Array<{
+    taxonomyId: string
+    level: number
+    nodeCode: string
+    labelingStartedAt: Date | null
+    createdAt: Date
+  }>
+  assignee: { id: string; name: string | null; username: string | null; email: string } | null
+}
+
+/** The caller's part per record (the latest round where they hold one), for `sentenceIds`. */
+export async function participation(user: CurrentUser, sentenceIds: string[]): Promise<Map<string, Participation>> {
+  const result = new Map<string, Participation>()
+  if (sentenceIds.length === 0) return result
+  const tasks = await db().doubleTask.findMany({
+    where: { sentenceId: { in: sentenceIds }, assigneeId: user.id, status: LIVE },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      sentenceId: true,
+      roundId: true,
+      status: true,
+      flagged: true,
+      round: { select: { status: true, outcomes: { select: { taxonomyId: true } } } },
+      assignee: { select: { id: true, name: true, username: true, email: true } },
+      labels: {
+        where: { supersededAt: null },
+        select: { taxonomyId: true, level: true, nodeCode: true, labelingStartedAt: true, createdAt: true },
+        orderBy: { level: 'asc' }
+      }
+    }
+  })
+  for (const t of tasks) {
+    if (result.has(t.sentenceId)) continue // an older round
+    result.set(t.sentenceId, {
+      task: { id: t.id, status: t.status, flagged: t.flagged, roundId: t.roundId },
+      roundStatus: t.round.status,
+      required: t.round.outcomes.map(o => o.taxonomyId),
+      labels: t.labels,
+      assignee: t.assignee
+    })
+  }
+  return result
+}
+
+/** Comment filter for one record: only the caller's own comments when they participate. */
+export async function commentAudienceFilter(user: CurrentUser, sentenceId: string): Promise<Prisma.CommentWhereInput> {
+  return (await participation(user, [sentenceId])).has(sentenceId) ? { authorId: user.id } : {}
+}
+
+/** The caller's live part in the record's latest round where they hold one, with that round. */
+export async function participantRound(
+  user: CurrentUser,
+  sentenceId: string
+): Promise<{ round: Round; task: Task } | null> {
+  const task = await db().doubleTask.findFirst({
+    where: { sentenceId, assigneeId: user.id, status: LIVE },
+    orderBy: { createdAt: 'desc' },
+    select: { roundId: true }
+  })
+  if (!task) return null
+  const round = await db().doubleRound.findUniqueOrThrow({ where: { id: task.roundId }, include: roundInclude })
+  return { round, task: round.tasks.find(t => t.assigneeId === user.id)! }
+}
+
+/**
+ * How a non-participant meets a record in an active round:
+ * - manager: admin or supervisor;
+ * - hidden: a labeller with access but no part (not normally reachable:
+ *   such access is removed and sentenceVisibilityFilter() keeps the record out of view).
+ */
+export type DoubleView = { mode: 'manager'; round: Round } | { mode: 'hidden'; round: Round }
+
+export function viewFor(user: CurrentUser, round: Round): DoubleView {
   if (user.role === 'admin' || user.role === 'supervisor') return { mode: 'manager', round }
   return { mode: 'hidden', round }
 }
 
-export async function doubleViewFor(user: CurrentUser, sentenceId: string): Promise<DoubleView | null> {
-  const round = await activeRound(sentenceId)
-  return round ? viewFor(user, round) : null
+/**
+ * A participant's flag lives on their part; the record's flag goes up for
+ * managers when a participant flags it and down when no part is flagged.
+ * Returns the records handled this way (the caller sets the record flag of
+ * the others as usual).
+ */
+export async function setParticipantFlags(
+  user: CurrentUser,
+  sentenceIds: string[],
+  flagged: boolean
+): Promise<Set<string>> {
+  const parts = await participation(user, sentenceIds)
+  if (parts.size === 0) return new Set()
+  const tx = db()
+  await tx.doubleTask.updateMany({
+    where: { id: { in: [...parts.values()].map(p => p.task.id) } },
+    data: { flagged }
+  })
+  const ids = [...parts.keys()]
+  if (flagged) {
+    await tx.sentence.updateMany({ where: { id: { in: ids } }, data: { flagged: true } })
+  } else {
+    const stillFlagged = new Set(
+      (
+        await tx.doubleTask.findMany({
+          where: { sentenceId: { in: ids }, status: LIVE, flagged: true },
+          select: { sentenceId: true }
+        })
+      ).map(t => t.sentenceId)
+    )
+    const clear = ids.filter(id => !stillFlagged.has(id))
+    if (clear.length > 0) await tx.sentence.updateMany({ where: { id: { in: clear } }, data: { flagged: false } })
+  }
+  return new Set(ids)
 }
+
+// ---------------------------------------------------------------------------
+// Answers and results.
 
 /**
  * A manager may decide a disagreement unless they labelled the record
  * themselves. Supervisors must manage every labeller of the round (their
  * subtree); a labeller without a known account needs an admin.
  */
-export async function canReview(user: CurrentUser, round: ActiveRound): Promise<boolean> {
+export async function canReview(user: CurrentUser, round: Round): Promise<boolean> {
   if (user.role !== 'admin' && user.role !== 'supervisor') return false
   if (round.tasks.some(t => t.assigneeId === user.id)) return false
   const members = await visibleMembers(user)
@@ -86,14 +225,21 @@ export async function canReview(user: CurrentUser, round: ActiveRound): Promise<
   return round.tasks.every(t => t.assigneeId !== null && team.has(t.assigneeId))
 }
 
+/** Current answers (latest revision) of the tasks. */
 async function taskLabels(taskIds: string[], taxonomyId?: string) {
   if (taskIds.length === 0) return []
   return db().doubleTaskLabel.findMany({
-    where: { taskId: { in: taskIds }, ...(taxonomyId ? { taxonomyId } : {}) },
-    select: { taskId: true, taxonomyId: true, level: true, nodeCode: true },
+    where: { taskId: { in: taskIds }, supersededAt: null, ...(taxonomyId ? { taxonomyId } : {}) },
+    select: { taskId: true, taxonomyId: true, level: true, nodeCode: true, revision: true },
     orderBy: { level: 'asc' }
   })
 }
+
+const codesOf = (labels: LabelInput[]) =>
+  labels
+    .slice()
+    .sort((a, b) => a.level - b.level)
+    .map(l => l.nodeCode)
 
 /** Replaces the record's current result for one taxonomy. */
 async function writeResult(
@@ -142,20 +288,25 @@ async function settleRound(roundId: string): Promise<{ summary: RoundSummary; st
 }
 
 export type TaskSaveResult = {
-  /** The record's status after the save. */
-  recordStatus: 'submitted' | 'pending'
+  /** The record's status after the save (unchanged when the round is closed). */
+  recordStatus: 'submitted' | 'pending' | null
   /** The caller's own task: taxonomies they answered and whether every one is done. */
   answeredTaxonomyIds: Set<string>
   taskDone: boolean
 }
 
 /**
- * A labeller's answer for one taxonomy of their task. Answers are final: a
- * second save for the same taxonomy is refused (a reviewer decides instead).
+ * A participant's answer for one taxonomy, in a round of any status. A
+ * changed answer is a new revision (the previous one is kept, superseded):
+ * - before the other answer exists it simply replaces the answer (and the
+ *   provisional result, when it is the first answer);
+ * - after the comparison, the frozen comparison stays; an agreed taxonomy
+ *   whose answer now differs needs review again; managers see the revision;
+ * - in a closed round only the person's own answer changes, never the result.
  */
 export async function saveTaskAnswer(opts: {
   user: CurrentUser
-  round: ActiveRound
+  round: Round
   task: Task
   taxonomyId: string
   labels: LabelInput[]
@@ -170,14 +321,15 @@ export async function saveTaskAnswer(opts: {
   }
 
   const existing = await taskLabels([task.id], taxonomyId)
+  if (existing.length > 0 && sameLabels(existing, labels)) return taskResult(round, task) // nothing changed
+  const now = new Date()
+  const revision = existing.length > 0 ? existing[0]!.revision + 1 : 1
   if (existing.length > 0) {
-    if (sameLabels(existing, labels)) return taskResult(round, task) // replay of the same answer
-    throw new DoubleAnnotationError(
-      'You already submitted this taxonomy. Contact your supervisor if it needs a correction.',
-      409
-    )
+    await tx.doubleTaskLabel.updateMany({
+      where: { taskId: task.id, taxonomyId, supersededAt: null },
+      data: { supersededAt: now }
+    })
   }
-
   await tx.doubleTaskLabel.createMany({
     data: labels.map(l => ({
       workspaceId: scopeWorkspaceId(),
@@ -185,28 +337,45 @@ export async function saveTaskAnswer(opts: {
       taxonomyId,
       level: l.level,
       nodeCode: l.nodeCode,
+      revision,
       labelingStartedAt
     }))
   })
 
-  const other = round.tasks.find(t => t.id !== task.id)
-  const otherLabels = other ? await taskLabels([other.id], taxonomyId) : []
-  const now = new Date()
-  if (otherLabels.length > 0 && outcome.state === 'waiting') {
-    // Second answer: compare once and freeze the result of the comparison.
-    const { state, matched } = compareAnswers(otherLabels, labels)
-    await tx.doubleOutcome.update({
-      where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
-      data: { state, matched, comparedAt: now, sourceTaskId: outcome.sourceTaskId ?? other!.id }
-    })
-    if (state === 'agreed') await countForLearning(taxonomyId, labels.length)
-  } else if (!outcome.sourceTaskId) {
-    // First answer: it is the record's result until the comparison says otherwise.
-    await tx.doubleOutcome.update({
-      where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
-      data: { sourceTaskId: task.id }
-    })
-    await writeResult(round.sentenceId, taxonomyId, labels, user.id, labelingStartedAt)
+  const where = { roundId_taxonomyId: { roundId: round.id, taxonomyId } }
+  if (round.status === 'active') {
+    const other = round.tasks.find(t => t.id !== task.id)
+    const otherLabels = other ? await taskLabels([other.id], taxonomyId) : []
+    if (outcome.state === 'waiting' && otherLabels.length > 0) {
+      // Second answer: compare once and freeze the result of the comparison.
+      const { state, matched } = compareAnswers(otherLabels, labels)
+      await tx.doubleOutcome.update({
+        where,
+        data: {
+          state,
+          matched,
+          comparedAt: now,
+          sourceTaskId: outcome.sourceTaskId ?? other!.id,
+          resultCodes: state === 'agreed' ? codesOf(labels) : []
+        }
+      })
+      if (state === 'agreed') await countForLearning(taxonomyId, labels.length)
+    } else if (outcome.state === 'waiting') {
+      // The first answer (or a change of it): the record's provisional result.
+      if (!outcome.sourceTaskId || outcome.sourceTaskId === task.id) {
+        if (!outcome.sourceTaskId) await tx.doubleOutcome.update({ where, data: { sourceTaskId: task.id } })
+        await writeResult(round.sentenceId, taxonomyId, labels, user.id, labelingStartedAt)
+      }
+    } else {
+      // Changed after the comparison: the comparison stays as it was.
+      const reopen = outcome.state === 'agreed' && !sameLabels(otherLabels, labels)
+      await tx.doubleOutcome.update({
+        where,
+        data: { revisedAfterCompare: true, ...(reopen ? { state: 'disagreed', resultCodes: [] } : {}) }
+      })
+    }
+  } else if (outcome.comparedAt || isConfirmed(outcome.state as OutcomeState)) {
+    await tx.doubleOutcome.update({ where, data: { revisedAfterCompare: true } })
   }
 
   await recordLabelingActivity(tx, {
@@ -221,7 +390,7 @@ export async function saveTaskAnswer(opts: {
 }
 
 /** Marks the task submitted once it answered every required taxonomy. */
-async function taskResult(round: ActiveRound, task: Task, now = new Date()): Promise<TaskSaveResult> {
+async function taskResult(round: Round, task: Task, now = new Date()): Promise<TaskSaveResult> {
   const answered = new Set((await taskLabels([task.id])).map(l => l.taxonomyId))
   const taskDone = round.outcomes.every(o => answered.has(o.taxonomyId))
   if (taskDone && task.status !== 'submitted') {
@@ -229,15 +398,21 @@ async function taskResult(round: ActiveRound, task: Task, now = new Date()): Pro
   } else if (!taskDone && task.status === 'skipped') {
     await db().doubleTask.update({ where: { id: task.id }, data: { status: 'pending' } })
   }
+  if (round.status !== 'active') return { recordStatus: null, answeredTaxonomyIds: answered, taskDone }
   const { status } = await settleRound(round.id)
   return { recordStatus: status, answeredTaxonomyIds: answered, taskDone }
 }
 
-/** A labeller skips their part; the other part and the record's labels are unaffected. */
+/** A participant skips their part; the other part and the record's labels are unaffected. */
 export async function skipTask(task: Task) {
   if (task.status === 'pending') {
     await db().doubleTask.update({ where: { id: task.id }, data: { status: 'skipped' } })
   }
+}
+
+/** The taxonomies the participant answered (current answers). */
+export async function answeredTaxonomies(taskId: string): Promise<Set<string>> {
+  return new Set((await taskLabels([taskId])).map(l => l.taxonomyId))
 }
 
 /**
@@ -248,7 +423,7 @@ export async function skipTask(task: Task) {
  */
 export async function reviewTaxonomy(opts: {
   user: CurrentUser
-  round: ActiveRound
+  round: Round
   taxonomyId: string
   labels: LabelInput[]
   note?: string | null
@@ -284,7 +459,13 @@ export async function reviewTaxonomy(opts: {
   const wasConfirmed = isConfirmed(outcome.state as OutcomeState)
   await tx.doubleOutcome.update({
     where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
-    data: { state: 'reviewed', reviewedById: user.id, reviewedAt: new Date(), note: note?.trim() || null }
+    data: {
+      state: 'reviewed',
+      reviewedById: user.id,
+      reviewedAt: new Date(),
+      note: note?.trim() || null,
+      resultCodes: codesOf(labels)
+    }
   })
   if (!sameLabels(current, labels)) {
     await writeResult(round.sentenceId, taxonomyId, labels, user.id, labelingStartedAt)
@@ -302,8 +483,39 @@ export async function reviewTaxonomy(opts: {
   return { recordStatus: status }
 }
 
+/**
+ * After an ordinary save on a record whose latest round is completed: a
+ * manager who may review it has changed the confirmed result, which is
+ * recorded as their decision (so the export status matches the codes). Any
+ * other save leaves the outcome alone and the export reports the labels as
+ * ordinary ones (lib/double-annotation.ts taxonomyStatus).
+ */
+export async function recordChangedResult(
+  user: CurrentUser,
+  sentenceId: string,
+  taxonomyId: string,
+  labels: LabelInput[]
+) {
+  const round = await latestRound(sentenceId)
+  if (!round || round.status !== 'completed') return
+  const outcome = round.outcomes.find(o => o.taxonomyId === taxonomyId)
+  if (!outcome || !(await canReview(user, round))) return
+  if (
+    outcome.resultCodes.length > 0 &&
+    sameLabels(
+      labels,
+      outcome.resultCodes.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
+    )
+  )
+    return
+  await db().doubleOutcome.update({
+    where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
+    data: { state: 'reviewed', reviewedById: user.id, reviewedAt: new Date(), resultCodes: codesOf(labels) }
+  })
+}
+
 /** Manager checks shared by the round commands: role, own participation, team. */
-async function requireManager(user: CurrentUser, round: ActiveRound) {
+async function requireManager(user: CurrentUser, round: Round) {
   if (user.role !== 'admin' && user.role !== 'supervisor') {
     throw new DoubleAnnotationError('Only supervisors and admins can manage double annotation', 403)
   }
@@ -316,11 +528,27 @@ async function requireManager(user: CurrentUser, round: ActiveRound) {
 }
 
 /**
+ * Closes the parts nobody has answered (cancelled, their people lose access
+ * to the record). Parts with answers stay: their people keep seeing the
+ * record as their own work.
+ */
+async function cancelUnansweredParts(round: Round) {
+  const answered = new Set((await taskLabels(round.tasks.map(t => t.id))).map(l => l.taskId))
+  const open = round.tasks.filter(t => t.status !== 'submitted' && !answered.has(t.id))
+  if (open.length === 0) return
+  await db().doubleTask.updateMany({ where: { id: { in: open.map(t => t.id) } }, data: { status: 'cancelled' } })
+  await dropLabellerAccess(
+    [round.sentenceId],
+    open.flatMap(t => (t.assigneeId ? [t.assigneeId] : []))
+  )
+}
+
+/**
  * Waives the missing second label: every taxonomy that has one answer keeps
  * it as the confirmed result. Refused while a taxonomy disagrees (review it)
  * or has no answer at all.
  */
-export async function acceptSingle(user: CurrentUser, round: ActiveRound, reason: string) {
+export async function acceptSingle(user: CurrentUser, round: Round, reason: string) {
   await requireManager(user, round)
   if (round.outcomes.some(o => o.state === 'disagreed')) {
     throw new DoubleAnnotationError('The two labels disagree: review them instead of accepting one', 409)
@@ -331,19 +559,17 @@ export async function acceptSingle(user: CurrentUser, round: ActiveRound, reason
   const tx = db()
   const now = new Date()
   for (const outcome of round.outcomes.filter(o => o.state === 'waiting')) {
+    const rows = await tx.sentenceAnnotation.findMany({
+      where: { sentenceId: round.sentenceId, taxonomyId: outcome.taxonomyId, source: 'user' },
+      select: { level: true, nodeCode: true }
+    })
     await tx.doubleOutcome.update({
       where: { roundId_taxonomyId: { roundId: round.id, taxonomyId: outcome.taxonomyId } },
-      data: { state: 'accepted_single', reviewedById: user.id, reviewedAt: now }
+      data: { state: 'accepted_single', reviewedById: user.id, reviewedAt: now, resultCodes: codesOf(rows) }
     })
-    const rows = await tx.sentenceAnnotation.count({
-      where: { sentenceId: round.sentenceId, taxonomyId: outcome.taxonomyId, source: 'user' }
-    })
-    await countForLearning(outcome.taxonomyId, rows)
+    await countForLearning(outcome.taxonomyId, rows.length)
   }
-  await tx.doubleTask.updateMany({
-    where: { roundId: round.id, status: { in: ['pending', 'skipped'] } },
-    data: { status: 'cancelled' }
-  })
+  await cancelUnansweredParts(round)
   await tx.doubleRound.update({
     where: { id: round.id },
     data: { status: 'completed', closedAt: now, closedById: user.id, closeReason: reason }
@@ -352,25 +578,26 @@ export async function acceptSingle(user: CurrentUser, round: ActiveRound, reason
 }
 
 /**
- * Stops double annotation: open parts are cancelled, given answers and
- * comparisons stay for the record, and the record is ordinary work again
- * (its current labels decide its status the usual way).
+ * Stops double annotation: unanswered parts are cancelled (their people lose
+ * access), given answers and comparisons stay, people who answered keep
+ * seeing only their own answer, and the record is ordinary work again (its
+ * current labels decide its status the usual way).
  */
-export async function stopRound(user: CurrentUser, round: ActiveRound, reason: string) {
+export async function stopRound(user: CurrentUser, round: Round, reason: string) {
   await requireManager(user, round)
-  const tx = db()
-  await tx.doubleTask.updateMany({
-    where: { roundId: round.id, status: { in: ['pending', 'skipped'] } },
-    data: { status: 'cancelled' }
-  })
-  await tx.doubleRound.update({
+  await cancelUnansweredParts(round)
+  await db().doubleRound.update({
     where: { id: round.id },
     data: { status: 'cancelled', closedAt: new Date(), closedById: user.id, closeReason: reason }
   })
 }
 
-/** Hands an unstarted part (pending or skipped, no answers yet) to someone else. */
-export async function reassignTask(user: CurrentUser, round: ActiveRound, position: number, userId: string) {
+/**
+ * Hands an unstarted part (pending or skipped, no answers yet) to someone
+ * else: the old part is cancelled (kept for the history), a new one is
+ * created in the same position, and the previous person loses access.
+ */
+export async function reassignTask(user: CurrentUser, round: Round, position: number, userId: string) {
   await requireManager(user, round)
   const task = round.tasks.find(t => t.position === position)
   if (!task) throw new DoubleAnnotationError('No such part', 404)
@@ -384,8 +611,20 @@ export async function reassignTask(user: CurrentUser, round: ActiveRound, positi
   if (round.tasks.some(t => t.id !== task.id && t.assigneeId === userId)) {
     throw new DoubleAnnotationError('The two labels must come from two different people', 400)
   }
+  if (task.assigneeId === userId) return
   await requireAssignable(user, [userId])
-  await db().doubleTask.update({ where: { id: task.id }, data: { assigneeId: userId, status: 'pending' } })
+  const tx = db()
+  await tx.doubleTask.update({ where: { id: task.id }, data: { status: 'cancelled' } })
+  await tx.doubleTask.create({
+    data: {
+      workspaceId: scopeWorkspaceId(),
+      roundId: round.id,
+      sentenceId: round.sentenceId,
+      position,
+      assigneeId: userId
+    }
+  })
+  if (task.assigneeId) await dropLabellerAccess([round.sentenceId], [task.assigneeId])
   await ensureAccess([round.sentenceId], [userId], user.id)
 }
 
@@ -418,6 +657,21 @@ async function ensureAccess(sentenceIds: string[], userIds: string[], assignedBy
       memberships.map(m => ({ workspaceId: scopeWorkspaceId(), sentenceId, membershipId: m.id, assignedBy }))
     ),
     skipDuplicates: true
+  })
+}
+
+/**
+ * Removes labellers' record access: nobody with the labeller role keeps a
+ * record of a round they have no part in (they would see it without labels,
+ * or later see someone else's answer). Supervisors and admins keep theirs.
+ */
+async function dropLabellerAccess(sentenceIds: string[], userIds: string[]) {
+  if (sentenceIds.length === 0 || userIds.length === 0) return
+  await db().sentenceAssignment.deleteMany({
+    where: {
+      sentenceId: { in: sentenceIds },
+      membership: { userId: { in: userIds }, role: 'labeller' }
+    }
   })
 }
 
@@ -578,6 +832,16 @@ export async function startRounds(user: CurrentUser, plan: StartPlan): Promise<n
     where: { id: { in: startable.map(i => i.sentenceId) } },
     data: { status: 'pending' }
   })
+  // Only the round's people keep labeller access to its record.
+  for (const item of startable) {
+    const keep = new Set([...item.labellerIds, ...(item.baselineAuthorId ? [item.baselineAuthorId] : [])])
+    await tx.sentenceAssignment.deleteMany({
+      where: {
+        sentenceId: item.sentenceId,
+        membership: { role: 'labeller', userId: { notIn: [...keep] } }
+      }
+    })
+  }
   const byPerson = new Map<string, string[]>()
   startable.forEach(i =>
     i.labellerIds.forEach(id => {
@@ -590,67 +854,7 @@ export async function startRounds(user: CurrentUser, plan: StartPlan): Promise<n
 }
 
 // ---------------------------------------------------------------------------
-// Blind reads: what the labellers of a round must not see.
-
-/**
- * The records among `sentenceIds` that `user` sees blind: in an active round
- * where they label (or, as a labeller, where they do not label but have
- * access). Blind views show only the person's own answer and comments, no AI
- * suggestions, and no other labels.
- */
-export async function blindSentenceIds(user: CurrentUser, sentenceIds: string[]): Promise<Set<string>> {
-  if (sentenceIds.length === 0) return new Set()
-  const rounds = await db().doubleRound.findMany({
-    where: { sentenceId: { in: sentenceIds }, status: 'active' },
-    select: { sentenceId: true, tasks: { where: { status: { not: 'cancelled' } }, select: { assigneeId: true } } }
-  })
-  const manager = user.role === 'admin' || user.role === 'supervisor'
-  return new Set(rounds.filter(r => !manager || r.tasks.some(t => t.assigneeId === user.id)).map(r => r.sentenceId))
-}
-
-/** Comment filter for one record: only the caller's own comments when they see it blind. */
-export async function commentAudienceFilter(user: CurrentUser, sentenceId: string): Promise<Prisma.CommentWhereInput> {
-  return (await blindSentenceIds(user, [sentenceId])).has(sentenceId) ? { authorId: user.id } : {}
-}
-
-/**
- * Prisma filter excluding records the caller labels blind, for queue filters
- * on labels (a label filter would otherwise reveal the other answer).
- */
-export function notBlindFor(user: CurrentUser): Prisma.SentenceWhereInput {
-  const own = {
-    status: 'active' as const,
-    tasks: { some: { assigneeId: user.id, status: { not: 'cancelled' as const } } }
-  }
-  if (user.role === 'admin' || user.role === 'supervisor') return { NOT: { doubleRounds: { some: own } } }
-  return { NOT: { doubleRounds: { some: { status: 'active' } } } }
-}
-
-/** Own answers of `user` in the active rounds of `sentenceIds`, by record. */
-export async function ownAnswers(user: CurrentUser, sentenceIds: string[]) {
-  const tasks = await db().doubleTask.findMany({
-    where: {
-      sentenceId: { in: sentenceIds },
-      assigneeId: user.id,
-      status: { not: 'cancelled' },
-      round: { status: 'active' }
-    },
-    select: {
-      id: true,
-      sentenceId: true,
-      status: true,
-      assignee: { select: { id: true, name: true, username: true, email: true } },
-      labels: {
-        select: { taxonomyId: true, level: true, nodeCode: true, labelingStartedAt: true, createdAt: true },
-        orderBy: { level: 'asc' }
-      }
-    }
-  })
-  return new Map(tasks.map(t => [t.sentenceId, t]))
-}
-
-// ---------------------------------------------------------------------------
-// The record screen's view of a round.
+// The record screen's view of an active round, for managers.
 
 async function nodeLabels(rows: Array<{ taxonomyId: string; nodeCode: string }>) {
   if (rows.length === 0) return new Map<string, string>()
@@ -665,6 +869,7 @@ async function nodeLabels(rows: Array<{ taxonomyId: string; nodeCode: string }>)
 }
 
 export async function recordView(user: CurrentUser, view: DoubleView): Promise<DoubleRecordView> {
+  if (view.mode === 'hidden') return { mode: 'hidden' }
   const { round } = view
   const taxonomies = await db().taxonomy.findMany({
     where: { id: { in: round.outcomes.map(o => o.taxonomyId) } },
@@ -672,17 +877,6 @@ export async function recordView(user: CurrentUser, view: DoubleView): Promise<D
     orderBy: { key: 'asc' }
   })
   const keyOf = new Map(taxonomies.map(t => [t.id, t.key]))
-  if (view.mode === 'hidden') return { mode: 'hidden' }
-  if (view.mode === 'task') {
-    const answered = new Set((await taskLabels([view.task.id])).map(l => l.taxonomyId))
-    return {
-      mode: 'task',
-      taskStatus: view.task.status === 'cancelled' ? 'pending' : view.task.status,
-      required: taxonomies.map(t => t.key),
-      answered: taxonomies.filter(t => answered.has(t.id)).map(t => t.key)
-    }
-  }
-
   const [labels, people, reviewers] = await Promise.all([
     taskLabels(round.tasks.map(t => t.id)),
     db().user.findMany({
@@ -714,6 +908,7 @@ export async function recordView(user: CurrentUser, view: DoubleView): Promise<D
         taxonomyKey: keyOf.get(o.taxonomyId)!,
         state: o.state as OutcomeState,
         matched: o.matched,
+        revisedAfterCompare: o.revisedAfterCompare,
         sourcePosition: o.sourceTaskId ? (positionOf.get(o.sourceTaskId) ?? null) : null,
         reviewedBy: o.reviewedById ? (names.get(o.reviewedById) ?? 'Unknown') : null,
         note: o.note,

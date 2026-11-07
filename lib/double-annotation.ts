@@ -83,14 +83,23 @@ export const OUTCOME_LABELS: Record<OutcomeState, string> = {
 export type TaxonomyAnnotationStatus =
   'unlabelled' | 'single' | 'provisional' | 'disagreed' | 'agreed' | 'reviewed' | 'accepted_single'
 
+const sameCodes = (a: string[], b: string[]) => a.length === b.length && a.every((c, i) => c === b[i])
+
 export function taxonomyStatus(opts: {
   /** The taxonomy's outcome in the record's latest round that was not stopped, if any. */
-  outcome: { state: OutcomeState } | null
+  outcome: { state: OutcomeState; resultCodes?: string[] } | null
   hasLabels: boolean
+  /** The record's current label codes for the taxonomy, by level. */
+  codes?: string[]
 }): TaxonomyAnnotationStatus {
-  const { outcome, hasLabels } = opts
+  const { outcome, hasLabels, codes } = opts
   if (!outcome) return hasLabels ? 'single' : 'unlabelled'
   if (outcome.state === 'waiting') return hasLabels ? 'provisional' : 'unlabelled'
+  // Labels changed after the confirmation by someone who could not decide: ordinary labels.
+  const result = outcome.resultCodes ?? []
+  if (isConfirmed(outcome.state) && result.length > 0 && codes && !sameCodes(codes, result)) {
+    return hasLabels ? 'single' : 'unlabelled'
+  }
   return outcome.state
 }
 
@@ -110,26 +119,22 @@ type PathView = Array<{ level: number; nodeCode: string; nodeLabel: string | nul
 /** Ordinary edit permissions, without disclosing the annotation workflow. */
 export type RecordLabelingAccess = { editableTaxonomies: string[] | null }
 
+/** Managers and ordinary records: no restriction; a record without a part in an active round: none. */
 export function recordLabelingAccess(view: DoubleRecordView | null): RecordLabelingAccess {
-  return {
-    editableTaxonomies:
-      view?.mode === 'task'
-        ? view.required.filter(key => !view.answered.includes(key))
-        : view?.mode === 'hidden'
-          ? []
-          : null
-  }
+  return { editableTaxonomies: view?.mode === 'hidden' ? [] : null }
+}
+
+/**
+ * A participant may change their answer for every taxonomy the round
+ * requires: no restriction (as on ordinary records) when that is every active
+ * taxonomy, else the required ones.
+ */
+export function participantLabelingAccess(required: string[], active: string[]): RecordLabelingAccess {
+  return { editableTaxonomies: active.every(key => required.includes(key)) ? null : required }
 }
 
 /** The record screen's view of an active round (record GET `double`; lib/server/double-annotation.ts recordView). */
 export type DoubleRecordView =
-  | {
-      mode: 'task'
-      taskStatus: 'pending' | 'submitted' | 'skipped'
-      /** Taxonomy keys the round requires and those this person answered. */
-      required: string[]
-      answered: string[]
-    }
   | { mode: 'hidden' }
   | {
       mode: 'manager'
@@ -145,6 +150,8 @@ export type DoubleRecordView =
         taxonomyKey: string
         state: OutcomeState
         matched: boolean | null
+        /** A labeller changed their answer after the comparison. */
+        revisedAfterCompare: boolean
         sourcePosition: number | null
         reviewedBy: string | null
         note: string | null

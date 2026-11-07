@@ -238,7 +238,6 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     (sentence?.labeling?.editableTaxonomies != null &&
       (!activeTaxonomy || !sentence.labeling.editableTaxonomies.includes(activeTaxonomy.key))) ||
     double?.mode === 'hidden' ||
-    (double?.mode === 'task' && Boolean(activeTaxonomy && double.answered.includes(activeTaxonomy.key))) ||
     (double?.mode === 'manager' &&
       (!double.canReview ||
         !activeOutcome ||

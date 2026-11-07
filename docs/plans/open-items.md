@@ -127,3 +127,6 @@ Implemented as described in section 0 of [the plan](double-annotation.md).
 - [ ] **Full e2e suite** once on the merged code (only the new journey and the
       accessibility spec were run before the merge).
 - [ ] **Decide** which deferred follow-ups (plan section 0) are wanted.
+- [ ] **v2:** confidentiality and integrity fixes after a round closes, review
+      mode, analysis export and per-level agreement; findings, plan and
+      decisions in [double-annotation-v2.md](double-annotation-v2.md).

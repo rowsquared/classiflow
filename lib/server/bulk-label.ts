@@ -10,6 +10,7 @@ import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/
 import { audit } from '@/lib/audit'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 import { logError } from '@/lib/logger'
+import { participation, recordChangedResult, setParticipantFlags } from '@/lib/server/double-annotation'
 
 // Codes are strings: a number would already have lost its leading zeros.
 const bulkLabelSchema = z.object({
@@ -124,10 +125,19 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       if (current.length !== sentenceIds.length) {
         throw new MissingRecordError()
       }
+      // The caller's own double-annotation parts take labels one at a time,
+      // as do records in an active round.
+      const parts = new Set((await participation(user, sentenceIds)).keys())
       if (wroteLabels || requested === 'skipped') {
-        const inDouble = await tx.doubleRound.count({ where: { sentenceId: { in: sentenceIds }, status: 'active' } })
+        const inDouble = await tx.sentence.count({
+          where: {
+            id: { in: sentenceIds },
+            OR: [{ id: { in: [...parts] } }, { doubleRounds: { some: { status: 'active' } } }]
+          }
+        })
         if (inDouble > 0) throw new DoubleRecordsError(inDouble)
       }
+      if (flagged !== undefined && parts.size > 0) await setParticipantFlags(user, [...parts], flagged)
 
       if (wroteLabels) {
         const existing = await tx.sentenceAnnotation.findMany({
@@ -174,6 +184,12 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
             data: { newAnnotationsSinceLastLearning: { increment: changedCount * annotations.length } }
           })
         }
+        // Completed double annotation: a reviewer's change is their decision.
+        for (const id of sentenceIds) {
+          if (!sameLabels(existingBySentence.get(id) ?? [], annotations)) {
+            await recordChangedResult(user, id, taxonomy.id, annotations)
+          }
+        }
       }
 
       if (trimmedComment) {
@@ -190,6 +206,11 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       const done = await completedTaxonomies(tx, sentenceIds, activeIds)
       const now = new Date()
       for (const { id, status } of current) {
+        if (parts.has(id)) {
+          // Flag or comment on the caller's own part: the record's status stays.
+          await tx.sentence.update({ where: { id }, data: { lastEditorId: user.id, lastEditedAt: now } })
+          continue
+        }
         const updateData: Prisma.SentenceUncheckedUpdateInput = {
           status: decideStatus({
             requested,

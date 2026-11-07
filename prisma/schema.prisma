@@ -754,6 +754,8 @@ model DoubleTask {
   assigneeId   String?
   status       DoubleTaskStatus @default(pending)
   fromBaseline Boolean          @default(false)
+  // The participant's own flag: participants never see each other's flags or the record's.
+  flagged      Boolean          @default(false)
   createdAt    DateTime         @default(now())
   submittedAt  DateTime?
 
@@ -775,13 +777,17 @@ model DoubleTaskLabel {
   taxonomyId        String
   level             Int
   nodeCode          String // String codes; level-specific unknown codes (lib/constants.ts)
+  // A participant can change their answer: each change is a new revision; the
+  // previous one gets supersededAt (the only update the trigger allows).
+  revision          Int       @default(1)
+  supersededAt      DateTime?
   labelingStartedAt DateTime?
   createdAt         DateTime  @default(now())
 
   task     DoubleTask @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: Cascade)
   taxonomy Taxonomy   @relation(fields: [workspaceId, taxonomyId], references: [workspaceId, id], onDelete: Cascade)
 
-  @@id([taskId, taxonomyId, level])
+  @@id([taskId, taxonomyId, revision, level])
   @@index([taxonomyId])
 }
 
@@ -801,6 +807,11 @@ model DoubleOutcome {
   reviewedById String?
   reviewedAt   DateTime?
   note         String?
+  // The confirmed path (codes by level), written when the outcome is confirmed;
+  // the export compares the record's labels with it.
+  resultCodes  String[]           @default([])
+  // A participant changed their answer after the comparison (managers see it).
+  revisedAfterCompare Boolean     @default(false)
 
   round      DoubleRound @relation(fields: [workspaceId, roundId], references: [workspaceId, id], onDelete: Cascade)
   sentence   Sentence    @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)

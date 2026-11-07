@@ -3,6 +3,7 @@ import {
   compareAnswers,
   firstDifferingLevel,
   recordStatus,
+  participantLabelingAccess,
   recordLabelingAccess,
   summarizeOutcomes,
   taxonomyStatus
@@ -12,9 +13,8 @@ const path = (...codes: string[]) => codes.map((nodeCode, i) => ({ level: i + 1,
 
 describe('double annotation rules', () => {
   it('exposes edit permissions without task or comparison metadata', () => {
-    expect(
-      recordLabelingAccess({ mode: 'task', taskStatus: 'pending', required: ['A', 'B'], answered: ['A'] })
-    ).toEqual({ editableTaxonomies: ['B'] })
+    expect(participantLabelingAccess(['A', 'B'], ['A', 'B'])).toEqual({ editableTaxonomies: null })
+    expect(participantLabelingAccess(['A'], ['A', 'B'])).toEqual({ editableTaxonomies: ['A'] })
     expect(recordLabelingAccess({ mode: 'hidden' })).toEqual({ editableTaxonomies: [] })
     expect(recordLabelingAccess(null)).toEqual({ editableTaxonomies: null })
   })
@@ -42,6 +42,13 @@ describe('double annotation rules', () => {
     expect(taxonomyStatus({ outcome: null, hasLabels: false })).toBe('unlabelled')
     expect(taxonomyStatus({ outcome: { state: 'waiting' }, hasLabels: true })).toBe('provisional')
     expect(taxonomyStatus({ outcome: { state: 'disagreed' }, hasLabels: true })).toBe('disagreed')
+    // Changed after confirmation by someone who could not decide: ordinary labels.
+    const reviewed = { state: 'reviewed' as const, resultCodes: ['8', '83'] }
+    expect(taxonomyStatus({ outcome: reviewed, hasLabels: true, codes: ['8', '83'] })).toBe('reviewed')
+    expect(taxonomyStatus({ outcome: reviewed, hasLabels: true, codes: ['8', '82'] })).toBe('single')
+    expect(taxonomyStatus({ outcome: { state: 'agreed', resultCodes: [] }, hasLabels: true, codes: ['1'] })).toBe(
+      'agreed'
+    )
     expect(recordStatus(['single', 'agreed'])).toBe('confirmed')
     expect(recordStatus(['provisional', 'agreed'])).toBe('provisional')
     expect(recordStatus(['disagreed', 'unlabelled'])).toBe('needs_review')

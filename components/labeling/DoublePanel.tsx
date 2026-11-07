@@ -28,7 +28,7 @@ const PART_STATUS: Record<string, string> = { submitted: 'done', pending: 'to do
 
 /**
  * Double annotation on the labelling screen.
- * - Participants get no workflow notice; their own answer is all they see.
+ * - Participants never get this panel: their own answer is all they see.
  * - Managers: the active taxonomy's two answers side by side with the first
  *   difference marked, "Use this answer" buttons (or choose another path
  *   below and submit), and the record-level actions: accept the single label
@@ -145,6 +145,11 @@ function ManagerPanel({
         </div>
       )}
 
+      {outcome?.revisedAfterCompare && (
+        <p className="text-sm text-gray-700">
+          A labeller changed their answer after the two answers were compared. The answers above are the current ones.
+        </p>
+      )}
       {outcome?.state === 'disagreed' && view.canReview && (
         <p className="text-sm text-gray-700">
           Pick one answer, or choose another label below and submit it as the decision.

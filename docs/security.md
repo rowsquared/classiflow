@@ -171,29 +171,34 @@ refused.
 
 ### Double annotation
 
-Records in an active double-annotation round (`lib/server/double-annotation.ts`)
-narrow what some people may see and do, on top of record visibility:
+Double annotation (`lib/server/double-annotation.ts`, rules in
+[docs/plans/double-annotation-v2.md](plans/double-annotation-v2.md) section 2)
+narrows what some people may see and do, on top of record visibility.
+Participation is sticky: whoever holds a live part in **any** round of a
+record (active, completed or stopped) is a participant for that record.
 
 | Who | Sees | May write |
 | --- | --- | --- |
-| One of the round's two labellers (any role) | only their own answer, comments and edit information; no AI suggestions or other labels; label/AI queue filters skip the record; their queue tabs follow their own part | their own answer, once per taxonomy (final); skip their part; comments |
-| A labeller with access who is not in the round | no labels | nothing but comments and flags |
-| Admin not in the round | both answers, outcome, people | review decisions, accept single label, stop, hand over a part |
+| A participant (any role) | only their own current answer, comments, flag, status and edit time, also after the round closed; no AI suggestions or other labels; queue tabs, label/editor/date/flag/comment filters apply to their own part; AI filters skip the record | their own answer (each change is a new revision; it never changes the result); skip their part; their own flag; comments |
+| A labeller who is not in an active round | nothing: the record is outside their visibility (`sentenceVisibilityFilter`), and starting a round, handing over a part, accepting a single label or stopping removes labellers' assignments to it unless they hold an answered part | — |
+| Admin not in the round | both answers, outcome, people (active round) | review decisions, accept single label, stop, hand over a part; on a completed round a label save is their new decision |
 | Supervisor not in the round | the same, when both labellers are in their subtree | the same; otherwise read-only (a person outside the team needs an admin) |
 
 Nobody reviews a round they label in. Bulk labels and bulk skips refuse a
-selection that contains an active round (409). The progress overview's
-double-annotation figures (agreement included) are null for labellers. Their
-workload and completion projection follow their own submitted answers while a
-round is active, rather than the agreement status.
+selection that contains an active round or one of the caller's own parts
+(409); bulk flags on own parts set the caller's own flag. The progress
+overview's double-annotation figures (agreement included) are null for
+labellers. Their workload and completion projection follow their own
+submitted answers while a round is active, rather than the agreement status.
 
-Labellers see no double-annotation notice, comparison, reviewer state or task
-metadata. Record responses use ordinary `labeling.editableTaxonomies` permissions
-to retain submission locks without naming the workflow. Their assignment reads
-show only themselves; blind record and queue reads expose only their own edit
-timestamps and comment counts. Comment filters use the same private audience;
-label/AI and editor/date filters exclude blind records. Bulk-action and label-save
-errors shown to labellers do not identify double annotation.
+Participants see no double-annotation notice, comparison, reviewer state or
+task metadata, and their record and queue responses have the same shape as
+for ordinary records (`labeling.editableTaxonomies` is null unless the round
+requires fewer taxonomies than are active). Their assignment reads show only
+themselves. Bulk-action and label-save errors shown to labellers do not
+identify double annotation. The export compares a confirmed outcome's
+`resultCodes` with the record's labels and reports labels changed outside
+the workflow as `single`.
 
 ## Access matrix
 
@@ -226,7 +231,7 @@ admin) with a valid session who does not have to reset their password.
 | `/sentences/[id]/annotations`, `/flag` | POST | member; record in scope |
 | `/sentences/[id]/comments` | GET, POST, PATCH (resolve) | member; record in scope |
 | `/sentences/[id]/comments` | DELETE | record in scope **and** (comment author or admin) |
-| `/sentences/bulk-label` | POST | member; **every** record in scope; none in an active double-annotation round when labelling or skipping |
+| `/sentences/bulk-label` | POST | member; **every** record in scope; none in an active double-annotation round and none of the caller's own parts when labelling or skipping |
 | `/sentences/double-annotation` | POST (preview with `dryRun`, start) | admin, supervisor; every record in scope and both people in the caller's team |
 | `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
 | `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |

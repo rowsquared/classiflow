@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/workspace/db'
+import { db, inCurrentWorkspace } from '@/lib/workspace/db'
+import { setParticipantFlags } from '@/lib/server/double-annotation'
 import { z } from 'zod'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
@@ -21,9 +22,10 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
     }
     const { flagged } = parsed.data
 
-    await db().sentence.update({
-      where: { id: sentenceId },
-      data: { flagged }
+    // A double-annotation participant flags their own part (lib/server/double-annotation.ts).
+    await inCurrentWorkspace(async () => {
+      const own = await setParticipantFlags(user, [sentenceId], flagged)
+      if (!own.has(sentenceId)) await db().sentence.update({ where: { id: sentenceId }, data: { flagged } })
     })
 
     return NextResponse.json({ success: true, flagged })

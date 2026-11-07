@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Double annotation v2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <!--
+      Mockups for docs/plans/double-annotation-v2.md. Static, illustrative data,
+      no application code. Follows the rowsquared look: square corners (2px),
+      flat panels with hairlines, teal accent, sentence case, Inter 400/500/600.
+    -->
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --line: #e5e7eb;
+        --line-strong: #6b7280;
+        --text: #111827;
+        --muted: #4b5563;
+        --teal-50: #e6f4f2;
+        --teal-100: #cce9e5;
+        --teal-600: #0f766e;
+        --teal-700: #115e59;
+        --warn-bg: #f7f3b3;
+        --warn-text: #4d470b;
+        --danger-bg: #fde8e8;
+        --danger-text: #9b1c1c;
+        --info-bg: #e0ecff;
+        --info-text: #1e3a8a;
+        --ok-bg: #dcf5e7;
+        --ok-text: #14532d;
+        --bad-old: #fff1f1;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 14px;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.45;
+      }
+      header.top {
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        padding: 16px 24px;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      header.top h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      nav.toc {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      nav.toc a {
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 2px;
+        color: var(--teal-700);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      nav.toc a:hover {
+        background: var(--teal-50);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      section.mock {
+        margin-bottom: 48px;
+        scroll-margin-top: 110px;
+      }
+      section.mock > h2 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      section.mock > p.why {
+        margin: 0 0 12px;
+        color: var(--muted);
+        max-width: 860px;
+      }
+      .tag {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .frame {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 2px;
+      }
+      .frame-title {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .pad {
+        padding: 16px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .split {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+      }
+      .split > div + div {
+        border-left: 1px solid var(--line);
+      }
+      @media (max-width: 820px) {
+        .grid2,
+        .split {
+          grid-template-columns: 1fr;
+        }
+        .split > div + div {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+      }
+      .label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+      .label:first-child {
+        margin-top: 0;
+      }
+      .value {
+        font-size: 15px;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 12px;
+        padding: 1px 6px;
+        border-radius: 2px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .b-warn {
+        background: var(--warn-bg);
+        color: var(--warn-text);
+      }
+      .b-ok {
+        background: var(--ok-bg);
+        color: var(--ok-text);
+      }
+      .b-info {
+        background: var(--info-bg);
+        color: var(--info-text);
+      }
+      .b-danger {
+        background: var(--danger-bg);
+        color: var(--danger-text);
+      }
+      .b-neutral {
+        background: #eef0f3;
+        color: #374151;
+      }
+      .b-teal {
+        background: var(--teal-100);
+        color: var(--teal-700);
+      }
+      .chip {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        padding: 1px 5px;
+        background: var(--teal-50);
+        color: var(--teal-700);
+        border-radius: 2px;
+        margin: 1px 2px 1px 0;
+      }
+      .chip.isic {
+        background: #eef0ff;
+        color: #3730a3;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 6px 12px;
+        border-radius: 2px;
+        border: 1px solid var(--line-strong);
+        background: #fff;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .btn.primary {
+        background: var(--teal-600);
+        border-color: var(--teal-600);
+        color: #fff;
+      }
+      .btn.ghost {
+        border-color: transparent;
+        color: var(--teal-700);
+      }
+      .btn:focus-visible {
+        outline: 2px solid var(--teal-600);
+        outline-offset: 2px;
+      }
+      kbd {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        border: 1px solid currentColor;
+        border-radius: 2px;
+        padding: 0 4px;
+        opacity: 0.8;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-weight: 500;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      td.num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      tr.diff td {
+        background: var(--warn-bg);
+        color: var(--warn-text);
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+        padding: 0 12px;
+        gap: 4px;
+      }
+      .tabs span {
+        padding: 10px 10px 8px;
+        border-bottom: 2px solid transparent;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .tabs span.on {
+        border-color: var(--teal-600);
+        color: var(--teal-700);
+        font-weight: 500;
+      }
+      .choice {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .choice label {
+        flex: 1 1 180px;
+        border: 1px solid var(--line-strong);
+        border-radius: 2px;
+        padding: 10px 12px;
+        cursor: pointer;
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .choice label:has(input:checked) {
+        border-color: var(--teal-600);
+        background: var(--teal-50);
+      }
+      .choice small {
+        display: block;
+        color: var(--muted);
+      }
+      input[type='text'],
+      input[type='number'],
+      textarea,
+      select {
+        font: inherit;
+        border: 1px solid var(--line-strong);
+        border-radius: 2px;
+        padding: 6px 8px;
+        background: #fff;
+        color: var(--text);
+      }
+      textarea {
+        width: 100%;
+        min-height: 44px;
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .between {
+        justify-content: space-between;
+      }
+      .note {
+        border-left: 3px solid var(--teal-600);
+        background: var(--teal-50);
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .note.bad {
+        border-color: #c81e1e;
+        background: var(--bad-old);
+      }
+      .caption {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      .toast {
+        display: inline-flex;
+        gap: 12px;
+        align-items: center;
+        background: #1f2937;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 2px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+        font-size: 13px;
+      }
+      .toast a {
+        color: #99f6e4;
+      }
+      .bar {
+        height: 8px;
+        background: #eef0f3;
+        position: relative;
+        min-width: 80px;
+      }
+      .bar > i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: var(--teal-600);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .col-list {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .col-list li {
+        margin: 2px 0;
+      }
+      .hide-sm {
+      }
+      @media (max-width: 820px) {
+        .hide-sm {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <h1>Double annotation v2 — mockups</h1>
+      <nav class="toc" aria-label="Mockups">
+        <a href="#labeller">1 Labeller view</a>
+        <a href="#review">2 Review mode</a>
+        <a href="#queue">3 Queue</a>
+        <a href="#start">4 Start dialog</a>
+        <a href="#history">5 Record history</a>
+        <a href="#export">6 Export</a>
+        <a href="#progress">7 Progress</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- 1 ------------------------------------------------------------ -->
+      <section class="mock" id="labeller">
+        <h2>1 Labeller view after a review <span class="tag">fixes C1, C2, C3 · plan section 2</span></h2>
+        <p class="why">
+          Sofia labelled <span class="mono">8321</span>. Priya labelled <span class="mono">8322</span>; the supervisor
+          chose <span class="mono">8322</span>. Today Sofia's record and queue row switch to Priya's answer and name,
+          and she can overwrite the decision. In v2 a participant always sees only her own answer, can revise it like
+          any record, and the revision never touches the confirmed result.
+        </p>
+        <div class="grid2">
+          <div class="frame">
+            <div class="frame-title">Today <span class="badge b-danger">Leaks</span></div>
+            <div class="pad">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Content</th>
+                    <th>Labels</th>
+                    <th>Editor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>motorcycle taxi driver <span class="muted">· Food delivery app</span></td>
+                    <td>
+                      <span class="chip">8</span><span class="chip">83</span><span class="chip">832</span
+                      ><span class="chip" style="outline: 2px solid #c81e1e">8322</span>
+                    </td>
+                    <td><span class="badge b-danger">Priya Nair</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="note bad" style="margin-top: 12px">
+                Not her answer, not her name, and <b>Submit</b> is live: her save replaces the reviewed result while the
+                export still says <span class="mono">reviewed</span>.
+              </div>
+            </div>
+          </div>
+          <div class="frame">
+            <div class="frame-title">v2 <span class="badge b-ok">Looks like any record of hers</span></div>
+            <div class="pad">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Content</th>
+                    <th>Labels</th>
+                    <th>Editor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>motorcycle taxi driver <span class="muted">· Food delivery app</span></td>
+                    <td>
+                      <span class="chip">8</span><span class="chip">83</span><span class="chip">832</span
+                      ><span class="chip">8321</span>
+                    </td>
+                    <td><span class="badge b-teal">Sofia Martins</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="note" style="margin-top: 12px">
+                Own answer, own edit time, own comments, own flag. Editing works as on any submitted record; it creates
+                a new revision of <em>her</em> answer. Managers see “Sofia revised her answer after the decision”.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 ------------------------------------------------------------ -->
+      <section class="mock" id="review">
+        <h2>2 Review mode <span class="tag">fixes S1–S4 · plan 3.1</span></h2>
+        <p class="why">
+          Tabs say which taxonomy needs a decision. Answers are aligned level by level. Nothing is pre-selected (shown
+          here after the reviewer pressed 1): the reviewer chooses A, B or another label (keys 1/2/3), may add a note,
+          then saves and moves on. Agreed taxonomies are read-only with an explicit override.
+        </p>
+        <div class="frame">
+          <div class="frame-title">
+            <span>Review 3 of 8</span>
+            <span class="row"
+              ><button class="btn ghost">← Previous</button><button class="btn ghost">Skip for now →</button></span
+            >
+          </div>
+          <div class="split">
+            <div class="pad">
+              <div class="label">Job title</div>
+              <div class="value">nursing officer</div>
+              <div class="label">Main tasks</div>
+              <div class="value">Checks vital signs, dresses wounds and assists doctors</div>
+              <div class="label">Workplace activity</div>
+              <div class="value">public hospital</div>
+              <div class="label" style="margin-top: 18px">Region · Sex · Age</div>
+              <div class="muted">Central · Male · 15–24</div>
+              <div class="label" style="margin-top: 18px">Comments</div>
+              <div class="muted">1 from Tomás: “Ward work, not midwifery?”</div>
+            </div>
+            <div>
+              <div class="tabs" role="tablist">
+                <span class="on">ISCO08 <span class="badge b-warn">Needs review</span></span>
+                <span>ISIC4 <span class="badge b-ok">Agreed</span></span>
+                <span style="margin-left: auto" class="muted">1 of 2 taxonomies to decide</span>
+              </div>
+              <div class="pad">
+                <div class="row between" style="margin-bottom: 8px">
+                  <span class="muted">The answers differ from level 4.</span>
+                  <label class="row muted" style="font-size: 13px"><input type="checkbox" /> Show AI suggestion</label>
+                </div>
+                <table aria-label="Answers by level">
+                  <thead>
+                    <tr>
+                      <th style="width: 60px">Level</th>
+                      <th>A · Tomás Rivera <span class="muted">(first, current result)</span></th>
+                      <th>B · Sofia Martins</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td><span class="mono">2</span> Professionals</td>
+                      <td class="muted">same</td>
+                    </tr>
+                    <tr>
+                      <td>2</td>
+                      <td><span class="mono">22</span> Health professionals</td>
+                      <td class="muted">same</td>
+                    </tr>
+                    <tr>
+                      <td>3</td>
+                      <td><span class="mono">222</span> Nursing and midwifery professionals</td>
+                      <td class="muted">same</td>
+                    </tr>
+                    <tr class="diff">
+                      <td>4</td>
+                      <td><span class="mono">2221</span> Nursing professionals</td>
+                      <td><span class="mono">2222</span> Midwifery professionals</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="label" style="margin-top: 16px">Decision</div>
+                <div class="choice" role="radiogroup" aria-label="Decision">
+                  <label
+                    ><input type="radio" name="d" checked />
+                    <span>Use A <kbd>1</kbd><small>2221 Nursing professionals</small></span></label
+                  >
+                  <label
+                    ><input type="radio" name="d" />
+                    <span>Use B <kbd>2</kbd><small>2222 Midwifery professionals</small></span></label
+                  >
+                  <label
+                    ><input type="radio" name="d" />
+                    <span>Other label <kbd>3</kbd><small>Opens the browser, empty</small></span></label
+                  >
+                </div>
+                <div class="label">Note (optional, in the analysis export)</div>
+                <textarea aria-label="Note">Main tasks describe ward nursing; no birth assistance.</textarea>
+                <div class="row between" style="margin-top: 12px">
+                  <span class="row"
+                    ><button class="btn">Accept single label…</button
+                    ><button class="btn ghost">Stop double annotation…</button></span
+                  >
+                  <button class="btn primary">Save decision and next <kbd>Enter</kbd></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 12px" class="row">
+          <span class="toast">ISCO08 decided: A (2221) · <a href="#review">Undo</a></span>
+          <span class="caption">Toast after saving; the next record opens.</span>
+        </div>
+        <div class="frame" style="margin-top: 16px">
+          <div class="frame-title">Agreed taxonomy (ISIC4 tab)</div>
+          <div class="pad row between">
+            <span
+              >Both answered <span class="chip isic">Q</span><span class="chip isic">86</span> Human health activities ·
+              <span class="badge b-ok">Agreed</span></span
+            >
+            <button class="btn ghost">Override…</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 ------------------------------------------------------------ -->
+      <section class="mock" id="queue">
+        <h2>3 Queue for managers <span class="tag">fixes S6, S8 · plan 3.2</span></h2>
+        <p class="why">
+          A Double column instead of badges under the assignees, filter chips with counts, the disagreement visible in
+          the row, and bulk actions for a selection.
+        </p>
+        <div class="frame">
+          <div class="frame-title">
+            <span class="row">
+              <span class="badge b-neutral">All double 35</span>
+              <span class="badge b-info">Waiting 12</span>
+              <span class="badge b-warn" style="outline: 2px solid var(--teal-600)">Needs review 8</span>
+              <span class="badge b-danger">Needs another person 0</span>
+              <span class="badge b-ok">Confirmed 15</span>
+            </span>
+            <span class="muted" style="font-weight: 400">8 records · 2 selected</span>
+          </div>
+          <div class="pad row" style="border-bottom: 1px solid var(--line)">
+            <button class="btn primary">Review selected</button>
+            <button class="btn">Accept single label…</button>
+            <button class="btn">Hand over parts…</button>
+            <button class="btn ghost">Stop double annotation…</button>
+          </div>
+          <div style="overflow-x: auto">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 28px"></th>
+                  <th>Content</th>
+                  <th>Disagreement</th>
+                  <th class="hide-sm">Labellers</th>
+                  <th>Double</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><input type="checkbox" checked aria-label="Select" /></td>
+                  <td>nursing officer <span class="muted">· public hospital</span></td>
+                  <td>
+                    ISCO08 <span class="mono">A 222<b>1</b></span> ·
+                    <span class="mono">B 222<b>2</b></span>
+                  </td>
+                  <td class="hide-sm">Tomás Rivera · Sofia Martins</td>
+                  <td><span class="badge b-warn">Needs review</span></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" checked aria-label="Select" /></td>
+                  <td>MUSICIAN <span class="muted">· weddings and events</span></td>
+                  <td>
+                    ISCO08 <span class="mono">A 265<b>2</b></span> ·
+                    <span class="mono">B 265<b>6</b></span>
+                  </td>
+                  <td class="hide-sm">Priya Nair · Daniel Kim</td>
+                  <td><span class="badge b-warn">Needs review</span></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" aria-label="Select" /></td>
+                  <td>lieutenant <span class="muted">· National army</span></td>
+                  <td>
+                    ISCO08 <span class="mono">A <b>0</b>110</span> · <span class="mono">B <b>3</b>355</span>
+                    <span class="badge b-neutral">from level 1</span>
+                  </td>
+                  <td class="hide-sm">Priya Nair · Tomás Rivera</td>
+                  <td><span class="badge b-warn">Needs review</span></td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" aria-label="Select" /></td>
+                  <td>Fuel attendant <span class="muted">· petrol station</span></td>
+                  <td class="muted">—</td>
+                  <td class="hide-sm">Daniel Kim ✓ · Sofia Martins (to do, 9 days)</td>
+                  <td><span class="badge b-info">1/2 · waiting</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 ------------------------------------------------------------ -->
+      <section class="mock" id="start">
+        <h2>4 Start double annotation <span class="tag">fixes S7, C4 · plan 3.3</span></h2>
+        <p class="why">
+          Two clear modes, an automatic balanced second person, sampling for continuous quality control, and a preview
+          that says per person what happens — including who loses access so no labeller is left with a locked record.
+        </p>
+        <div class="frame" style="max-width: 760px">
+          <div class="frame-title">Manage assignments · 412 records selected</div>
+          <div class="pad">
+            <div class="choice">
+              <label
+                ><input type="radio" name="m" />
+                <span>Both label from scratch<small>Two people label each record independently.</small></span></label
+              >
+              <label
+                ><input type="radio" name="m" checked />
+                <span
+                  >Add a second label<small
+                    >Existing labels count as the first answer; one more person labels.</small
+                  ></span
+                ></label
+              >
+            </div>
+            <div class="grid2" style="margin-top: 14px">
+              <div>
+                <div class="label">Second person</div>
+                <select aria-label="Second person" style="width: 100%">
+                  <option>Automatic: balanced across my team</option>
+                  <option>Sofia Martins</option>
+                  <option>Daniel Kim</option>
+                </select>
+                <div class="caption">Never the author of the first answer; fewest open parts first.</div>
+              </div>
+              <div>
+                <div class="label">Records</div>
+                <div class="row">
+                  <select aria-label="Sample">
+                    <option>A random share</option>
+                    <option>All selected records</option>
+                  </select>
+                  <input type="number" value="10" style="width: 70px" aria-label="Percent" /> %
+                </div>
+                <div class="caption">41 of 412 records, drawn at random.</div>
+              </div>
+            </div>
+            <div class="label" style="margin-top: 16px">Preview</div>
+            <table>
+              <tbody>
+                <tr>
+                  <td>Sofia Martins</td>
+                  <td class="num">+11 parts</td>
+                  <td class="muted">now 4 open</td>
+                </tr>
+                <tr>
+                  <td>Daniel Kim</td>
+                  <td class="num">+10 parts</td>
+                  <td class="muted">now 6 open</td>
+                </tr>
+                <tr>
+                  <td>Priya Nair</td>
+                  <td class="num">+10 parts</td>
+                  <td class="muted">now 5 open</td>
+                </tr>
+                <tr>
+                  <td>Tomás Rivera</td>
+                  <td class="num">+10 parts</td>
+                  <td class="muted">now 2 open</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="muted">
+                    38 keep their labels as the first answer · 3 have labels by several people: both new people label
+                    them · 2 other labellers lose access to 2 records · 0 already in double annotation
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="row between" style="margin-top: 14px">
+              <button class="btn">Cancel</button><button class="btn primary">Start for 41 records</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5 ------------------------------------------------------------ -->
+      <section class="mock" id="history">
+        <h2>5 Record history for managers <span class="tag">fixes S5, S9, C2 · plan 3.4</span></h2>
+        <p class="why">
+          A completed round stays visible on the record. Changing a confirmed result is an explicit decision with a
+          reason, so the export status always matches the codes.
+        </p>
+        <div class="frame" style="max-width: 760px">
+          <div class="frame-title">Double annotation history <span class="badge b-ok">Confirmed · reviewed</span></div>
+          <div class="pad">
+            <table>
+              <thead>
+                <tr>
+                  <th>ISCO08</th>
+                  <th>Path</th>
+                  <th>When</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>A · Priya Nair <span class="muted">(existing labels)</span></td>
+                  <td class="mono">8 › 83 › 832 › 8322</td>
+                  <td class="muted">12 Oct</td>
+                </tr>
+                <tr>
+                  <td>B · Sofia Martins</td>
+                  <td class="mono">8 › 83 › 832 › 8321</td>
+                  <td class="muted">14 Oct</td>
+                </tr>
+                <tr>
+                  <td>Comparison</td>
+                  <td>Agreed to level 3 · differ from level 4</td>
+                  <td class="muted">14 Oct</td>
+                </tr>
+                <tr>
+                  <td>Decision · Amina Okafor</td>
+                  <td><span class="mono">8322</span> (A) — “Carries passengers by app, not own bike.”</td>
+                  <td class="muted">15 Oct</td>
+                </tr>
+                <tr>
+                  <td>Revision · Sofia Martins</td>
+                  <td><span class="mono">8321</span> again <span class="badge b-info">Result unchanged</span></td>
+                  <td class="muted">7 Nov</td>
+                </tr>
+                <tr>
+                  <td>Hand-over</td>
+                  <td class="muted">Part B: Olivia Brown → Sofia Martins (Olivia left)</td>
+                  <td class="muted">10 Oct</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="row" style="margin-top: 12px">
+              <button class="btn">Change confirmed result…</button>
+              <span class="caption">Records a new decision with a reason; labellers see nothing of it.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 ------------------------------------------------------------ -->
+      <section class="mock" id="export">
+        <h2>6 Export: clean file and analysis pack <span class="tag">fixes E1–E6 · plan section 4</span></h2>
+        <p class="why">
+          The records export stays one row per record and can be exactly the classic layout. Double-annotation analysis
+          gets its own card with its own filters, counts and three files.
+        </p>
+        <div class="grid2">
+          <div class="frame">
+            <div class="frame-title">Records <span class="muted" style="font-weight: 400">3,000 records</span></div>
+            <div class="pad">
+              <div class="row">
+                <label class="muted"
+                  >Labels
+                  <select>
+                    <option>All available labels</option>
+                    <option>Confirmed records only</option>
+                  </select></label
+                >
+                <label class="muted"
+                  >Status
+                  <select>
+                    <option>All</option>
+                    <option>Submitted</option>
+                  </select></label
+                >
+              </div>
+              <label class="row" style="margin-top: 12px"
+                ><input type="checkbox" checked /> Include annotation status columns</label
+              >
+              <div class="caption">
+                On because this workspace uses double annotation. Off gives the classic layout. Unknown codes export as
+                UNKNOWN.
+              </div>
+              <div style="margin-top: 14px"><button class="btn primary">Download records CSV</button></div>
+            </div>
+          </div>
+          <div class="frame">
+            <div class="frame-title">
+              Double annotation analysis <span class="muted" style="font-weight: 400">35 rounds · 70 pairs</span>
+            </div>
+            <div class="pad">
+              <div class="row">
+                <label class="muted"
+                  >Rounds
+                  <select>
+                    <option>All</option>
+                    <option>Completed</option>
+                    <option>Open</option>
+                    <option>Stopped</option>
+                  </select></label
+                >
+                <label class="muted"
+                  >Compared
+                  <select>
+                    <option>Any time</option>
+                    <option>Last 30 days</option>
+                  </select></label
+                >
+                <label class="muted"
+                  >Taxonomy
+                  <select>
+                    <option>All</option>
+                    <option>ISCO08</option>
+                  </select></label
+                >
+              </div>
+              <div class="choice" style="margin-top: 12px">
+                <label
+                  ><input type="radio" name="f" checked />
+                  <span>Pairs<small>One row per record and taxonomy: A, B, match per level, final.</small></span></label
+                >
+                <label
+                  ><input type="radio" name="f" />
+                  <span>Answers<small>Long format, one row per person.</small></span></label
+                >
+                <label
+                  ><input type="radio" name="f" />
+                  <span>Agreement summary<small>By level, pair, top confusions.</small></span></label
+                >
+              </div>
+              <label class="row" style="margin-top: 10px"><input type="checkbox" checked /> Include record text</label>
+              <div style="margin-top: 14px" class="row">
+                <button class="btn">Download pairs CSV</button><button class="btn ghost">All three as ZIP</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="frame" style="margin-top: 16px; overflow-x: auto">
+          <div class="frame-title">Pairs CSV, first rows (wide format)</div>
+          <table class="mono" style="font-size: 12px">
+            <thead>
+              <tr>
+                <th>id</th>
+                <th>taxonomy</th>
+                <th>a_labeller</th>
+                <th>a_code_4</th>
+                <th>b_labeller</th>
+                <th>b_code_4</th>
+                <th>match_1..4</th>
+                <th>agreed_depth</th>
+                <th>final_code_4</th>
+                <th>final_source</th>
+                <th>result_status</th>
+                <th>review_note</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>LFS26-Q1-00084</td>
+                <td>ISCO08</td>
+                <td>Tomás Rivera</td>
+                <td>2221</td>
+                <td>Sofia Martins</td>
+                <td>2222</td>
+                <td>T,T,T,F</td>
+                <td>3</td>
+                <td>2221</td>
+                <td>a</td>
+                <td>reviewed</td>
+                <td>Ward nursing…</td>
+              </tr>
+              <tr>
+                <td>LFS26-Q1-00084</td>
+                <td>ISIC4</td>
+                <td>Tomás Rivera</td>
+                <td></td>
+                <td>Sofia Martins</td>
+                <td></td>
+                <td>T,T</td>
+                <td>2</td>
+                <td></td>
+                <td>agreed</td>
+                <td>agreed</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>LFS26-Q1-00121</td>
+                <td>ISCO08</td>
+                <td>Priya Nair</td>
+                <td>8322</td>
+                <td>Sofia Martins</td>
+                <td>8321</td>
+                <td>T,T,T,F</td>
+                <td>3</td>
+                <td>8322</td>
+                <td>a</td>
+                <td>reviewed</td>
+                <td>Carries passengers by app…</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pad caption" style="padding-top: 8px">
+            Abbreviated: the file has <span class="mono">a_code_1..n</span>, labels, usernames, times, seconds spent,
+            <span class="mono">first_diff_level</span>, reviewer and AI columns (plan 4.2).
+          </div>
+        </div>
+      </section>
+
+      <!-- 7 ------------------------------------------------------------ -->
+      <section class="mock" id="progress">
+        <h2>7 Progress: agreement that helps <span class="tag">fixes S10 · plan 3.5</span></h2>
+        <p class="why">
+          Full-path agreement alone (ISCO 33 % in the demo) hides that labellers agree on the major group almost always.
+          Per-level agreement, per-person figures and the most frequent confusions tell supervisors where to train.
+        </p>
+        <div class="grid2">
+          <div class="frame">
+            <div class="frame-title">
+              Agreement by level · ISCO08 <span class="muted" style="font-weight: 400">15 compared</span>
+            </div>
+            <div class="pad">
+              <table>
+                <tbody>
+                  <tr>
+                    <td>1 Major group</td>
+                    <td style="width: 45%">
+                      <div class="bar"><i style="width: 100%"></i></div>
+                    </td>
+                    <td class="num">15/15 · 100 %</td>
+                  </tr>
+                  <tr>
+                    <td>2 Sub-major</td>
+                    <td>
+                      <div class="bar"><i style="width: 93%"></i></div>
+                    </td>
+                    <td class="num">14/15 · 93 %</td>
+                  </tr>
+                  <tr>
+                    <td>3 Minor</td>
+                    <td>
+                      <div class="bar"><i style="width: 80%"></i></div>
+                    </td>
+                    <td class="num">12/15 · 80 %</td>
+                  </tr>
+                  <tr>
+                    <td>4 Unit (full path)</td>
+                    <td>
+                      <div class="bar"><i style="width: 33%"></i></div>
+                    </td>
+                    <td class="num">5/15 · 33 %</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="frame">
+            <div class="frame-title">Most frequent disagreements · ISCO08</div>
+            <div class="pad">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Codes</th>
+                    <th class="num">Pairs</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="mono">2221 ↔ 2222</span> Nursing / Midwifery</td>
+                    <td class="num">3</td>
+                    <td><a href="#queue">Show</a></td>
+                  </tr>
+                  <tr>
+                    <td><span class="mono">8321 ↔ 8322</span> Motorcycle / Car, taxi</td>
+                    <td class="num">2</td>
+                    <td><a href="#queue">Show</a></td>
+                  </tr>
+                  <tr>
+                    <td><span class="mono">5245 ↔ 5223</span> Fuel attendant / Shop assistant</td>
+                    <td class="num">2</td>
+                    <td><a href="#queue">Show</a></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="frame" style="margin-top: 16px">
+          <div class="frame-title">
+            By labeller <span class="muted" style="font-weight: 400">supervisors and admins only</span>
+          </div>
+          <div style="overflow-x: auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Labeller</th>
+                  <th class="num">Pairs compared</th>
+                  <th class="num">Agreed (full path)</th>
+                  <th class="num">Agreed at level 3</th>
+                  <th class="num">Reviewer chose theirs</th>
+                  <th class="num">Open parts &gt; 7 days</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sofia Martins</td>
+                  <td class="num">9</td>
+                  <td class="num">44 %</td>
+                  <td class="num">89 %</td>
+                  <td class="num">2 of 4</td>
+                  <td class="num">1</td>
+                </tr>
+                <tr>
+                  <td>Daniel Kim</td>
+                  <td class="num">11</td>
+                  <td class="num">36 %</td>
+                  <td class="num">82 %</td>
+                  <td class="num">3 of 5</td>
+                  <td class="num">0</td>
+                </tr>
+                <tr>
+                  <td>Tomás Rivera</td>
+                  <td class="num">8</td>
+                  <td class="num">25 %</td>
+                  <td class="num">75 %</td>
+                  <td class="num">1 of 5</td>
+                  <td class="num">3</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -5,14 +5,18 @@ import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
 import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
-import { Prisma } from '@/lib/generated/prisma/client'
+import { Prisma, type SentenceStatus } from '@/lib/generated/prisma/client'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 import { logError } from '@/lib/logger'
 import {
   DoubleAnnotationError,
   activeRound,
+  answeredTaxonomies,
+  participantRound,
+  recordChangedResult,
   reviewTaxonomy,
   saveTaskAnswer,
+  setParticipantFlags,
   skipTask,
   viewFor
 } from '@/lib/server/double-annotation'
@@ -44,9 +48,11 @@ class RequestError extends Error {}
  * the shared rules in lib/annotation-status.ts. An empty `annotations` array is
  * a flag/comment/skip-only save.
  *
- * Records in double annotation (lib/server/double-annotation.ts): a labeller's
- * labels are their own answer, a manager's labels decide a disagreement, and
- * the response describes the labeller's own part (status, completed
+ * Double annotation (lib/server/double-annotation.ts): a participant's labels
+ * are their own answer (a new revision; in any round status, never the
+ * result), a manager's labels decide a disagreement of an active round or,
+ * on a completed round they may review, change the confirmed result; the
+ * response describes the participant's own part (status, completed
  * taxonomies) or, for a manager, the confirmed taxonomies.
  */
 export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params: routeParams }) => {
@@ -113,40 +119,57 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
       })
       if (!current) throw new RequestError('Sentence not found')
 
+      // A participant (a part in any round of this record) always saves their
+      // own answer, also after the round closed; it never changes the result.
+      const part = await participantRound(user, sentenceId)
+      if (part) {
+        const { round, task } = part
+        let recordStatus: SentenceStatus | null = null
+        let personal: { status: string; done: Set<string> }
+        if (taxonomy) {
+          const saved = await saveTaskAnswer({
+            user,
+            round,
+            task,
+            taxonomyId: taxonomy.id,
+            labels: annotations,
+            labelingStartedAt: startTime,
+            operationId: operationIdOrNew(operationId)
+          })
+          recordStatus = saved.recordStatus
+          personal = { status: saved.taskDone ? 'submitted' : 'pending', done: saved.answeredTaxonomyIds }
+        } else {
+          if (status === 'skipped') await skipTask(task)
+          personal = {
+            status: status === 'skipped' && task.status === 'pending' ? 'skipped' : task.status,
+            done: await answeredTaxonomies(task.id)
+          }
+        }
+        if (flagged !== undefined) await setParticipantFlags(user, [sentenceId], flagged)
+        if (comment && comment.trim()) {
+          await tx.comment.create({
+            data: { workspaceId: scopeWorkspaceId(), body: comment.trim(), sentenceId, authorId: userId }
+          })
+        }
+        const updateData: Prisma.SentenceUncheckedUpdateInput = {}
+        if (recordStatus) updateData.status = recordStatus
+        if (taxonomy || comment) {
+          updateData.lastEditedAt = new Date()
+          updateData.lastEditorId = userId
+        }
+        if (Object.keys(updateData).length > 0)
+          await tx.sentence.update({ where: { id: sentenceId }, data: updateData })
+        return { finalStatus: personal.status, done: personal.done, required: round.outcomes }
+      }
+
       const round = await activeRound(sentenceId)
       if (round) {
         const view = viewFor(user, round)
         let recordStatus = current.status
-        let personal: { status: string; done: Set<string> } | null = null
         if (view.mode === 'hidden') {
           throw new DoubleAnnotationError('You cannot edit labels on this record', 403)
         }
-        if (view.mode === 'task') {
-          if (taxonomy) {
-            const saved = await saveTaskAnswer({
-              user,
-              round,
-              task: view.task,
-              taxonomyId: taxonomy.id,
-              labels: annotations,
-              labelingStartedAt: startTime,
-              operationId: operationIdOrNew(operationId)
-            })
-            recordStatus = saved.recordStatus
-            personal = { status: saved.taskDone ? 'submitted' : 'pending', done: saved.answeredTaxonomyIds }
-          } else {
-            if (status === 'skipped') await skipTask(view.task)
-            const answered = await tx.doubleTaskLabel.findMany({
-              where: { taskId: view.task.id },
-              select: { taxonomyId: true },
-              distinct: ['taxonomyId']
-            })
-            personal = {
-              status: status === 'skipped' && view.task.status === 'pending' ? 'skipped' : view.task.status,
-              done: new Set(answered.map(a => a.taxonomyId))
-            }
-          }
-        } else if (taxonomy) {
+        if (taxonomy) {
           recordStatus = (
             await reviewTaxonomy({
               user,
@@ -175,7 +198,6 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
         }
         await tx.sentence.update({ where: { id: sentenceId }, data: updateData })
 
-        if (personal) return { finalStatus: personal.status, done: personal.done, required: round.outcomes }
         const confirmed = await tx.doubleOutcome.findMany({
           where: { roundId: round.id, state: { in: ['agreed', 'reviewed', 'accepted_single'] } },
           select: { taxonomyId: true }
@@ -223,6 +245,8 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
             where: { id: taxonomy.id },
             data: { newAnnotationsSinceLastLearning: { increment: annotations.length } }
           })
+          // A completed double annotation: a reviewer's change is their decision.
+          await recordChangedResult(user, sentenceId, taxonomy.id, annotations)
         }
       }
 

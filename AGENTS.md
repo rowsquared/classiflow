@@ -211,14 +211,17 @@ Read `prisma/schema.prisma` before changing data behavior.
   `DoubleOutcome` per required taxonomy. `SentenceAnnotation` stays the
   current, exportable result (the first answer while waiting or disagreeing);
   `Sentence.status` is `submitted` only when every required taxonomy is
-  agreed, reviewed or accepted. The single save route sends a labeller's save
-  to their task and a manager's save on a disagreement to review; bulk label
-  and skip refuse active rounds. Labellers of a round see it blind (own
-  answer and comments, no AI) in the record, comments and queue reads, without
-  a notice or metadata identifying double annotation. Record edit locks use
-  neutral `labeling.editableTaxonomies` permissions; labeller assignment reads
-  show only themselves, and blind timestamps/counts and completion reports
-  reflect their own work. Keep that when adding a read path. `LabelingActivity.kind` separates labelling
+  agreed, reviewed or accepted. Participation is sticky (v2 phase A,
+  `docs/plans/double-annotation-v2.md` section 2): whoever holds a part in any
+  round of a record sees only their own work on it for good (own answer
+  revision, comments, flag, status, edit time; no AI), with the same response
+  shape as ordinary records, and their saves only add revisions of their own
+  answer (`DoubleTaskLabel.revision`/`supersededAt`), never change the result.
+  A manager's save decides a disagreement, or on a completed round becomes
+  their new decision; `DoubleOutcome.resultCodes` holds the confirmed path and
+  the export reports drifted labels as `single`. Labellers without a part do
+  not see records of active rounds. Use `participation()` /
+  `participantWhere()` for any new read path. `LabelingActivity.kind` separates labelling
   from review decisions (progress counts labelling).
 - Comments have resolution state; last-editor and labeling timestamps feed UI
   and progress reporting. Annotation writes also update the taxonomy's
