@@ -1,6 +1,6 @@
 import 'server-only'
 import { db } from '@/lib/workspace/db'
-import type { DoubleRowSummary } from '@/lib/double-annotation'
+import { firstDifferingLevel, type DoubleRowSummary } from '@/lib/double-annotation'
 
 export type { DoubleRowSummary }
 
@@ -28,15 +28,23 @@ export async function doubleRowSummaries(
     select: {
       sentenceId: true,
       status: true,
+      createdAt: true,
       closeReason: true,
       tasks: {
         where: { status: { not: 'cancelled' } },
         orderBy: { position: 'asc' },
-        select: { status: true, assignee: { select: { name: true } } }
+        select: {
+          id: true,
+          position: true,
+          status: true,
+          assignee: { select: { name: true } },
+          labels: { where: { supersededAt: null }, select: { taxonomyId: true, level: true, nodeCode: true } }
+        }
       },
-      outcomes: { select: { state: true } }
+      outcomes: { select: { state: true, taxonomyId: true, taxonomy: { select: { key: true } } } }
     }
   })
+  const now = Date.now()
   for (const round of rounds) {
     if (result.has(round.sentenceId)) continue // older round
     const states = round.outcomes.map(o => o.state)
@@ -44,11 +52,31 @@ export async function doubleRowSummaries(
     if (round.status === 'active') state = states.includes('disagreed') ? 'review' : 'waiting'
     else if (states.includes('accepted_single')) state = 'accepted'
     else state = states.includes('reviewed') ? 'resolved' : 'agreed'
+    const answer = (position: number, taxonomyId: string) =>
+      (round.tasks.find(t => t.position === position)?.labels ?? [])
+        .filter(l => l.taxonomyId === taxonomyId)
+        .sort((x, y) => x.level - y.level)
+    const disputes = round.outcomes
+      .filter(o => round.status === 'active' && o.state === 'disagreed')
+      .map(o => {
+        const a = answer(1, o.taxonomyId)
+        const b = answer(2, o.taxonomyId)
+        return {
+          taxonomyKey: o.taxonomy.key,
+          a: a.at(-1)?.nodeCode ?? '',
+          b: b.at(-1)?.nodeCode ?? '',
+          level: firstDifferingLevel(a, b) ?? 1
+        }
+      })
+      .sort((x, y) => x.taxonomyKey.localeCompare(y.taxonomyKey))
+    const open = round.status === 'active' && round.tasks.some(t => t.status !== 'submitted')
     result.set(round.sentenceId, {
       state,
       done: round.tasks.filter(t => t.status === 'submitted').length,
       gap: round.status === 'active' && round.tasks.some(t => t.status === 'skipped' || !t.assignee),
-      people: round.tasks.map(t => ({ name: t.assignee?.name ?? 'Former member', status: t.status }))
+      people: round.tasks.map(t => ({ name: t.assignee?.name ?? 'Former member', status: t.status })),
+      disputes,
+      waitingDays: open ? Math.floor((now - round.createdAt.getTime()) / 86_400_000) : null
     })
   }
   return result

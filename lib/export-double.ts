@@ -2,7 +2,7 @@ import type { Prisma } from '@/lib/generated/prisma/client'
 import { db } from '@/lib/workspace/db'
 import { csvLine, type CsvColumn } from '@/lib/csv'
 import { logError } from '@/lib/logger'
-import { firstDifferingLevel } from '@/lib/double-annotation'
+import { agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
 import { pages, scoped, secondsSpent, type ExportScope } from '@/lib/export-csv'
 
 /**
@@ -496,7 +496,7 @@ export async function agreementStream(
     const level = byLevel.get(t) ?? { compared: 0, agreed: Array(MAX_LEVELS).fill(0), full: 0 }
     level.compared++
     // Identical paths agree at every level, also when they end early (e.g. unknown at level 1).
-    const depth = sameCodes(a, b) ? MAX_LEVELS : agreedDepth(a, b)
+    const depth = agreementDepth(a, b)
     for (let l = 0; l < depth; l++) level.agreed[l]++
     if (outcome.matched) level.full++
     byLevel.set(t, level)

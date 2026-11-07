@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useStoredBoolean } from '@/lib/use-local-storage'
 import { useQuery } from '@tanstack/react-query'
 import Combobox from '@/components/ui/Combobox'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -73,6 +74,9 @@ export default function DoublePanel({
   const outcome = view.outcomes.find(o => o.taxonomyKey === taxonomyKey)
   const active = view.status === 'active'
   const mode = reviewMode(view, outcome)
+  // Blind review (per browser): no names while a disagreement is open, against reviewer bias.
+  const [hideNames, setHideNames] = useStoredBoolean('doubleReviewHideNames', false)
+  const anonymous = hideNames && mode === 'decide'
   // Parts nobody has started (no answer yet) can go to someone else.
   const handOver = view.tasks.filter(
     t => t.status !== 'submitted' && !view.outcomes.some(o => o.answers.some(a => a.position === t.position))
@@ -97,11 +101,19 @@ export default function DoublePanel({
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium text-gray-900">{active ? 'Double annotation' : 'Double annotation history'}</span>
         {outcome && <span className={badgeClass(OUTCOME_TONES[outcome.state])}>{OUTCOME_LABELS[outcome.state]}</span>}
-        <span className="text-gray-700">
-          {view.tasks
-            .map(t => `${t.assignee?.name ?? 'Former member'}: ${PART_STATUS[t.status] ?? t.status}`)
-            .join(' · ')}
-        </span>
+        {!anonymous && (
+          <span className="text-gray-700">
+            {view.tasks
+              .map(t => `${t.assignee?.name ?? 'Former member'}: ${PART_STATUS[t.status] ?? t.status}`)
+              .join(' · ')}
+          </span>
+        )}
+        {mode === 'decide' && (
+          <label className="ml-auto flex items-center gap-1.5 text-gray-700">
+            <input type="checkbox" checked={hideNames} onChange={e => setHideNames(e.target.checked)} />
+            Hide names while deciding
+          </label>
+        )}
       </div>
       {!active && (
         <p className="text-sm text-gray-700">
@@ -116,7 +128,7 @@ export default function DoublePanel({
         </p>
       )}
 
-      {outcome && outcome.answers.length > 0 && <Comparison view={view} outcome={outcome} />}
+      {outcome && outcome.answers.length > 0 && <Comparison view={view} outcome={outcome} anonymous={anonymous} />}
 
       {outcome?.revisedAfterCompare && (
         <p className="text-sm text-gray-700">
@@ -144,7 +156,14 @@ export default function DoublePanel({
       )}
 
       {mode === 'decide' && outcome && (
-        <DecisionForm outcome={outcome} view={view} busy={busy} review={review} onChange={onReviewChange} />
+        <DecisionForm
+          outcome={outcome}
+          view={view}
+          busy={busy}
+          review={review}
+          onChange={onReviewChange}
+          anonymous={anonymous}
+        />
       )}
 
       {mode === 'change' && outcome && (
@@ -279,14 +298,16 @@ export default function DoublePanel({
 }
 
 /** The answers aligned by level; rows from the first difference are marked. */
-function Comparison({ view, outcome }: { view: ManagerView; outcome: Outcome }) {
+function Comparison({ view, outcome, anonymous }: { view: ManagerView; outcome: Outcome; anonymous: boolean }) {
   const [first, second] = outcome.answers
   const differs = first && second ? firstDifferingLevel(first.labels, second.labels) : null
   const depth = Math.max(...outcome.answers.map(a => Math.max(...a.labels.map(l => l.level))))
   const name = (position: number) => {
     const task = view.tasks.find(t => t.position === position)
+    const letter = position === 1 ? 'A' : 'B'
+    if (anonymous) return `Answer ${letter}`
     const person = task?.assignee?.name ?? 'Former member'
-    return `${position === 1 ? 'A' : 'B'} · ${person}${task?.fromBaseline ? ' (existing labels)' : ''}`
+    return `${letter} · ${person}${task?.fromBaseline ? ' (existing labels)' : ''}`
   }
   return (
     <div className="overflow-x-auto bg-white border border-gray-200">
@@ -300,9 +321,10 @@ function Comparison({ view, outcome }: { view: ManagerView; outcome: Outcome }) 
             {outcome.answers.map(a => (
               <th key={a.position} scope="col" className="py-1.5 px-2 font-medium">
                 {name(a.position)}
-                {outcome.sourcePosition === a.position && outcome.state !== 'agreed' && view.status === 'active' && (
-                  <span className="font-normal text-gray-600"> · current result</span>
-                )}
+                {!anonymous &&
+                  outcome.sourcePosition === a.position &&
+                  outcome.state !== 'agreed' &&
+                  view.status === 'active' && <span className="font-normal text-gray-600"> · current result</span>}
               </th>
             ))}
           </tr>
@@ -348,13 +370,15 @@ function DecisionForm({
   view,
   busy,
   review,
-  onChange
+  onChange,
+  anonymous
 }: {
   outcome: Outcome
   view: ManagerView
   busy: boolean
   review: ReviewState
   onChange: (review: ReviewState) => void
+  anonymous: boolean
 }) {
   const options: Array<{ value: ReviewChoice; title: string; detail: string; key: string }> = [
     ...outcome.answers.map(a => {
@@ -362,7 +386,7 @@ function DecisionForm({
       const person = view.tasks.find(t => t.position === a.position)?.assignee?.name ?? 'Former member'
       return {
         value: (a.position === 1 ? 'a' : 'b') as ReviewChoice,
-        title: `Use ${a.position === 1 ? 'A' : 'B'} (${person})`,
+        title: anonymous ? `Use ${a.position === 1 ? 'A' : 'B'}` : `Use ${a.position === 1 ? 'A' : 'B'} (${person})`,
         detail: deepest ? `${deepest.nodeCode} ${deepest.nodeLabel ?? ''}` : '',
         key: a.position === 1 ? '1' : '2'
       }

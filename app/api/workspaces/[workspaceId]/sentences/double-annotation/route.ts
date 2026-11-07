@@ -8,8 +8,10 @@ import { logError } from '@/lib/logger'
 import { db } from '@/lib/workspace/db'
 import {
   DoubleAnnotationError,
+  autoCandidates,
   planStart,
   requireAssignable,
+  sampleRecords,
   startRounds,
   type StartCategory
 } from '@/lib/server/double-annotation'
@@ -25,7 +27,11 @@ const startSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(10000),
   // Optional when every selected record is already labelled by one person.
   firstUserId: z.string().min(1).nullable().optional(),
+  // A person, or 'auto': balanced across the caller's team (fewest open parts first).
   secondUserId: z.string().min(1),
+  // Double-annotate a random share of the selection; `seed` makes preview and commit pick the same records.
+  sample: z.number().min(1).max(100).optional(),
+  seed: z.number().int().optional(),
   dryRun: z.boolean().optional(),
   // The counts the preview showed; a commit whose selection changed since is refused.
   expect: countsSchema.optional()
@@ -45,19 +51,29 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
   try {
     const parsed = startSchema.safeParse(await req.json().catch(() => null))
     if (!parsed.success) return NextResponse.json({ ok: false, error: 'Invalid request data' }, { status: 400 })
-    const { firstUserId = null, secondUserId, dryRun, expect } = parsed.data
-    const sentenceIds = Array.from(new Set(parsed.data.sentenceIds))
+    const { firstUserId = null, secondUserId, dryRun, expect, sample, seed = 1 } = parsed.data
+    const selected = Array.from(new Set(parsed.data.sentenceIds))
+    const sentenceIds = sample && sample < 100 ? sampleRecords(selected, sample, seed) : selected
     if (firstUserId === secondUserId) {
       return NextResponse.json({ ok: false, error: 'Choose two different people' }, { status: 400 })
     }
 
     const denied = await denyUnlessSentencesVisible(user, sentenceIds)
     if (denied) return denied
-    await requireAssignable(user, firstUserId ? [firstUserId, secondUserId] : [secondUserId])
+    const auto = secondUserId === 'auto'
+    await requireAssignable(user, [...(firstUserId ? [firstUserId] : []), ...(auto ? [] : [secondUserId])])
+    const second = auto ? { auto: await autoCandidates(user) } : { userId: secondUserId }
 
     if (!dryRun) await lockSentences(db(), sentenceIds)
-    const plan = await planStart(sentenceIds, firstUserId, secondUserId)
-    if (dryRun) return NextResponse.json({ ok: true, counts: plan.counts })
+    const plan = await planStart(sentenceIds, firstUserId, second)
+    const preview = {
+      counts: plan.counts,
+      sampled: sentenceIds.length,
+      mixed: plan.mixed,
+      people: plan.people,
+      losingAccess: plan.losingAccess
+    }
+    if (dryRun) return NextResponse.json({ ok: true, ...preview })
 
     if (!expect) {
       return NextResponse.json({ ok: false, error: 'Preview the change first' }, { status: 400 })
@@ -68,7 +84,7 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
         {
           ok: false,
           error: 'The selected records changed since the preview. Check the summary again.',
-          counts: plan.counts
+          ...preview
         },
         { status: 409 }
       )
@@ -80,9 +96,9 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
       action: 'double.started',
       entityType: 'sentence',
       entityId: sentenceIds[0]!,
-      payload: { records: started, counts: plan.counts, firstUserId, secondUserId }
+      payload: { records: started, counts: plan.counts, firstUserId, secondUserId, sample: sample ?? 100 }
     })
-    return NextResponse.json({ ok: true, started, counts: plan.counts })
+    return NextResponse.json({ ok: true, started, ...preview })
   } catch (error) {
     if (error instanceof DoubleAnnotationError) {
       return NextResponse.json({ ok: false, error: error.message }, { status: error.status })

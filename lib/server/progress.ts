@@ -1,4 +1,5 @@
 import 'server-only'
+import { agreementDepth, firstDifferingLevel } from '@/lib/double-annotation'
 import { db } from '@/lib/workspace/db'
 import { projectCompletion } from '@/lib/progress-projection'
 import { Prisma } from '@/lib/generated/prisma/client'
@@ -27,7 +28,7 @@ import { bucketsFor, normalizeRange, type Granularity, type ReportingRange } fro
 // (LabelingActivity) by the selected actors, in records the viewer may see.
 // Every report runs a fixed number of queries, whatever the team size: one for
 // the workspace's settings, at most three to resolve the scope, one (people:
-// at most two; overview: two with double annotation) for the figures.
+// at most two; overview: three with double annotation) for the figures.
 // Activity counts labelling only (kind 'label'): double-annotation review
 // decisions are reported in the overview's double section.
 // ---------------------------------------------------------------------------
@@ -207,9 +208,21 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
 async function doubleProgress(workspaceId: string, context: ReportContext): Promise<DoubleProgress> {
   const inScope = assignedTo(context.scope.workload, Prisma.sql`r."sentenceId"`)
   const [row] = await db().$queryRaw<
-    Array<Omit<DoubleProgress, 'agreement'> & { agreement: DoubleProgress['agreement'] | null }>
+    Array<
+      Pick<DoubleProgress, 'inProgress' | 'needsReview' | 'needsPerson' | 'confirmed' | 'reviewedInPeriod'> & {
+        agreement: DoubleProgress['agreement'] | null
+        waiting: DoubleProgress['waiting']
+      }
+    >
   >`
     SELECT
+      (SELECT json_build_object(
+         'over3', count(*) FILTER (WHERE r."createdAt" < now() - interval '3 days'),
+         'over7', count(*) FILTER (WHERE r."createdAt" < now() - interval '7 days'),
+         'over14', count(*) FILTER (WHERE r."createdAt" < now() - interval '14 days'))
+         FROM "DoubleTask" t JOIN "DoubleRound" r ON r.id = t."roundId"
+        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' AND t.status IN ('pending', 'skipped')
+          ${inScope}) AS waiting,
       (SELECT count(*)::int FROM "DoubleRound" r
         WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}) AS "inProgress",
       (SELECT count(*)::int FROM "DoubleRound" r
@@ -237,7 +250,144 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
             AND o."comparedAt" >= ${context.range.from} AND o."comparedAt" < ${context.range.to}
             ${inScope}
           GROUP BY tx.key) a) AS agreement`
-  return { ...row!, agreement: row!.agreement ?? [] }
+
+  // The compared pairs of the period with both answers as they were compared.
+  const pairs = await db().$queryRaw<
+    Array<{
+      taxonomyKey: string
+      levelNames: Record<string, string> | null
+      matched: boolean
+      state: string
+      resultCodes: string[]
+      a: string[] | null
+      b: string[] | null
+      aName: string | null
+      bName: string | null
+      aLabels: Record<string, string> | null
+      bLabels: Record<string, string> | null
+    }>
+  >`
+    SELECT tx.key AS "taxonomyKey", tx."levelNames" AS "levelNames", o.matched, o.state::text AS state,
+           o."resultCodes" AS "resultCodes", ua.name AS "aName", ub.name AS "bName",
+           (SELECT json_agg(l."nodeCode" ORDER BY l.level) FROM "DoubleTaskLabel" l
+             WHERE l."taskId" = ta.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
+               AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS a,
+           (SELECT json_agg(l."nodeCode" ORDER BY l.level) FROM "DoubleTaskLabel" l
+             WHERE l."taskId" = tb.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
+               AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS b,
+           (SELECT json_object_agg(n.code, n.label) FROM "DoubleTaskLabel" l
+              JOIN "TaxonomyNode" n ON n."taxonomyId" = l."taxonomyId" AND n.code = l."nodeCode"
+             WHERE l."taskId" = ta.id AND l."taxonomyId" = o."taxonomyId" AND l."supersededAt" IS NULL) AS "aLabels",
+           (SELECT json_object_agg(n.code, n.label) FROM "DoubleTaskLabel" l
+              JOIN "TaxonomyNode" n ON n."taxonomyId" = l."taxonomyId" AND n.code = l."nodeCode"
+             WHERE l."taskId" = tb.id AND l."taxonomyId" = o."taxonomyId" AND l."supersededAt" IS NULL) AS "bLabels"
+      FROM "DoubleOutcome" o
+      JOIN "DoubleRound" r ON r.id = o."roundId"
+      JOIN "Taxonomy" tx ON tx.id = o."taxonomyId"
+      LEFT JOIN "DoubleTask" ta ON ta."roundId" = r.id AND ta.position = 1 AND ta.status <> 'cancelled'
+      LEFT JOIN "DoubleTask" tb ON tb."roundId" = r.id AND tb.position = 2 AND tb.status <> 'cancelled'
+      LEFT JOIN "User" ua ON ua.id = ta."assigneeId"
+      LEFT JOIN "User" ub ON ub.id = tb."assigneeId"
+     WHERE o."workspaceId" = ${workspaceId} AND o.matched IS NOT NULL AND r.status <> 'cancelled'
+       AND o."comparedAt" >= ${context.range.from} AND o."comparedAt" < ${context.range.to}
+       ${inScope}`
+  return { ...row!, agreement: row!.agreement ?? [], ...summarizePairs(pairs) }
+}
+
+/** Agreement by level, per labeller and the most frequent disagreements, from the compared pairs. */
+function summarizePairs(
+  pairs: Array<{
+    taxonomyKey: string
+    levelNames: Record<string, string> | null
+    matched: boolean
+    state: string
+    resultCodes: string[]
+    a: string[] | null
+    b: string[] | null
+    aName: string | null
+    bName: string | null
+    aLabels: Record<string, string> | null
+    bLabels: Record<string, string> | null
+  }>
+): Pick<DoubleProgress, 'agreementByLevel' | 'labellers' | 'confusions'> {
+  const byTaxonomy = new Map<string, { compared: number; agreed: number[]; depth: number; levelNames: string[] }>()
+  const byLabeller = new Map<string, { compared: number; agreed: number; decided: number; chosen: number }>()
+  const confusions = new Map<string, DoubleProgress['confusions'][number]>()
+  const same = (x: string[], y: string[]) => x.length === y.length && x.every((c, i) => c === y[i])
+  for (const p of pairs) {
+    const a = p.a ?? []
+    const b = p.b ?? []
+    const t = byTaxonomy.get(p.taxonomyKey) ?? {
+      compared: 0,
+      agreed: [0, 0, 0, 0, 0],
+      depth: 0,
+      levelNames: Object.entries(p.levelNames ?? {})
+        .sort(([x], [y]) => Number(x) - Number(y))
+        .map(([, name]) => name)
+    }
+    t.compared++
+    t.depth = Math.max(t.depth, a.length, b.length)
+    const depth = agreementDepth(a, b)
+    for (let l = 0; l < depth; l++) t.agreed[l]!++
+    byTaxonomy.set(p.taxonomyKey, t)
+
+    const decided = p.state === 'reviewed' && p.resultCodes.length > 0
+    for (const [name, codes] of [
+      [p.aName, a],
+      [p.bName, b]
+    ] as const) {
+      const key = name ?? 'Former member'
+      const e = byLabeller.get(key) ?? { compared: 0, agreed: 0, decided: 0, chosen: 0 }
+      e.compared++
+      if (p.matched) e.agreed++
+      if (decided) {
+        e.decided++
+        if (same(p.resultCodes, codes)) e.chosen++
+      }
+      byLabeller.set(key, e)
+    }
+
+    if (!p.matched) {
+      const level = firstDifferingLevel(
+        a.map((nodeCode, i) => ({ level: i + 1, nodeCode })),
+        b.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
+      )
+      if (level !== null) {
+        const [x, y] = [
+          { code: a[level - 1] ?? '', label: p.aLabels?.[a[level - 1] ?? ''] ?? null },
+          { code: b[level - 1] ?? '', label: p.bLabels?.[b[level - 1] ?? ''] ?? null }
+        ].sort((m, n) => m.code.localeCompare(n.code))
+        const key = `${p.taxonomyKey}\u0001${level}\u0001${x!.code}\u0001${y!.code}`
+        const c = confusions.get(key) ?? {
+          taxonomyKey: p.taxonomyKey,
+          level,
+          a: x!.code,
+          b: y!.code,
+          aLabel: x!.label,
+          bLabel: y!.label,
+          count: 0
+        }
+        c.count++
+        confusions.set(key, c)
+      }
+    }
+  }
+  return {
+    agreementByLevel: [...byTaxonomy]
+      .sort(([x], [y]) => x.localeCompare(y))
+      .map(([taxonomyKey, t]) => ({
+        taxonomyKey,
+        compared: t.compared,
+        agreed: t.agreed.slice(0, Math.max(1, t.depth)),
+        levelNames: t.levelNames.slice(0, Math.max(1, t.depth))
+      })),
+    labellers: [...byLabeller]
+      .map(([name, e]) => ({ name, ...e }))
+      .sort((x, y) => y.compared - x.compared || x.name.localeCompare(y.name)),
+    confusions: [...confusions.values()]
+      .sort((x, y) => y.count - x.count || x.taxonomyKey.localeCompare(y.taxonomyKey) || x.a.localeCompare(y.a))
+      .slice(0, 10)
+  }
 }
 
 /** Distinct records labeled per day or Monday week, every bucket of the range present. */

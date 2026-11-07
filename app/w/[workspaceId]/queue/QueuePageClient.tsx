@@ -20,6 +20,8 @@ import {
 } from '@/lib/queue-url'
 import PageHeader from '@/components/PageHeader'
 import FilterPanel from '@/components/queue/FilterPanel'
+import DoubleCommandsModal from '@/components/queue/DoubleCommandsModal'
+import DoubleFilterChips, { type DoubleCounts } from '@/components/queue/DoubleFilterChips'
 import QueueToolbar from '@/components/queue/QueueToolbar'
 import SentenceRow from '@/components/queue/SentenceRow'
 import PaginationControls from '@/components/queue/PaginationControls'
@@ -91,6 +93,8 @@ export type Stats = {
   flagged: number
   progress: number
   needsReview?: number
+  /** Managers: records per double annotation state (ignoring the double filter). */
+  double?: DoubleCounts
 }
 
 export type Taxonomy = {
@@ -179,6 +183,7 @@ export default function QueuePageClient({
 
   const [bulkLabelOpen, setBulkLabelOpen] = useState(false)
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
+  const [doubleCommandsOpen, setDoubleCommandsOpen] = useState(false)
   const [sendingToAI, setSendingToAI] = useState(false)
 
   // The list. One query per view: a slow answer for an older view lands in
@@ -358,6 +363,7 @@ export default function QueuePageClient({
   }
 
   const showStatusColumn = activeTab === 'all'
+  const showDoubleColumn = Boolean(stats.double && (stats.double.any > 0 || url.double))
   const contentWidthClass = showStatusColumn ? 'w-[40%]' : 'w-[45%]'
   const labelWidthClass = showStatusColumn ? 'w-[18%]' : 'w-[20%]'
 
@@ -403,6 +409,14 @@ export default function QueuePageClient({
                 : undefined
             }
           />
+
+          {stats.double && (stats.double.any > 0 || url.double) && (
+            <DoubleFilterChips
+              counts={stats.double}
+              active={url.double}
+              onChange={value => setUrl({ double: value, tab: 'all', page: null }, { history: 'push' })}
+            />
+          )}
 
           {/* Tabs */}
           <div className="border-b border-gray-200 px-6">
@@ -485,6 +499,9 @@ export default function QueuePageClient({
                       {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Assigned</th>
                       )}
+                      {showDoubleColumn && (
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Double</th>
+                      )}
                       {showStatusColumn && (
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
                       )}
@@ -499,6 +516,7 @@ export default function QueuePageClient({
                         selected={selectedIds.has(sentence.id)}
                         onSelect={checked => handleSelect(sentence.id, checked)}
                         showAssignedTo={currentUser?.role === 'admin' || currentUser?.role === 'supervisor'}
+                        showDouble={showDoubleColumn}
                         showStatus={showStatusColumn}
                         contentWidthClass={contentWidthClass}
                         labelWidthClass={labelWidthClass}
@@ -552,6 +570,15 @@ export default function QueuePageClient({
                       Assign / unassign
                     </button>
                   )}
+                  {canAssign && stats.double && stats.double.any > 0 && (
+                    <button
+                      onClick={() => setDoubleCommandsOpen(true)}
+                      className={buttonClass('secondary')}
+                      title="Accept single labels, hand over parts or stop double annotation for the selection"
+                    >
+                      Double annotation…
+                    </button>
+                  )}
                   {isAdmin && activeTaxonomies.length > 0 && (
                     <div className="flex items-center gap-2">
                       <button
@@ -603,6 +630,19 @@ export default function QueuePageClient({
           onClose={() => setBulkLabelOpen(false)}
           onSuccess={refreshQueue}
           onComplete={() => setSelectedIds(NO_SELECTION)}
+        />
+      )}
+
+      {doubleCommandsOpen && (
+        <DoubleCommandsModal
+          sentenceIds={Array.from(selectedIds)}
+          onClose={() => setDoubleCommandsOpen(false)}
+          onDone={applied => {
+            setDoubleCommandsOpen(false)
+            setSelectedIds(NO_SELECTION)
+            refreshQueue()
+            addToast('success', `Double annotation changed for ${applied} ${applied === 1 ? 'record' : 'records'}`)
+          }}
         />
       )}
 

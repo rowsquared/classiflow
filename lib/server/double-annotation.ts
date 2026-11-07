@@ -774,6 +774,49 @@ export type StartPlanItem = {
 export type StartPlan = {
   items: StartPlanItem[]
   counts: Record<StartCategory, number>
+  /** Startable records with labels by several people or partial labels: both new people label them. */
+  mixed: number
+  /** New parts per person. */
+  people: Array<{ userId: string; name: string; parts: number }>
+  /** Labeller assignments the start removes (people without a part in the round). */
+  losingAccess: number
+}
+
+/** The second person: one chosen person, or automatic among `candidates` (fewest open parts first). */
+export type SecondPerson = { userId: string } | { auto: string[] }
+
+/** Active labellers the caller may assign (their team for supervisors), for the automatic second person. */
+export async function autoCandidates(user: CurrentUser): Promise<string[]> {
+  const members = await visibleMembers(user)
+  const rows = await db().workspaceMembership.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      status: 'active',
+      role: 'labeller',
+      ...(members === null ? {} : { userId: { in: members.map(m => m.userId) } })
+    },
+    select: { userId: true },
+    orderBy: { userId: 'asc' }
+  })
+  return rows.map(r => r.userId)
+}
+
+/** A random share of the records, the same for the same seed (preview and commit agree). */
+export function sampleRecords(sentenceIds: string[], percent: number, seed: number): string[] {
+  const ids = Array.from(new Set(sentenceIds)).sort()
+  const take = Math.max(1, Math.ceil((ids.length * Math.min(100, Math.max(0, percent))) / 100))
+  let state = seed >>> 0 || 1
+  const random = () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[ids[i], ids[j]] = [ids[j]!, ids[i]!]
+  }
+  return ids.slice(0, take)
 }
 
 /**
@@ -789,7 +832,7 @@ export type StartPlan = {
 export async function planStart(
   sentenceIds: string[],
   firstUserId: string | null,
-  secondUserId: string
+  second: SecondPerson
 ): Promise<StartPlan> {
   const tx = db()
   const activeTaxonomyIds = (await tx.taxonomy.findMany({ where: { isActive: true }, select: { id: true } })).map(
@@ -808,6 +851,28 @@ export async function planStart(
     })
   ])
   const inRound = new Set(rounds.map(r => r.sentenceId))
+  // Automatic second person: the candidate with the fewest open parts (counting this plan).
+  const load = new Map<string, number>()
+  if ('auto' in second) {
+    const open = await tx.doubleTask.groupBy({
+      by: ['assigneeId'],
+      where: { assigneeId: { in: second.auto }, status: { in: ['pending', 'skipped'] }, round: { status: 'active' } },
+      _count: { _all: true }
+    })
+    second.auto.forEach(id => load.set(id, 0))
+    open.forEach(o => o.assigneeId && load.set(o.assigneeId, o._count._all))
+  }
+  const pick = (exclude: Array<string | null | undefined>): string | null => {
+    if ('userId' in second) return exclude.includes(second.userId) ? null : second.userId
+    let best: string | null = null
+    for (const [id, n] of load) {
+      if (exclude.includes(id)) continue
+      if (best === null || n < load.get(best)!) best = id
+    }
+    if (best) load.set(best, load.get(best)! + 1)
+    return best
+  }
+  const secondUserId = 'userId' in second ? second.userId : null
   const bySentence = new Map<string, Array<{ taxonomyId: string; createdById: string | null }>>()
   labels.forEach(l => {
     if (!bySentence.has(l.sentenceId)) bySentence.set(l.sentenceId, [])
@@ -824,19 +889,44 @@ export async function planStart(
     if (inRound.has(sentenceId)) {
       item = { sentenceId, category: 'already', labellerIds: [] }
     } else if (complete && author) {
-      const other = author === secondUserId ? firstUserId : secondUserId
+      const other = secondUserId !== null && author === secondUserId ? firstUserId : pick([author])
       item = other
         ? { sentenceId, category: 'labelled', baselineAuthorId: author, labellerIds: [other] }
         : { sentenceId, category: 'needs_first', labellerIds: [] }
     } else if (firstUserId) {
-      item = { sentenceId, category: 'fresh', labellerIds: [firstUserId, secondUserId] }
+      const other = pick([firstUserId])
+      item = other
+        ? { sentenceId, category: 'fresh', labellerIds: [firstUserId, other] }
+        : { sentenceId, category: 'needs_first', labellerIds: [] }
     } else {
       item = { sentenceId, category: 'needs_first', labellerIds: [] }
     }
     counts[item.category]++
     return item
   })
-  return { items, counts }
+
+  const startable = items.filter(i => i.category === 'fresh' || i.category === 'labelled')
+  const mixed = startable.filter(i => i.category === 'fresh' && (bySentence.get(i.sentenceId)?.length ?? 0) > 0).length
+  const parts = new Map<string, number>()
+  startable.forEach(i => i.labellerIds.forEach(id => parts.set(id, (parts.get(id) ?? 0) + 1)))
+  const names = await tx.user.findMany({ where: { id: { in: [...parts.keys()] } }, select: { id: true, name: true } })
+  const assignments = await tx.sentenceAssignment.findMany({
+    where: { sentenceId: { in: startable.map(i => i.sentenceId) }, membership: { role: 'labeller' } },
+    select: { sentenceId: true, membership: { select: { userId: true } } }
+  })
+  const keep = new Map(
+    startable.map(i => [i.sentenceId, new Set([...i.labellerIds, ...(i.baselineAuthorId ? [i.baselineAuthorId] : [])])])
+  )
+  const losingAccess = assignments.filter(a => !keep.get(a.sentenceId)?.has(a.membership.userId)).length
+  return {
+    items,
+    counts,
+    mixed,
+    people: [...parts]
+      .map(([userId, n]) => ({ userId, name: names.find(u => u.id === userId)?.name ?? 'Unknown', parts: n }))
+      .sort((a, b) => b.parts - a.parts || a.name.localeCompare(b.name)),
+    losingAccess
+  }
 }
 
 /** Creates the rounds of a plan (records in 'fresh' and 'labelled' only). Caller holds the record locks. */

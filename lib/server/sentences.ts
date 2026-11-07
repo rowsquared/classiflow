@@ -557,6 +557,16 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 export async function getQueueStats(user: CurrentUser, searchParams: URLSearchParams) {
   const where = await queueWhere(user, searchParams)
   const manager = user.role === 'admin' || user.role === 'supervisor'
+  // Managers: double annotation counts for the filter chips, under the same
+  // filters except the double filter itself.
+  const withoutDouble = new URLSearchParams(searchParams)
+  withoutDouble.delete('double')
+  const base = manager ? await queueWhere(user, withoutDouble) : where
+  const doubleCount = (value: string) =>
+    manager ? db().sentence.count({ where: { AND: [base, doubleFilter(value)!] } }) : Promise.resolve(0)
+  const any = await doubleCount('any')
+  const [waiting, review, gap, done] =
+    any > 0 ? await Promise.all(['waiting', 'review', 'gap', 'done'].map(doubleCount)) : [0, 0, 0, 0]
   const [total, pending, submitted, skipped, flagged, needsReview] = await Promise.all([
     db().sentence.count({ where }),
     db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending') }] } }),
@@ -588,6 +598,8 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
       flagged,
       // Records in double annotation with a disagreement (managers; 0 for labellers).
       needsReview,
+      // Managers: records per double annotation state, ignoring the double filter.
+      double: { any, waiting, review, gap, done },
       progress: total > 0 ? Math.round((submitted / total) * 100) : 0
     }
   }

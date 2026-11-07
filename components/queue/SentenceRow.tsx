@@ -84,6 +84,8 @@ interface SentenceRowProps {
   selected: boolean
   onSelect: (checked: boolean) => void
   showAssignedTo?: boolean
+  /** Managers in a workspace with double annotation: the Double column. */
+  showDouble?: boolean
   showStatus?: boolean
   contentWidthClass?: string
   labelWidthClass?: string
@@ -98,6 +100,7 @@ export default function SentenceRow({
   selected,
   onSelect,
   showAssignedTo = false,
+  showDouble = false,
   showStatus = true,
   contentWidthClass = 'w-[40%]',
   labelWidthClass = 'w-[18%]',
@@ -356,7 +359,17 @@ export default function SentenceRow({
           ) : (
             <span className="text-gray-500 text-sm">—</span>
           )}
-          {sentence.double && <DoubleBadge summary={sentence.double} />}
+        </td>
+      )}
+
+      {/* Double annotation (managers, in workspaces that use it) */}
+      {showDouble && (
+        <td className="px-4 py-3">
+          {sentence.double ? (
+            <DoubleBadge summary={sentence.double} />
+          ) : (
+            <span className="text-gray-500 text-sm">—</span>
+          )}
         </td>
       )}
 

@@ -130,6 +130,22 @@ export type DoubleProgress = {
   reviewedInPeriod: number
   /** Original comparisons in the period, per taxonomy: matching pairs of all compared pairs. */
   agreement: Array<{ taxonomyKey: string; agreed: number; compared: number }>
+  /** The same pairs by level: `agreed[i]` pairs agree on levels 1..i+1 (or are identical). */
+  agreementByLevel: Array<{ taxonomyKey: string; compared: number; agreed: number[]; levelNames: string[] }>
+  /** Per labeller, over the compared pairs: full-path agreement, review decisions and how often theirs was chosen. */
+  labellers: Array<{ name: string; compared: number; agreed: number; decided: number; chosen: number }>
+  /** The code pairs that disagree most (at the first differing level). */
+  confusions: Array<{
+    taxonomyKey: string
+    level: number
+    a: string
+    b: string
+    aLabel: string | null
+    bLabel: string | null
+    count: number
+  }>
+  /** Open parts of active rounds by age. */
+  waiting: { over3: number; over7: number; over14: number }
 }
 
 export type ProgressTimeline = ReportMeta & {

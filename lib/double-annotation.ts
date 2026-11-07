@@ -29,6 +29,18 @@ export function compareAnswers(first: LabelInput[], second: LabelInput[]): { sta
   return { state: matched ? 'agreed' : 'disagreed', matched }
 }
 
+/**
+ * How deep two compared paths (codes by level) agree: the number of leading
+ * levels with the same code, or 5 (every level) when the paths are
+ * identical, also when they end early (e.g. both unknown at level 1).
+ */
+export function agreementDepth(a: string[], b: string[]): number {
+  if (a.length === b.length && a.every((c, i) => c === b[i])) return 5
+  let depth = 0
+  while (depth < Math.min(a.length, b.length) && a[depth] === b[depth]) depth++
+  return depth
+}
+
 /** First level at which two paths differ (1-based), or null when they are the same path. */
 export function firstDifferingLevel(a: LabelInput[], b: LabelInput[]): number | null {
   const byLevel = (labels: LabelInput[]) => new Map(labels.map(l => [l.level, l.nodeCode]))
@@ -63,6 +75,10 @@ export type DoubleRowSummary = {
   /** A part was skipped or its person no longer exists: someone must take it over. */
   gap: boolean
   people: Array<{ name: string; status: string }>
+  /** Disagreeing taxonomies: the deepest code of each answer and the first differing level. */
+  disputes: Array<{ taxonomyKey: string; a: string; b: string; level: number }>
+  /** Days since the round started, while a part is still to do. */
+  waitingDays: number | null
 }
 
 /** Labels for queue badges and the record screen (sentence case, no colour needed to read them). */

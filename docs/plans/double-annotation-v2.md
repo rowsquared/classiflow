@@ -1,6 +1,6 @@
 # Double annotation v2: review findings and improvement plan
 
-**Status:** phases A-C implemented (7 November 2026, see section 6); phases D-E proposed. **Date:** 7 November 2026.
+**Status:** phases A-D implemented (7 November 2026, see section 6); phase E in progress. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
 [double-annotation.md](double-annotation.md) section 0).
 
@@ -346,13 +346,26 @@ every level. The ZIP of all three files is not built (three downloads).
 
 ### Phase D: queue, start dialog, progress (P1/P2)
 
-- [ ] Double column, A/B codes in the review view, filter chips with counts.
-- [ ] Bulk accept/hand over/stop.
-- [ ] Start dialog: modes, automatic balanced second person, sampling,
+- [x] Double column, A/B codes in the review view, filter chips with counts.
+- [x] Bulk accept/hand over/stop.
+- [x] Start dialog: modes, automatic balanced second person, sampling,
       preview per person.
-- [ ] Progress: agreement by level, by labeller, top confusions with links,
+- [x] Progress: agreement by level, by labeller, top confusions with links,
       waiting age.
-- [ ] Optional blind review setting.
+- [x] Optional blind review setting.
+
+Implementation notes (phase D): bulk commands are
+`POST /sentences/double-annotation/commands` (`accept_single`, `stop`,
+`hand_over` from one person to another; `dryRun` counts what applies and why
+the rest is skipped). The start route takes `secondUserId: 'auto'`
+(labellers in the caller's scope, fewest open parts first) and
+`sample`/`seed`; its preview adds `people`, `mixed`, `losingAccess`. Queue
+stats add `double` counts (ignoring the double filter; four more counts only
+when the workspace has rounds). Blind review is a per-browser "Hide names
+while deciding" toggle, not a workspace setting. Not done: the "8 records ·
+0 confirmed" counter wording in double views, and links from the
+disagreement list to matching records (the queue cannot filter on both
+answers yet).
 
 ### Phase E: hygiene
 
