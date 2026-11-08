@@ -23,9 +23,7 @@ export default function ActivityChart({ timeline, view }: { timeline: ProgressTi
   const summary =
     total === 0
       ? `No records were labeled in this period.`
-      : `${buckets.length} ${unit}s; busiest ${unit}: ${bucketLabel(busiest!, granularity)} with ${formatNumber(
-          busiest!.labeledRecords
-        )} records.`
+      : `Busiest ${unit}: ${bucketLabel(busiest!, granularity)} with ${formatNumber(busiest!.labeledRecords)} records.`
 
   if (view === 'table') {
     return (
@@ -87,8 +85,7 @@ export default function ActivityChart({ timeline, view }: { timeline: ProgressTi
         </ResponsiveContainer>
       </div>
       <figcaption className="mt-2 text-sm text-gray-600">
-        {summary} The bars add up to {formatNumber(total)}: a record labeled in two {unit}s counts in both, so this can
-        exceed “Labeled in period”.
+        {summary} {total > 0 && `Records labeled in multiple ${unit}s count in each.`}
       </figcaption>
     </figure>
   )

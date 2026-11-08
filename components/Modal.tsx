@@ -3,7 +3,7 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
 
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), details > summary:first-child, [tabindex]:not([tabindex="-1"])'
 
 // Only the top dialog handles keys when a dialog opens another dialog.
 const dialogStack: symbol[] = []

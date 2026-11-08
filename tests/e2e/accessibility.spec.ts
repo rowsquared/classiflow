@@ -80,6 +80,8 @@ test('team', async ({ page }) => {
   await page.goto(pagePath('/admin/team'))
   await expect(page.getByLabel('Search name or email')).toBeVisible()
   await expectAccessible(page, 'team')
+  await page.getByRole('button', { name: 'More filters', exact: true }).click()
+  await expectAccessible(page, 'team filters')
 })
 
 test('audit log', async ({ page }) => {

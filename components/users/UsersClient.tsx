@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { useQueryStates } from 'nuqs'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as Popover from '@radix-ui/react-popover'
+import { ChevronDown } from 'lucide-react'
 import { usersParsers } from '@/lib/users-url'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
@@ -19,6 +20,7 @@ import { controlClass, type DirectoryPage, type DirectoryUser, type Workspace } 
 import { formatRelativeTime } from '@/lib/utils'
 
 const when = (date: string | null) => (date ? formatRelativeTime(date) : 'Never')
+const filterControlClass = `${controlClass} h-10`
 type Membership = DirectoryUser['memberships'][number]
 export default function UsersClient({
   currentUserId,
@@ -37,6 +39,7 @@ export default function UsersClient({
 }) {
   const [view, setView] = useQueryStates(usersParsers)
   const q = useDebouncedValue(view.q.trim(), 300)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -49,6 +52,11 @@ export default function UsersClient({
       .map(([k, v]) => [k, String(v)])
   )
   const selected = workspaces.find(w => w.id === view.workspace)
+  const filterCount = [
+    view.state,
+    view.setup,
+    ...(selected ? [view.role, view.access !== 'active', view.supervisor, view.activity] : [])
+  ].filter(Boolean).length
   const directory = useQuery({
     queryKey: queryKeys.directoryPage(params.toString()),
     queryFn: ({ signal }) => fetchJson<DirectoryPage>(`/api/user-directory?${params}`, { signal }),
@@ -222,10 +230,10 @@ export default function UsersClient({
         </div>
       </header>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex-1 min-w-48 text-sm text-gray-700">
-          Search name or email
+        <label className="w-full text-sm text-gray-700 sm:w-72">
+          <span className="mb-1 block">Search name or email</span>
           <input
-            className={controlClass}
+            className={filterControlClass}
             type="search"
             value={view.q}
             onChange={e => void setView({ q: e.target.value, page: 1 })}
@@ -233,7 +241,9 @@ export default function UsersClient({
         </label>
         <Combobox
           label="Workspace"
-          className="w-56"
+          labelClassName="mb-1 block text-sm text-gray-700"
+          className="min-w-36 max-w-64 flex-1 sm:w-64 sm:flex-none"
+          inputClassName="h-10 border-gray-500"
           value={view.workspace || null}
           options={[
             { value: '', label: 'Any managed workspace' },
@@ -256,106 +266,118 @@ export default function UsersClient({
           }
           placeholder="Any managed workspace"
         />
-        {selected && (
-          <>
-            <label className="text-sm text-gray-700">
-              Workspace role
-              <select
-                className={controlClass}
-                value={view.role ?? ''}
-                onChange={e => change({ role: (e.target.value as typeof view.role) || null })}
-              >
-                <option value="">Any role</option>
-                <option value="admin">Workspace admin</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="labeller">Labeller</option>
-              </select>
-            </label>
-            <label className="text-sm text-gray-700">
-              Access
-              <select
-                className={controlClass}
-                value={view.access}
-                onChange={e => change({ access: e.target.value as typeof view.access })}
-              >
-                <option value="active">Active</option>
-                <option value="removed">Removed</option>
-                <option value="all">Everyone</option>
-              </select>
-            </label>
-            <Combobox
-              className="w-48"
-              label="Supervisor"
-              value={view.supervisor}
-              onChange={id => change({ supervisor: id })}
-              options={(supervisors.data?.users ?? [])
-                .filter(u => u.role !== 'labeller' && u.status === 'active')
-                .map(u => ({ value: u.id, label: u.name }))}
-              placeholder="Any supervisor"
-            />
-            <label className="text-sm text-gray-700">
-              Activity
-              <select
-                className={controlClass}
-                value={view.activity ?? ''}
-                onChange={e => change({ activity: (e.target.value as typeof view.activity) || null })}
-              >
-                <option value="">Any activity</option>
-                <option value="seen-7">Seen in the last 7 days</option>
-                <option value="not-seen-7">Not seen for 7 days</option>
-                <option value="not-seen-30">Not seen for 30 days</option>
-                <option value="never">Never seen here</option>
-              </select>
-            </label>
-          </>
-        )}
-        <label className="text-sm text-gray-700">
-          Account
-          <select
-            className={controlClass}
-            value={view.state ?? ''}
-            onChange={e => change({ state: (e.target.value as typeof view.state) || null })}
-          >
-            <option value="">Enabled and disabled</option>
-            <option value="active">Enabled</option>
-            <option value="disabled">Disabled</option>
-          </select>
-        </label>
-        <label className="text-sm text-gray-700">
-          Password setup
-          <select
-            className={controlClass}
-            value={view.setup ?? ''}
-            onChange={e => change({ setup: (e.target.value as typeof view.setup) || null })}
-          >
-            <option value="">Any setup state</option>
-            <option value="password">Password change required</option>
-            <option value="invited">Setup link pending</option>
-          </select>
-        </label>
         <button
-          className={buttonClass('secondary')}
-          onClick={() =>
-            void setView(
-              {
-                q: '',
-                workspace: !platform && workspaces.length === 1 ? workspaces[0]!.id : '',
-                role: null,
-                state: null,
-                setup: null,
-                supervisor: null,
-                activity: null,
-                access: 'active',
-                page: 1,
-                sort: 'name',
-                direction: 'asc'
-              },
-              { history: 'push' }
-            )
-          }
+          type="button"
+          className={buttonClass('secondary', 'md', 'min-h-10')}
+          aria-expanded={filtersOpen}
+          aria-controls="user-filters"
+          onClick={() => setFiltersOpen(open => !open)}
         >
-          Clear
+          More filters{filterCount > 0 ? ` (${filterCount})` : ''}
+          <ChevronDown className={`size-4 ${filtersOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
         </button>
+      </div>
+      <div id="user-filters" hidden={!filtersOpen} role="group" aria-label="User filters">
+        {filtersOpen && (
+          <div className={`${panelClass} max-w-3xl p-4`}>
+            <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {selected && (
+                <>
+                  <label className="text-sm text-gray-700">
+                    Workspace role
+                    <select
+                      className={filterControlClass}
+                      value={view.role ?? ''}
+                      onChange={e => change({ role: (e.target.value as typeof view.role) || null })}
+                    >
+                      <option value="">Any role</option>
+                      <option value="admin">Workspace admin</option>
+                      <option value="supervisor">Supervisor</option>
+                      <option value="labeller">Labeller</option>
+                    </select>
+                  </label>
+                  <label className="text-sm text-gray-700">
+                    Access
+                    <select
+                      className={filterControlClass}
+                      value={view.access}
+                      onChange={e => change({ access: e.target.value as typeof view.access })}
+                    >
+                      <option value="active">Active</option>
+                      <option value="removed">Removed</option>
+                      <option value="all">Everyone</option>
+                    </select>
+                  </label>
+                  <Combobox
+                    label="Supervisor"
+                    labelClassName="block text-sm text-gray-700"
+                    inputClassName="h-10 border-gray-500"
+                    value={view.supervisor}
+                    onChange={id => change({ supervisor: id })}
+                    options={(supervisors.data?.users ?? [])
+                      .filter(u => u.role !== 'labeller' && u.status === 'active')
+                      .map(u => ({ value: u.id, label: u.name }))}
+                    placeholder="Any supervisor"
+                  />
+                  <label className="text-sm text-gray-700">
+                    Activity
+                    <select
+                      className={filterControlClass}
+                      value={view.activity ?? ''}
+                      onChange={e => change({ activity: (e.target.value as typeof view.activity) || null })}
+                    >
+                      <option value="">Any activity</option>
+                      <option value="seen-7">Seen in the last 7 days</option>
+                      <option value="not-seen-7">Not seen for 7 days</option>
+                      <option value="not-seen-30">Not seen for 30 days</option>
+                      <option value="never">Never seen here</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              <label className="text-sm text-gray-700">
+                Account
+                <select
+                  className={filterControlClass}
+                  value={view.state ?? ''}
+                  onChange={e => change({ state: (e.target.value as typeof view.state) || null })}
+                >
+                  <option value="">Enabled and disabled</option>
+                  <option value="active">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </label>
+              <label className="text-sm text-gray-700">
+                Password setup
+                <select
+                  className={filterControlClass}
+                  value={view.setup ?? ''}
+                  onChange={e => change({ setup: (e.target.value as typeof view.setup) || null })}
+                >
+                  <option value="">Any setup state</option>
+                  <option value="password">Password change required</option>
+                  <option value="invited">Setup link pending</option>
+                </select>
+              </label>
+            </div>
+            <button
+              type="button"
+              className={buttonClass('ghost', 'sm', 'mt-3')}
+              onClick={() =>
+                change({
+                  role: null,
+                  state: null,
+                  setup: null,
+                  supervisor: null,
+                  activity: null,
+                  access: 'active'
+                })
+              }
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
       {message && (
         <p role="status" className="text-sm text-gray-700">

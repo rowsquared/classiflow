@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ProgressOverview } from '@/lib/contracts/progress'
 import { formatDay, formatNumber, percent } from './format'
 
@@ -5,26 +6,27 @@ function Card({
   label,
   value,
   detail,
+  tone = 'border-gray-200 bg-gray-50 text-gray-900',
   testId,
   compact = false
 }: {
   label: string
   value: string
-  detail?: string
+  detail?: ReactNode
+  tone?: string
   testId: string
   compact?: boolean
 }) {
   return (
-    // The brand stat figure: a rule on top, a large number, a grey label; no box.
-    <div className="min-w-0 border-t border-gray-900 pt-3" data-testid={testId}>
-      <dt className="text-sm text-gray-600">{label}</dt>
+    <div className={`min-w-0 border p-3 sm:p-4 ${tone}`} data-testid={testId}>
+      <dt className="text-sm font-medium">{label}</dt>
       <dd className="mt-1">
         <span
-          className={`block font-semibold tabular-nums tracking-tight text-gray-900 ${compact ? 'text-2xl leading-tight' : 'text-4xl'}`}
+          className={`block font-semibold tabular-nums tracking-tight ${compact ? 'text-xl leading-tight' : 'text-3xl'}`}
         >
           {value}
         </span>
-        {detail && <span className="mt-1 block text-sm text-gray-600">{detail}</span>}
+        {detail && <div className="mt-1 text-xs text-gray-700">{detail}</div>}
       </dd>
     </div>
   )
@@ -56,28 +58,51 @@ export default function WorkloadCards({ overview }: { overview: ProgressOverview
       : `${rate(projection.completedPerDay)} complete records labeled/day over ${projection.daysInPeriod} days`
 
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-5">
-      <Card label="Total records now" value={formatNumber(workload.total)} testId="card-total" />
-      <Card
-        label="Complete now"
-        value={formatNumber(workload.complete)}
-        detail={share === null ? 'No records in this scope' : `${share}% of the total`}
-        testId="card-complete"
-      />
-      <Card label="Remaining now" value={formatNumber(workload.remaining)} detail={breakdown} testId="card-remaining" />
-      <Card
-        label="Labeled in period"
-        value={formatNumber(activity.labeledRecords)}
-        detail="Distinct records with a saved human label"
-        testId="card-labeled"
-      />
-      <Card
-        label="Projected completion"
-        value={projectionValue}
-        detail={projectionDetail}
-        testId="card-projection"
-        compact
-      />
-    </dl>
+    <>
+      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+        <Card label="Total records now" value={formatNumber(workload.total)} testId="card-total" />
+        <Card
+          label="Complete now"
+          value={formatNumber(workload.complete)}
+          tone="border-indigo-100 bg-indigo-50 text-indigo-900"
+          detail={
+            share === null ? (
+              'No records in this scope'
+            ) : (
+              <>
+                <span>{share}% of the total</span>
+                <div className="mt-2 h-1.5 bg-indigo-100" aria-hidden="true">
+                  <div className="h-full bg-indigo-600" style={{ width: `${share}%` }} />
+                </div>
+              </>
+            )
+          }
+          testId="card-complete"
+        />
+        <Card
+          label="Remaining now"
+          value={formatNumber(workload.remaining)}
+          detail={breakdown}
+          testId="card-remaining"
+        />
+        <Card label="Labeled in period" value={formatNumber(activity.labeledRecords)} testId="card-labeled" />
+        <Card
+          label="Projected completion"
+          value={projectionValue}
+          detail={projectionDetail}
+          testId="card-projection"
+          compact
+        />
+      </dl>
+      <details className="mt-3 text-sm text-gray-600">
+        <summary className="w-fit cursor-pointer text-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-600">
+          How we estimate completion
+        </summary>
+        <p className="mt-1 max-w-2xl">
+          The estimate uses the selected period’s pace of human labeling to project when the remaining work will finish.
+          New imports and relabeling can change the estimate.
+        </p>
+      </details>
+    </>
   )
 }

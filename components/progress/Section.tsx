@@ -38,8 +38,7 @@ export default function Section({
   const headingId = `${id}-heading`
   return (
     <section aria-labelledby={headingId} aria-busy={loading || updating} className="mb-10" data-section={id}>
-      {/* The rowsquared section signature: a full-width rule with the heading under it. */}
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-4 border-t border-gray-900 pt-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-t border-gray-200 pt-4">
         <div>
           <h2 id={headingId} className="text-lg font-semibold text-gray-900">
             {title}

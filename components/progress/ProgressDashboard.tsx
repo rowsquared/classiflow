@@ -212,7 +212,7 @@ export default function ProgressDashboard({
         <Section
           id="overview"
           title="Workload now and activity"
-          description="Current workload and activity in the selected dates. The projection applies complete records with human label activity per day in the selected period to the remaining records now. It assumes no new imports. A relabeled record may make the estimate optimistic. AI suggestions do not count."
+          description="Current workload and human labeling in the selected period."
           loading={!overviewQuery.data}
           updating={overviewQuery.isPlaceholderData}
           error={errorText(overviewQuery.error, 'the overview')}
@@ -226,18 +226,11 @@ export default function ProgressDashboard({
           (overviewQuery.data.double.inProgress > 0 ||
             overviewQuery.data.double.confirmed > 0 ||
             overviewQuery.data.double.agreement.length > 0) && (
-            <Section
-              id="double-annotation"
-              title="Double annotation"
-              description="Records two people label independently. Counts overlap; agreement compares the first two labels before any review."
-              loading={false}
-              error={null}
+            <DoubleAnnotationCards
+              double={overviewQuery.data.double}
               updating={overviewQuery.isPlaceholderData}
               onRetry={() => void overviewQuery.refetch()}
-              skeletonHeight="h-28"
-            >
-              <DoubleAnnotationCards double={overviewQuery.data.double} />
-            </Section>
+            />
           )}
 
         <Section
@@ -289,7 +282,7 @@ export default function ProgressDashboard({
           <Section
             id="people"
             title="People"
-            description="Workload by current assignment, activity by who saved the labels. Rows overlap when records are shared, so they need not add up to the totals above."
+            description="Shared records can appear in more than one row."
             loading={!peopleQuery.data}
             updating={peopleQuery.isPlaceholderData}
             error={errorText(peopleQuery.error, 'the people')}
