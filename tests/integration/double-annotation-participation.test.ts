@@ -337,11 +337,10 @@ describe('double annotation participation', () => {
     const res = await exportRoute.GET(request('/x/export?format=analysis&taxonomy=A'), params())
     expect(res.headers.get('content-type')).toBe('application/zip')
     const files = unzip(Buffer.from(await res.arrayBuffer()))
-    expect(Object.keys(files).map(name => name.replace(/-[^-]+-\d{4}-.*\.csv$/, ''))).toEqual([
-      'double-annotation-pairs',
-      'double-annotation-answers',
-      'double-annotation-agreement'
-    ])
+    expect(Object.keys(files).every(name => !name.includes(':'))).toBe(true) // extractable on Windows
+    expect(
+      Object.keys(files).map(name => name.replace(/-[^-]+-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.csv$/, ''))
+    ).toEqual(['double-annotation-pairs', 'double-annotation-answers', 'double-annotation-agreement'])
     const single = async (format: string) =>
       (await exportRoute.GET(request(`/x/export?format=${format}&taxonomy=A`), params())).text()
     const [pairsCsv, answersCsv, agreementCsv] = Object.values(files)

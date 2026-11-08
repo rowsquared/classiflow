@@ -134,7 +134,9 @@ export const GET = workspaceRoute(
             payload: { status: statusFilter, dateRange, labels, records, formulaSafe: neutralizeFormulas, rounds }
           })
       }
-      const stamp = `${actor.workspaceId}-${new Date().toISOString()}`
+      // File names without ':' (not allowed in Windows file names, so a ZIP's
+      // entries would not extract there): 2026-11-08T11-32-04Z.
+      const stamp = `${actor.workspaceId}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}Z`
       if (format === 'analysis') {
         // One ZIP; each file is read (and audited) when its turn comes.
         const stream = zipStream([
