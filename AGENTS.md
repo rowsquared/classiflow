@@ -345,15 +345,20 @@ writes need the same scope as reads. The access matrix is in
   function `app_admit_ai_jobs()` admits them to `processing` under
   `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` / `AI_MAX_ACTIVE_JOBS`, fairly across
   workspaces. Results are stored only for the job's input rows. Learning uses
-  submitted user annotations and a minimum-new-labels threshold. A taxonomy's
-  AI state (`lastAISyncStatus` in API responses) is its latest sync job.
+  submitted user annotations and a minimum-new-labels threshold. Each job
+  stores the label revisions it sends. Successful batches credit only their
+  own labels, and the taxonomy's run finishes after every batch is terminal.
+  A taxonomy's AI sync state (`lastAISyncStatus` in API responses) is its latest
+  sync job.
 - Ownership is a database lease per job (`leaseOwner`, `leaseExpiresAt`),
   claimed with a conditional update before a job is started or polled and
   renewed on every poll, so only one instance works on a job. Recovery
   (`startJobRecovery()` from `instrumentation.ts`, every 30 s, and
   `ensureJobsMonitored()` from the active-jobs API) takes over admitted jobs
   whose lease expired: it resumes polling when `externalJobId` is set,
-  otherwise starts the job. SIGTERM/SIGINT give this instance's leases back
+  otherwise starts the job. Retryable start errors keep the admission slot
+  during bounded backoff. An ambiguous learning start can be sent again until
+  Taxomind supports a learning idempotency key. SIGTERM/SIGINT return leases
   (`releaseAllLeases()`). Failed status requests back off exponentially
   (capped at 5 minutes). Cancelling (route or workspace archival) asks
   Taxomind to cancel after commit, through the job's own connection.

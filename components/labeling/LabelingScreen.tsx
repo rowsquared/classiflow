@@ -160,6 +160,24 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   })
   const saving = annotationMutation.isPending
 
+  const commentMutation = useMutation({
+    mutationFn: ({ method, body }: { method: 'POST' | 'PATCH' | 'DELETE'; body: unknown }) =>
+      fetchJson(api(`/sentences/${sentenceId}/comments`), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+  })
+
+  const doubleMutation = useMutation({
+    mutationFn: (body: DoubleCommand) =>
+      fetchJson(api(`/sentences/${sentenceId}/double-annotation`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+  })
+
   const openComments = () => {
     // Re-enabling the query refreshes on every opening, including browser history.
     if (commentsOpen) void commentsQuery.refetch()
@@ -168,15 +186,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
   const commentRequest = async (method: 'POST' | 'PATCH' | 'DELETE', body: unknown, failure: string) => {
     try {
-      const res = await fetch(api(`/sentences/${sentenceId}/comments`), {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      if (!res.ok) {
-        showError(failure)
-        return false
-      }
+      await commentMutation.mutateAsync({ method, body })
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [...recordKey, 'comments'] }),
         queryClient.invalidateQueries({ queryKey: recordKey, exact: true }),
@@ -279,11 +289,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
   const handleDoubleCommand = async (body: DoubleCommand) => {
     try {
-      await fetchJson(api(`/sentences/${sentenceId}/double-annotation`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+      await doubleMutation.mutateAsync(body)
       await Promise.all([queryClient.invalidateQueries({ queryKey: recordKey, exact: true }), invalidateQueue()])
       return true
     } catch (error) {
@@ -413,7 +419,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   )
 
   if (recordQuery.isPending || taxonomiesQuery.isPending) return message('Loading...', 'muted')
-  if (recordQuery.isError || taxonomiesQuery.isError)
+  if ((recordQuery.isError && !sentence) || (taxonomiesQuery.isError && taxonomiesQuery.data === undefined))
     return message('Could not load the labeling screen. Please try again.', 'error', () => {
       recordQuery.refetch()
       taxonomiesQuery.refetch()

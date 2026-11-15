@@ -42,8 +42,9 @@ import {
   AI_MAX_ACTIVE_JOBS_PER_WORKSPACE,
   getUnknownCodeForLevel
 } from './constants'
-import { parseLabelingResults, type TaxomindResource } from './contracts/taxomind'
-import type { TaxomindClient } from './ai-labeling'
+import { parseLabelingResults, type LearningRequest, type TaxomindResource } from './contracts/taxomind'
+import { AI_REQUEST_TIMEOUT_POST_MS, TaxomindRequestError, type TaxomindClient } from './ai-labeling'
+import { creditLearningBatch, lockLearningTaxonomy, settleLearningRun } from '@/lib/server/ai-learning'
 import { connectionClient, ensureEnvEndpoint } from './ai-connections'
 import { deploymentKeyring } from './ai-credentials'
 import { buildFieldMap } from './ai-utils'
@@ -87,6 +88,9 @@ const RECOVERY_CHECK_INTERVAL_MS = 30_000
 const LEASE_MS = 2 * AI_JOB_POLL_INTERVAL_MS + 60_000
 // Status requests that fail are retried with exponential backoff up to this.
 const MAX_POLL_BACKOFF_MS = 5 * 60_000
+const START_ATTEMPTS = 6
+const START_LEASE_MS = Math.max(LEASE_MS, AI_REQUEST_TIMEOUT_POST_MS + 60_000)
+const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 // Prisma stores timestamps as UTC wall time; the database functions take that.
 const utcWallTime = (date: Date) => date.toISOString()
@@ -159,7 +163,7 @@ async function isStillProcessing(workspaceId: string, jobId: string, kind: JobKi
  * the job is unowned, its lease expired, or this instance already holds it.
  * Fails while the instance shuts down, so its monitors stop.
  */
-async function claimLease(workspaceId: string, jobId: string, kind: JobKind): Promise<boolean> {
+async function claimLease(workspaceId: string, jobId: string, kind: JobKind, duration = LEASE_MS): Promise<boolean> {
   if (shuttingDown()) return false
   const now = new Date()
   const owner = monitorInstanceId()
@@ -168,7 +172,7 @@ async function claimLease(workspaceId: string, jobId: string, kind: JobKind): Pr
     status: 'processing',
     OR: [{ leaseOwner: null }, { leaseExpiresAt: null }, { leaseExpiresAt: { lt: now } }, { leaseOwner: owner }]
   }
-  const data = { leaseOwner: owner, leaseExpiresAt: new Date(now.getTime() + LEASE_MS) }
+  const data = { leaseOwner: owner, leaseExpiresAt: new Date(now.getTime() + duration) }
   const result = await withWorkspace(workspaceId, () => jobTable(kind).updateMany({ where, data }))
   return result.count === 1
 }
@@ -360,12 +364,13 @@ async function startLabeling(job: JobRecord, client: TaxomindClient, namespace: 
 }
 
 async function startLearning(job: JobRecord, client: TaxomindClient, namespace: string): Promise<string> {
-  // The job's records with their human labels in this taxonomy, in input order.
+  // New batches send the exact revision selected when queued. Legacy jobs read live labels.
   const inputs = await withWorkspace(job.workspaceId, () =>
     db().aILearningJobInput.findMany({
       where: { jobId: job.id },
       orderBy: { position: 'asc' },
       select: {
+        annotations: true,
         sentence: {
           select: {
             ...sentenceFields,
@@ -382,12 +387,12 @@ async function startLearning(job: JobRecord, client: TaxomindClient, namespace: 
   if (inputs.length === 0) throw new Error('No sentences to process')
 
   const sentencesPayload = inputs
-    .filter(({ sentence }) => sentence.annotations.length > 0)
-    .map(({ sentence }) => ({
+    .map(({ sentence, annotations }) => ({
       sentenceId: sentence.id,
       fields: buildFieldMap(sentence),
-      annotations: sentence.annotations.map(a => ({ level: a.level, nodeCode: a.nodeCode }))
+      annotations: (annotations as LearningRequest['sentences'][number]['annotations'] | null) ?? sentence.annotations
     }))
+    .filter(sentence => sentence.annotations.length > 0)
   if (sentencesPayload.length === 0) throw new Error('No valid annotations to send')
 
   return client.startLearningJob({
@@ -448,14 +453,32 @@ async function startSync(job: JobRecord, client: TaxomindClient, namespace: stri
 }
 
 async function startExternal(kind: JobKind, job: JobRecord, client: TaxomindClient, namespace: string) {
-  const externalJobId =
-    kind === 'learning'
-      ? await startLearning(job, client, namespace)
-      : kind === 'sync'
-        ? await startSync(job, client, namespace)
-        : await startLabeling(job, client, namespace)
-  await updateJobRecord(job.workspaceId, job.id, kind, { externalJobId, startedAt: new Date(), errorMessage: null })
-  return externalJobId
+  const start = kind === 'learning' ? startLearning : kind === 'sync' ? startSync : startLabeling
+  for (let attempt = 1; ; attempt++) {
+    if (!(await claimLease(job.workspaceId, job.id, kind, START_LEASE_MS))) return null
+    let externalJobId: string
+    try {
+      externalJobId = await start(job, client, namespace)
+    } catch (error) {
+      if (!(error instanceof TaxomindRequestError) || !error.retryable || attempt >= START_ATTEMPTS) throw error
+      // Holding the admission slot while retrying prevents a brief outage from draining the queue.
+      const delay = Math.min(60_000, Math.min(5_000, AI_JOB_POLL_INTERVAL_MS) * 2 ** (attempt - 1))
+      logger.warn({ kind, jobId: job.id, attempt, delay, err: error }, 'AI job start will be retried')
+      await wait(delay)
+      continue
+    }
+    const saved = await withWorkspace(job.workspaceId, () =>
+      jobTable(kind).updateMany({
+        where: { id: job.id, status: 'processing', leaseOwner: monitorInstanceId() },
+        data: { externalJobId, startedAt: new Date(), errorMessage: null }
+      })
+    )
+    if (saved.count > 0) return externalJobId
+    if (!(await isStillProcessing(job.workspaceId, job.id, kind))) {
+      await client.cancelJob(API_RESOURCE[kind], externalJobId)
+    }
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -481,24 +504,23 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       const { client, namespace } = await connectionClient(workspaceId, job.connectionVersionId, job.requestId)
       const externalJobId = job.externalJobId ?? (await startExternal(kind, job, client, namespace))
 
-      await pollUntilComplete(job, externalJobId, client, kind)
+      if (externalJobId) await pollUntilComplete(job, externalJobId, client, kind)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       logger.error({ kind, jobId, err: error }, 'AI job failed')
       try {
-        await failIfActive(workspaceId, jobId, kind, msg)
+        if (leased) await failIfActive(workspaceId, jobId, kind, msg)
       } catch {
         /* best effort */
       }
     } finally {
-      monitors.delete(jobId)
       if (leased && !shuttingDown()) {
         await releaseLease(workspaceId, jobId, kind).catch(() => {
           /* expires on its own */
         })
-        // A slot may have opened up.
-        scheduleAIJobs()
       }
+      monitors.delete(jobId)
+      if (leased && !shuttingDown()) scheduleAIJobs()
     }
   })()
 }
@@ -538,6 +560,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
           workspaceId,
           async () => {
             const tx = db()
+            if (kind === 'learning') await lockLearningTaxonomy(taxonomyId)
             const data: Record<string, unknown> = {
               status: 'completed',
               completedAt: new Date(),
@@ -546,21 +569,23 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
               leaseExpiresAt: null
             }
             if (job.totalSentences !== null) data.processedSentences = job.totalSentences
-            const claimed = await jobTable(kind).updateMany({ where: { id: jobId, status: 'processing' }, data })
+            const claimed = await jobTable(kind).updateMany({
+              where: { id: jobId, status: 'processing', leaseOwner: monitorInstanceId() },
+              data
+            })
             if (claimed.count === 0) return false
             if (kind === 'labeling') {
               await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, status.result)
+            }
+            if (kind === 'learning') {
+              await creditLearningBatch(taxonomyId, jobId)
+              await settleLearningRun(taxonomyId)
             }
             return true
           },
           { write: true, timeoutMs: 120_000 }
         )
         if (!completed) return
-
-        // For learning jobs, update taxonomy lastLearningAt
-        if (kind === 'learning') {
-          await updateTaxonomyLearningStatus(workspaceId, taxonomyId)
-        }
 
         return
       }
@@ -589,7 +614,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
       throw new Error(`Job polling timed out after ${Math.round(AI_JOB_POLL_TIMEOUT_MS / 60000)} minutes`)
     }
 
-    await new Promise(r => setTimeout(r, pollDelay(consecutiveErrors)))
+    await wait(pollDelay(consecutiveErrors))
   }
 }
 
@@ -601,27 +626,9 @@ export function pollDelay(consecutiveErrors: number): number {
   )
 }
 
-/**
- * When a learning job completes, update taxonomy's lastLearningAt timestamp.
- * Only updates if there are no other pending/processing learning jobs for this taxonomy.
- */
-async function updateTaxonomyLearningStatus(workspaceId: string, taxonomyId: string) {
-  await withWorkspace(workspaceId, async () => {
-    const stillActive = await db().aILearningJob.count({
-      where: { taxonomyId, status: { in: ['pending', 'processing'] } }
-    })
-    if (stillActive === 0) {
-      await db().taxonomy.update({
-        where: { id: taxonomyId },
-        data: { lastLearningAt: new Date(), lastLearningStatus: 'completed', lastLearningError: null }
-      })
-    }
-  })
-}
-
 /** Marks a job failed unless it already reached a final state (e.g. cancelled). */
 async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, message: string) {
-  const where = { id: jobId, status: { in: ['pending', 'processing'] } }
+  const where = { id: jobId, status: 'processing', leaseOwner: monitorInstanceId() }
   const data = {
     status: 'failed',
     errorMessage: message,
@@ -629,7 +636,18 @@ async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, m
     leaseOwner: null,
     leaseExpiresAt: null
   }
-  await withWorkspace(workspaceId, () => jobTable(kind).updateMany({ where, data }))
+  await withWorkspace(
+    workspaceId,
+    async () => {
+      const learning =
+        kind === 'learning' &&
+        (await db().aILearningJob.findUnique({ where: { id: jobId }, select: { taxonomyId: true } }))
+      if (learning) await lockLearningTaxonomy(learning.taxonomyId)
+      const changed = await jobTable(kind).updateMany({ where, data })
+      if (learning && changed.count > 0) await settleLearningRun(learning.taxonomyId)
+    },
+    { write: true }
+  )
 }
 
 /**

@@ -71,7 +71,7 @@ instances. Sessions and the sign-in rate
 limit live in the database, so they are shared too.
 
 Connection budget: each instance opens up to `DATABASE_POOL_SIZE` connections
-(default 10; Prisma 7 uses the `pg` driver's pool, `lib/prisma.ts`), and the
+(default 20, configured in `lib/prisma.ts` for the `pg` driver), and the
 start scripts briefly one more each. Keep instances × `DATABASE_POOL_SIZE` plus
 room for migrations, backups and `psql` below PostgreSQL's `max_connections`
 (100 by default).
@@ -93,6 +93,8 @@ migration history, no bypass of row security. It may also call the narrow
 AI job functions (recovery, admission, lease release), which return ids only. The server and admin bootstrap then connect as
 that role. Changing `APP_DB_PASSWORD` and restarting rotates the password. The
 CI smoke job and the integration tests run this way.
+For connections as the runtime role, PostgreSQL limits a statement and an idle
+transaction to five minutes. These limits apply within the app database.
 
 ## AI credentials
 
@@ -124,7 +126,7 @@ usable token, and the keys alone hold no data:
 ## Reverse proxy
 
 - Terminate TLS at the proxy and forward `Host` (or `X-Forwarded-Host`) unchanged: state-changing API calls whose browser `Origin` does not match are refused (403).
-- Set a request body limit of at least 51 MiB for CSV uploads to allow for the 50 MiB file and multipart overhead. The app rate-limits sign-in per client IP itself (`SIGN_IN_RATE_LIMIT`), reading the IP from `X-Forwarded-For`, so the proxy must set that header (and strip any value the client sent). A proxy rate limit on `POST /api/auth/sign-in/*` is still a sensible second layer.
+- Set a request body limit of at least 51 MiB for CSV uploads to allow for the 50 MiB file and multipart overhead. Configure `TRUSTED_PROXY_HOPS` for the number of trusted proxies that append an address to `X-Forwarded-For` on the path to classiflow. The default assumes one proxy. Keep the app port private and have the outer proxy replace client-supplied forwarding headers. A proxy rate limit on `POST /api/auth/sign-in/*` provides a second layer.
 - Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (`next.config.ts`) and an enforced, nonce-based `Content-Security-Policy` (`proxy.ts`).
 
 ## Mail
@@ -238,8 +240,9 @@ scripts/restore-drill.sh classiflow-2026-10-21.dump
 ```
 
 `scripts/restore-check.ts` fails the drill unless: no migration failed; every
-table with a `workspaceId` (except the `WorkspaceMembership` control-plane
-table) has row security enabled and a policy; the runtime role, set up as the
+table with a `workspaceId` has row security enabled and a policy, with four
+control-plane exceptions (`WorkspaceMembership`, `WorkspaceInvitation`,
+`OutgoingMail` and `AIEndpointGrant`); the runtime role, set up as the
 start script does, is not a superuser, cannot bypass row security, owns no
 table, has row access to every application table, none to the migration
 history, and may run the AI job recovery function; and, for every workspace,

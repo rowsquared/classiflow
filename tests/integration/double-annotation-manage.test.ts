@@ -113,6 +113,27 @@ describe('managing double annotation', () => {
     expect(accept.body).toMatchObject({ applied: 1, skipped: { 'A taxonomy has no label yet': 2 } })
   })
 
+  it('gives the same handover result for a partly answered part in preview and commit', async () => {
+    await createTaxonomy('B')
+    const [record] = await createSentences(1, [alice.id])
+    signInAs(sam)
+    await start({ sentenceIds: [record.id], firstUserId: alice.id, secondUserId: bob.id })
+    signInAs(bob)
+    expect((await save(record.id, path('02'))).status).toBe(200)
+
+    signInAs(sam)
+    const command = { action: 'hand_over', sentenceIds: [record.id], fromUserId: bob.id, toUserId: carol.id }
+    const preview = await post(commandsRoute, { ...command, dryRun: true })
+    const actual = await post(commandsRoute, command)
+    expect(preview).toEqual(actual)
+    expect(actual.body).toMatchObject({
+      applied: 0,
+      skipped: expect.objectContaining({
+        'This person already labelled part of the record. Accept the single label or stop double annotation instead.': 1
+      })
+    })
+  })
+
   it('queue counts per double annotation state, and the disagreement in the row', async () => {
     const [r1, r2] = await createSentences(2, [alice.id])
     signInAs(sam)
@@ -141,6 +162,7 @@ describe('managing double annotation', () => {
     await save(r2.id, path('02'))
 
     signInAs(sam)
+    await prisma.user.update({ where: { id: bob.id }, data: { name: alice.name } })
     const overview = await (await overviewRoute.GET(request('/x/overview'), params())).json()
     const double = overview.double
     expect(double.agreementByLevel).toEqual([
@@ -155,7 +177,16 @@ describe('managing double annotation', () => {
       }
     ])
     expect(double.labellers).toEqual(
-      expect.arrayContaining([{ name: alice.name, compared: 2, agreed: 1, decided: 0, chosen: 0 }])
+      expect.arrayContaining(
+        [alice, bob].map(labeller => ({
+          id: labeller.id,
+          name: alice.name,
+          compared: 2,
+          agreed: 1,
+          decided: 0,
+          chosen: 0
+        }))
+      )
     )
     expect(double.confusions).toEqual([
       expect.objectContaining({ taxonomyKey: 'A', level: 2, a: '011', b: '012', count: 1 })

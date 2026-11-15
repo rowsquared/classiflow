@@ -102,7 +102,7 @@ async function readPairRecords(
               id: true,
               position: true,
               fromBaseline: true,
-              assignee: { select: { name: true, username: true } },
+              assignee: { select: { id: true, name: true, username: true } },
               labels: {
                 select: {
                   taxonomyId: true,
@@ -515,22 +515,32 @@ export async function agreementStream(
     if (outcome.matched) level.full++
     byLevel.set(t, level)
 
-    const nameA = pair.a.task?.assignee?.name ?? 'Former member'
-    const nameB = pair.b.task?.assignee?.name ?? 'Former member'
-    const [x, y] = [nameA, nameB].sort()
-    const pairKey = `${t}\u0001${x}\u0001${y}`
-    const p = byPair.get(pairKey) ?? { taxonomyId: t, a: x!, b: y!, compared: 0, agreed: 0, kappa: new KappaTally() }
+    const former = { id: '', name: 'Former member' }
+    const personA = pair.a.task?.assignee ?? former
+    const personB = pair.b.task?.assignee ?? former
+    const [x, y] = [personA, personB].sort(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+    )
+    const pairKey = JSON.stringify([t, x!.id, y!.id])
+    const p = byPair.get(pairKey) ?? {
+      taxonomyId: t,
+      a: x!.name,
+      b: y!.name,
+      compared: 0,
+      agreed: 0,
+      kappa: new KappaTally()
+    }
     p.compared++
     p.kappa.add(JSON.stringify(a), JSON.stringify(b))
     if (outcome.matched) p.agreed++
     byPair.set(pairKey, p)
 
     const decided = outcome.state === 'reviewed' && outcome.resultCodes.length > 0
-    for (const [name, codes] of [
-      [nameA, a],
-      [nameB, b]
+    for (const [{ id, name }, codes] of [
+      [personA, a],
+      [personB, b]
     ] as const) {
-      const key = `${t}\u0001${name}`
+      const key = JSON.stringify([t, id])
       const entry = byLabeller.get(key) ?? { taxonomyId: t, name, compared: 0, agreed: 0, decided: 0, chosen: 0 }
       entry.compared++
       if (outcome.matched) entry.agreed++

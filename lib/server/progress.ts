@@ -261,6 +261,8 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
       resultCodes: string[]
       a: string[] | null
       b: string[] | null
+      aUserId: string | null
+      bUserId: string | null
       aName: string | null
       bName: string | null
       aLabels: Record<string, string> | null
@@ -268,7 +270,8 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
     }>
   >`
     SELECT tx.key AS "taxonomyKey", tx."levelNames" AS "levelNames", o.matched, o.state::text AS state,
-           o."resultCodes" AS "resultCodes", ua.name AS "aName", ub.name AS "bName",
+           o."resultCodes" AS "resultCodes", ta."assigneeId" AS "aUserId", tb."assigneeId" AS "bUserId",
+           ua.name AS "aName", ub.name AS "bName",
            (SELECT json_agg(l."nodeCode" ORDER BY l.level) FROM "DoubleTaskLabel" l
              WHERE l."taskId" = ta.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
                AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS a,
@@ -304,6 +307,8 @@ function summarizePairs(
     resultCodes: string[]
     a: string[] | null
     b: string[] | null
+    aUserId: string | null
+    bUserId: string | null
     aName: string | null
     bName: string | null
     aLabels: Record<string, string> | null
@@ -314,7 +319,7 @@ function summarizePairs(
     string,
     { compared: number; agreed: number[]; depth: number; levelNames: string[]; kappa: LevelKappa }
   >()
-  const byLabeller = new Map<string, { compared: number; agreed: number; decided: number; chosen: number }>()
+  const byLabeller = new Map<string | null, DoubleProgress['labellers'][number]>()
   const confusions = new Map<string, DoubleProgress['confusions'][number]>()
   const same = (x: string[], y: string[]) => x.length === y.length && x.every((c, i) => c === y[i])
   for (const p of pairs) {
@@ -337,19 +342,25 @@ function summarizePairs(
     byTaxonomy.set(p.taxonomyKey, t)
 
     const decided = p.state === 'reviewed' && p.resultCodes.length > 0
-    for (const [name, codes] of [
-      [p.aName, a],
-      [p.bName, b]
+    for (const [id, name, codes] of [
+      [p.aUserId, p.aName, a],
+      [p.bUserId, p.bName, b]
     ] as const) {
-      const key = name ?? 'Former member'
-      const e = byLabeller.get(key) ?? { compared: 0, agreed: 0, decided: 0, chosen: 0 }
+      const e = byLabeller.get(id) ?? {
+        id,
+        name: name ?? 'Former member',
+        compared: 0,
+        agreed: 0,
+        decided: 0,
+        chosen: 0
+      }
       e.compared++
       if (p.matched) e.agreed++
       if (decided) {
         e.decided++
         if (same(p.resultCodes, codes)) e.chosen++
       }
-      byLabeller.set(key, e)
+      byLabeller.set(id, e)
     }
 
     if (!p.matched) {
@@ -388,9 +399,9 @@ function summarizePairs(
         kappa: t.kappa.byLevel(Math.max(1, t.depth)),
         fullKappa: t.kappa.fullPath()
       })),
-    labellers: [...byLabeller]
-      .map(([name, e]) => ({ name, ...e }))
-      .sort((x, y) => y.compared - x.compared || x.name.localeCompare(y.name)),
+    labellers: [...byLabeller.values()].sort(
+      (x, y) => y.compared - x.compared || x.name.localeCompare(y.name) || (x.id ?? '').localeCompare(y.id ?? '')
+    ),
     confusions: [...confusions.values()]
       .sort((x, y) => y.count - x.count || x.taxonomyKey.localeCompare(y.taxonomyKey) || x.a.localeCompare(y.a))
       .slice(0, 10)

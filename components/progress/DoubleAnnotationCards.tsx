@@ -259,7 +259,7 @@ function DoubleAnnotationBreakdowns({ double }: { double: DoubleProgress }) {
                 </thead>
                 <tbody>
                   {double.labellers.map(l => (
-                    <tr key={l.name} className="border-b border-gray-100">
+                    <tr key={l.id ?? 'former-member'} className="border-b border-gray-100">
                       <td className={`${td} wrap-anywhere text-gray-900`}>{l.name}</td>
                       <td className={tdNum}>{formatNumber(l.compared)}</td>
                       <td className={tdNum}>{share(l.agreed, l.compared)}</td>

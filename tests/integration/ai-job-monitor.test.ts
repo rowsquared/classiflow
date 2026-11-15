@@ -61,6 +61,8 @@ let monitor: typeof import('@/lib/ai-job-monitor')
 let ai: typeof import('@/lib/ai-labeling')
 let syncRoute: typeof import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
 let labelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+let learnRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/learn/route')
+let annotationsRoute: typeof import('@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route')
 let cancelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
 let workspaceRoute: typeof import('@/app/api/workspaces/[workspaceId]/route')
 let stubUrl: string
@@ -68,7 +70,7 @@ const started: StubJob[] = []
 const cancels: string[] = []
 let allowedAuth = new Set(['Bearer stub-key'])
 let statusReply: StatusReply
-let createdReply: ((resource: Resource) => Reply) | undefined
+let createdReply: ((resource: Resource) => Reply | undefined) | undefined
 let authHeaders: string[] = []
 let requestIdHeaders: Array<string | undefined> = []
 let violations: string[] = []
@@ -179,6 +181,8 @@ beforeAll(async () => {
   ai = await import('@/lib/ai-labeling')
   syncRoute = await import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
   labelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+  learnRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/learn/route')
+  annotationsRoute = await import('@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route')
   cancelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
   workspaceRoute = await import('@/app/api/workspaces/[workspaceId]/route')
 })
@@ -513,6 +517,17 @@ describe('AI job monitor against a stub service', () => {
     expect(done.errorMessage).toBe('AI service returned HTTP 401 (POST /label)')
   })
 
+  it('keeps an admitted job through a short start outage and sends the same batch id', async () => {
+    const [a] = await createSentences(1)
+    let attempts = 0
+    createdReply = () => (++attempts <= 2 ? { code: 503, body: { detail: 'Temporarily unavailable' } } : undefined)
+    statusReply = completedWith([])
+    const job = await labelingJob([a.id])
+    await run()
+    expect((await settle(job.id)).status).toBe('completed')
+    expect(started.map(start => start.body.batchId)).toEqual([job.id, job.id, job.id])
+  })
+
   it('leaves a job alone while another instance holds its lease', async () => {
     const [a] = await createSentences(1)
     statusReply = completedWith([])
@@ -584,11 +599,17 @@ describe('AI job monitor against a stub service', () => {
           createdById: admin.id,
           taxonomyId: taxonomy.id,
           connectionVersionId: connection.id,
-          totalSentences: 1
+          totalSentences: 1,
+          learningRunId: 'tracked-learning-run',
+          selectionCutoff: new Date()
         }
       })
       await db().aILearningJobInput.create({
         data: { workspaceId: wsId(), jobId: created.id, sentenceId: a.id, position: 0 }
+      })
+      await db().taxonomy.update({
+        where: { id: taxonomy.id },
+        data: { lastLearningJobId: created.id, lastLearningStatus: 'processing' }
       })
       return created
     })
@@ -615,10 +636,67 @@ describe('AI job monitor against a stub service', () => {
         }
       ]
     })
-    // Recorded right after the job's completion, outside its transaction.
-    await expect
-      .poll(async () => (await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).lastLearningStatus)
-      .toBe('completed')
+    expect(await prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })).toMatchObject({
+      lastLearningStatus: 'completed',
+      lastLearningAt: job.selectionCutoff
+    })
+  })
+
+  it('retries only unlearned revisions after a partial failure and preserves edits made during learning', async () => {
+    signInAs(admin)
+    await prisma.workspace.update({
+      where: { id: wsId() },
+      data: { aiLearningBatchSize: 1, aiLearningMinNewAnnotations: 3 }
+    })
+    const [edited, retained, failed] = await createSentences(3)
+    const save = (sentenceId: string, nodeCode: string) =>
+      annotationsRoute.POST(
+        request('/x', {
+          method: 'POST',
+          body: { status: 'submitted', annotations: [{ taxonomyKey: 'ISCO', level: 1, nodeCode }] }
+        }),
+        params({ sentenceId })
+      )
+    for (const record of [edited, retained, failed]) expect((await save(record.id, '02')).status).toBe(200)
+    const learn = () => learnRoute.POST(request('/x', { method: 'POST', body: { taxonomyKey: 'ISCO' } }), params())
+    const target = () => prisma.taxonomy.findUniqueOrThrow({ where: { id: taxonomy.id } })
+    const recordOf = (job: StubJob) => (job.body.sentences as Array<{ sentenceId: string; annotations: unknown }>)[0]!
+    statusReply = () => ({ body: { status: 'running' } })
+    const first = await learn()
+    expect(first.status, await first.clone().text()).toBe(200)
+    expect((await learn()).status).toBe(409)
+    await expect.poll(() => started.length).toBe(3)
+
+    const updated = await annotationsRoute.POST(
+      request('/x', {
+        method: 'POST',
+        body: {
+          status: 'submitted',
+          annotations: [
+            { taxonomyKey: 'ISCO', level: 1, nodeCode: '01' },
+            { taxonomyKey: 'ISCO', level: 2, nodeCode: '011' }
+          ]
+        }
+      }),
+      params({ sentenceId: edited.id })
+    )
+    expect(updated.status).toBe(200)
+    statusReply = job => ({ body: { status: recordOf(job).sentenceId === failed.id ? 'failed' : 'completed' } })
+    await expect.poll(async () => (await target()).lastLearningStatus).toBe('failed')
+    expect(await target()).toMatchObject({ lastLearningAt: null, newAnnotationsSinceLastLearning: 3 })
+
+    statusReply = () => ({ body: { status: 'completed' } })
+    const retry = await learn()
+    expect(retry.status, await retry.clone().text()).toBe(200)
+    expect((await retry.json()).totalSentences).toBe(2)
+    await expect.poll(async () => (await target()).lastLearningStatus).toBe('completed')
+    expect(await target()).toMatchObject({ lastLearningError: null, newAnnotationsSinceLastLearning: 0 })
+    const sent = started.slice(3).map(recordOf)
+    expect(sent.map(row => row.sentenceId).sort()).toEqual([edited.id, failed.id].sort())
+    expect(sent.find(row => row.sentenceId === edited.id)?.annotations).toEqual([
+      { level: 1, nodeCode: '01' },
+      { level: 2, nodeCode: '011' }
+    ])
   })
 })
 

@@ -166,3 +166,9 @@ test('workspace chooser', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible()
   await expectAccessible(page, 'workspaces')
 })
+
+test('unknown page', async ({ page }) => {
+  await page.goto('/missing-page-for-accessibility-check')
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
+  await expectAccessible(page, 'page not found')
+})

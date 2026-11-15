@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { Role, SessionUser, CurrentUser } from '@/lib/api-auth'
 import { afterCommit, db, withWorkspace } from '@/lib/workspace/db'
 import { cancelExternalJob } from '@/lib/ai-job-monitor'
+import { lockLearningTaxonomy, settleLearningRun } from '@/lib/server/ai-learning'
 import { currentRequestId } from '@/lib/request-id'
 import { auditInTransaction, audit } from '@/lib/audit'
 import { connectionClient } from '@/lib/ai-connections'
@@ -158,7 +159,7 @@ export async function setWorkspaceStatus(workspaceId: string, status: 'active' |
     const select = { id: true, externalJobId: true, connectionVersionId: true } as const
     const [labeling, learning, sync] = await Promise.all([
       db().aILabelingJob.findMany({ where: active, select }),
-      db().aILearningJob.findMany({ where: active, select }),
+      db().aILearningJob.findMany({ where: active, select: { ...select, taxonomyId: true } }),
       db().aITaxonomySyncJob.findMany({ where: active, select })
     ])
     const cancelled = {
@@ -168,9 +169,12 @@ export async function setWorkspaceStatus(workspaceId: string, status: 'active' |
       leaseOwner: null,
       leaseExpiresAt: null
     }
+    const trainingTaxonomies = [...new Set(learning.map(job => job.taxonomyId))].sort()
+    for (const id of trainingTaxonomies) await lockLearningTaxonomy(id)
     await db().aILabelingJob.updateMany({ where: active, data: cancelled })
     await db().aILearningJob.updateMany({ where: active, data: cancelled })
     await db().aITaxonomySyncJob.updateMany({ where: active, data: cancelled })
+    for (const id of trainingTaxonomies) await settleLearningRun(id)
 
     const external = [
       ...labeling.map(job => ({ kind: 'labeling' as const, ...job })),

@@ -149,13 +149,10 @@ export async function resolveSupervisor(
 }
 
 /**
- * Whether a workspace admin may change this account's global profile or
- * password: platform admins always; otherwise only for an account that
- * belongs to this workspace alone and has never signed in (a new account
- * this workspace created). Anything else would let one workspace's admin take
- * over a person's access to other workspaces.
+ * A workspace admin may resend the original setup invitation for a local
+ * account that has never signed in. The account address is platform-managed.
  */
-export async function mayManageAccount(actor: CurrentUser, userId: string): Promise<boolean> {
+export async function mayResendAccountInvitation(actor: CurrentUser, userId: string): Promise<boolean> {
   if (actor.authority === 'platform') return true
   const account = await db().user.findUnique({
     where: { id: userId },

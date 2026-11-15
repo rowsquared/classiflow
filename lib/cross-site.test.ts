@@ -32,12 +32,19 @@ describe('isCrossSiteMutation', () => {
     )
   })
 
-  it('leaves Auth.js routes to Auth.js but checks the reset endpoint', () => {
+  it('leaves Better Auth routes to Better Auth and checks the application’s password routes', () => {
     expect(
-      isCrossSiteMutation(req('POST', '/api/auth/callback/credentials', { host: 'a', origin: 'https://evil.test' }))
+      isCrossSiteMutation(req('POST', '/api/auth/sign-in/username', { host: 'a', origin: 'https://evil.test' }))
     ).toBe(false)
     expect(
       isCrossSiteMutation(req('POST', '/api/auth/reset-password', { host: 'a', origin: 'https://evil.test' }))
     ).toBe(true)
+    for (const path of [
+      '/api/auth/forgot-password',
+      '/api/auth/set-password/check',
+      '/api/auth/set-password/confirm'
+    ]) {
+      expect(isCrossSiteMutation(req('POST', path, { host: 'a', origin: 'https://evil.test' }))).toBe(true)
+    }
   })
 })

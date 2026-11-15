@@ -1,4 +1,6 @@
 import { betterAuth } from 'better-auth'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { createHash } from 'node:crypto'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { nextCookies } from 'better-auth/next-js'
 import { admin, username } from 'better-auth/plugins'
@@ -6,9 +8,19 @@ import { headers } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { USERNAME_PATTERN } from '@/lib/passwords'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/password-policy'
+import { allowRequest, clientIp } from '@/lib/rate-limit'
+import { logError } from '@/lib/logger'
 
-// Sign-in attempts per client IP per minute (ENV_SETUP.md).
-const SIGN_IN_LIMIT = { window: 60, max: Number(process.env.SIGN_IN_RATE_LIMIT) || 10 }
+const signInPerIp = { windowSeconds: 60, max: Number(process.env.SIGN_IN_RATE_LIMIT) || 10 }
+const signInPerAccount = { windowSeconds: 900, max: Number(process.env.SIGN_IN_ACCOUNT_RATE_LIMIT) || 10 }
+
+function signInLimited(retryAfter: number) {
+  return new APIError(
+    'TOO_MANY_REQUESTS',
+    { message: 'Too many sign-in attempts. Please try again later.' },
+    { 'Retry-After': String(retryAfter) }
+  )
+}
 
 /**
  * Better Auth: database sessions (one Session row per browser), passwords on
@@ -38,13 +50,40 @@ export const auth = betterAuth({
     // Better Auth enables rate limiting in production only.
     storage: 'database',
     customRules: {
-      '/sign-in/email': SIGN_IN_LIMIT,
-      '/sign-in/username': SIGN_IN_LIMIT,
+      // These two endpoints use the application's IP and account limits.
+      '/sign-in/email': false,
+      '/sign-in/username': false,
       // Reading one's own session is not limited: a counter only resets after
       // a quiet window, so steady traffic from one address (an office behind
       // one IP) would eventually be refused and the app would lose its session.
       '/get-session': false
     }
+  },
+  advanced: { ipAddress: { ipAddressHeaders: ['x-classiflow-client-ip'] } },
+  hooks: {
+    before: createAuthMiddleware(async ctx => {
+      const field = ctx.path === '/sign-in/email' ? 'email' : ctx.path === '/sign-in/username' ? 'username' : null
+      if (!field) return
+      try {
+        const ip = ctx.request ? clientIp(ctx.request) : 'unknown'
+        if (ip !== 'unknown' && !(await allowRequest(`sign-in:ip:${ip}`, signInPerIp))) {
+          throw signInLimited(signInPerIp.windowSeconds)
+        }
+        const value: unknown = ctx.body?.[field]
+        if (typeof value !== 'string') return
+        const identifier = value.trim().toLowerCase()
+        const where = field === 'email' ? { email: identifier } : { username: identifier }
+        const account = await prisma.user.findUnique({ where, select: { id: true } })
+        const key = account?.id ?? createHash('sha256').update(`${field}:${identifier}`).digest('hex')
+        if (!(await allowRequest(`sign-in:account:${key}`, signInPerAccount))) {
+          throw signInLimited(signInPerAccount.windowSeconds)
+        }
+      } catch (error) {
+        if (error instanceof APIError) throw error
+        await logError('Could not check sign-in limits', error)
+        throw new APIError('SERVICE_UNAVAILABLE', { message: 'Sign-in is temporarily unavailable' })
+      }
+    })
   },
   databaseHooks: {
     session: {

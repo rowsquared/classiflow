@@ -4,17 +4,14 @@ import { forbidden, workspaceRoute } from '@/lib/api-auth'
 import { audit } from '@/lib/audit'
 import { mailEnabled } from '@/lib/mail/config'
 import { deliverSoon, queueMail } from '@/lib/mail/outbox'
-import { mayManageAccount } from '@/lib/server/users'
+import { mayResendAccountInvitation } from '@/lib/server/users'
 import { db } from '@/lib/workspace/db'
 
 const bodySchema = z.object({ purpose: z.enum(['password_link', 'invitation']) })
 
 /**
- * Workspace admins (not supervisors) send a member a link: a password link,
- * or the invitation of an account that has not chosen a password yet. Both
- * follow the local-account rule (lib/server/users.ts mayManageAccount);
- * platform admins always may. A link is not a password, so sending another
- * is harmless.
+ * Platform admins send password links. Workspace admins may resend setup
+ * invitations for eligible accounts in their workspace.
  */
 export const POST = workspaceRoute<'userId'>(['admin'], async (req, { user: actor, params }) => {
   if (!mailEnabled()) return NextResponse.json({ error: 'Email is not configured' }, { status: 409 })
@@ -31,8 +28,11 @@ export const POST = workspaceRoute<'userId'>(['admin'], async (req, { user: acto
   if (membership.status !== 'active' || membership.user.banned) {
     return NextResponse.json({ error: 'This member is not active' }, { status: 400 })
   }
-  if (!(await mayManageAccount(actor, userId))) {
-    return forbidden('This account is used beyond this workspace; only a platform admin can send it a password link')
+  if (purpose === 'password_link' && actor.authority !== 'platform') {
+    return forbidden('Only a platform admin can send an account a password link')
+  }
+  if (purpose === 'invitation' && !(await mayResendAccountInvitation(actor, userId))) {
+    return forbidden('Only a platform admin can resend an invitation for this account')
   }
   if (purpose === 'invitation' && (!membership.user.invitedAt || membership.user.invitationAcceptedAt)) {
     return NextResponse.json({ error: 'This account has no open invitation' }, { status: 400 })

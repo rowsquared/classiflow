@@ -263,7 +263,7 @@ export default function Sidebar() {
           </div>
 
           {/* Product name - Fades in/out when expanded/collapsed */}
-          <h1
+          <span
             className="text-sm font-semibold text-gray-900 truncate overflow-hidden"
             suppressHydrationWarning
             style={{
@@ -273,7 +273,7 @@ export default function Sidebar() {
             }}
           >
             {productName}
-          </h1>
+          </span>
         </div>
 
         {/* Collapse Button - Only visible when expanded */}

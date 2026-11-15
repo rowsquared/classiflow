@@ -2,7 +2,11 @@
 import { workspaceApi } from '@/lib/workspace/urls'
 
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
+import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { formatDateTime } from '@/lib/utils'
 import Modal from '@/components/Modal'
 import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
@@ -16,34 +20,25 @@ export type SentenceImport = {
 }
 
 type Props = {
-  initialImports: SentenceImport[]
+  initialImports?: SentenceImport[]
 }
 
 export default function SentenceAdminClient({ initialImports }: Props) {
+  const workspaceId = useWorkspaceInfo()?.id ?? ''
   const [sentenceFile, setSentenceFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [imports, setImports] = useState<SentenceImport[]>(initialImports)
-  const [loadingImports, setLoadingImports] = useState(false)
+  const importsQuery = useQuery({
+    queryKey: queryKeys.imports(workspaceId),
+    queryFn: async ({ signal }) =>
+      (await fetchJson<{ imports: SentenceImport[] }>(workspaceApi('/imports'), { signal })).imports,
+    initialData: initialImports
+  })
+  const imports = importsQuery.data ?? []
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [selectedImport, setSelectedImport] = useState<SentenceImport | null>(null)
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
-
-  const refreshImports = async () => {
-    try {
-      setLoadingImports(true)
-      const res = await fetch(workspaceApi('/imports'), { cache: 'no-store' })
-      const data = await res.json()
-      if (data.ok) {
-        setImports(data.imports)
-      }
-    } catch (error) {
-      console.error('Failed to load imports:', error)
-    } finally {
-      setLoadingImports(false)
-    }
-  }
 
   const handleDeleteImport = async () => {
     if (!selectedImport || confirmText !== 'DELETE') return
@@ -63,7 +58,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
         setDeleteModalOpen(false)
         setConfirmText('')
         setSelectedImport(null)
-        await refreshImports()
+        await importsQuery.refetch()
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to delete import' })
       }
@@ -114,7 +109,7 @@ export default function SentenceAdminClient({ initialImports }: Props) {
           text: `Successfully imported ${data.count || 0} sentences!`
         })
         setSentenceFile(null)
-        await refreshImports()
+        await importsQuery.refetch()
       } else {
         setMessage({
           type: 'error',
@@ -150,14 +145,13 @@ export default function SentenceAdminClient({ initialImports }: Props) {
         )}
 
         <div className={`${panelClass} p-6 mb-6`}>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">📊</span>
-            <h2 className="text-lg font-semibold text-gray-900">Import records</h2>
-          </div>
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Import records</h2>
 
           <div className="max-w-xl space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">CSV File</label>
+              <label htmlFor="sentence-file-input" className="block text-sm font-medium text-gray-700 mb-2">
+                CSV file
+              </label>
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
                   <input
@@ -209,16 +203,22 @@ export default function SentenceAdminClient({ initialImports }: Props) {
               <p className="text-sm text-gray-600 mt-1">Track and manage your previous sentence imports</p>
             </div>
             <button
-              onClick={refreshImports}
+              onClick={() => void importsQuery.refetch()}
+              disabled={importsQuery.isFetching}
               className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
             >
-              Refresh
+              {importsQuery.isError ? 'Retry' : 'Refresh'}
             </button>
           </div>
 
-          {loadingImports ? (
+          {importsQuery.isError && (
+            <p role="alert" className="mb-4 text-sm text-red-700">
+              Could not load import history.
+            </p>
+          )}
+          {importsQuery.isPending ? (
             <div className="py-12 text-center text-gray-600">Loading imports...</div>
-          ) : imports.length === 0 ? (
+          ) : imports.length === 0 && !importsQuery.isError ? (
             <div className="py-12 text-center text-gray-600">No imports yet. Upload a CSV file to get started.</div>
           ) : (
             <div className="space-y-4">

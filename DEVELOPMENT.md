@@ -78,6 +78,20 @@ DATABASE_URL=$TEST_DATABASE_URL node scripts/bench/seed-progress.ts --records 50
 npm run bench:progress             # p50/p95, SQL statements and response size per call
 ```
 
+To compare pool sizes with ten concurrent progress viewers and four label saves
+per iteration, run the same seeded database with each pool size:
+
+```bash
+BENCH_MIXED=1 DATABASE_POOL_SIZE=10 npm run bench:progress -- -t 'mixed workload'
+BENCH_MIXED=1 DATABASE_POOL_SIZE=20 npm run bench:progress -- -t 'mixed workload'
+```
+
+The mixed benchmark changes labels only on the seeded test records.
+
+Local comparison on 50,000 records (five measured iterations, PostgreSQL 18).
+With a pool of 10, read and save p95 were 1,005 ms and 1,059 ms. With a pool of
+20 they were 953 ms and 936 ms. Use staging traffic to size the deployment pool.
+
 Run it on a quiet machine; numbers from a busy laptop are only good for comparisons
 within one run.
 

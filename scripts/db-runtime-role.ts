@@ -52,6 +52,8 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
     const statements = [
       exists.length === 0 ? `CREATE ROLE ${role} LOGIN` : null,
       `ALTER ROLE ${role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD ${literal(password)}`,
+      `ALTER ROLE ${role} IN DATABASE "${db}" SET statement_timeout = '5min'`,
+      `ALTER ROLE ${role} IN DATABASE "${db}" SET idle_in_transaction_session_timeout = '5min'`,
       `GRANT CONNECT ON DATABASE "${db}" TO ${role}`,
       `REVOKE CREATE ON SCHEMA "${schema}" FROM PUBLIC`,
       `REVOKE CREATE ON SCHEMA "${schema}" FROM ${role}`,

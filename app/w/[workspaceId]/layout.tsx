@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Sidebar from '@/components/Sidebar'
+import SkipToContent from '@/components/SkipToContent'
 import { WorkspaceProvider } from '@/components/WorkspaceProvider'
 import QueryProvider from '@/components/QueryProvider'
 import { NuqsAdapter } from 'nuqs/adapters/next/app'
@@ -37,11 +38,12 @@ export default async function WorkspaceLayout({
         archived: user.archived
       }}
     >
-      <QueryProvider key={`${workspaceId}:${user.id}:${user.role}`}>
+      <QueryProvider key={`${workspaceId}:${user.id}:${user.role}`} userId={user.id}>
         <NuqsAdapter>
           <div className="flex h-dvh overflow-hidden">
+            <SkipToContent />
             <Sidebar />
-            <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-white">
+            <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 overflow-auto bg-white">
               {user.archived && (
                 <div role="status" className="px-8 py-2 text-sm bg-amber-50 text-amber-900 border-b border-amber-200">
                   This workspace is archived and read-only.

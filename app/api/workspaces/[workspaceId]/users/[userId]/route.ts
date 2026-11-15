@@ -15,7 +15,7 @@ export const GET = workspaceRoute<'userId'>([], async (_req, { user: currentUser
 })
 
 // PUT: role, supervisor and status are this workspace's; name, email and
-// password are the account's (see mayManageAccount).
+// password are the account's and can only be changed by platform admins.
 export const PUT = workspaceRoute<'userId'>(['admin'], async (req, { user: actor, params }) =>
   updateMembership(req, actor, params.userId)
 )

@@ -7,7 +7,7 @@ import { PrismaClient } from '@/lib/generated/prisma/client'
  * Budget: instances × DATABASE_POOL_SIZE must stay below the server's
  * max_connections (100 by default), minus room for migrations and psql.
  */
-const POOL_SIZE = Number(process.env.DATABASE_POOL_SIZE) || 10
+const POOL_SIZE = Number(process.env.DATABASE_POOL_SIZE) || 20
 
 type Adapter = Awaited<ReturnType<PrismaPg['connect']>>
 type Transaction = Awaited<ReturnType<Adapter['startTransaction']>>

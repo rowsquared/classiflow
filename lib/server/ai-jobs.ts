@@ -1,6 +1,7 @@
 import 'server-only'
 import { afterCommit, db } from '@/lib/workspace/db'
-import { cancelExternalJob, type JobKind } from '@/lib/ai-job-monitor'
+import { cancelExternalJob, scheduleAIJobs, type JobKind } from '@/lib/ai-job-monitor'
+import { lockLearningTaxonomy, settleLearningRun } from '@/lib/server/ai-learning'
 import { currentRequestId } from '@/lib/request-id'
 import type { AILabelingJobStatus } from '@/lib/generated/prisma/client'
 import { z } from 'zod'
@@ -113,13 +114,14 @@ export async function cancelAIJob(
   jobId: string
 ): Promise<{ status: AILabelingJobStatus; changed: boolean } | null> {
   const kind = JOB_KIND[type]
-  const select = { status: true, startedAt: true, externalJobId: true, connectionVersionId: true, workspaceId: true }
-  const job =
+  const select = { status: true, startedAt: true, taxonomyId: true } as const
+  const loadJob = () =>
     kind === 'labeling'
-      ? await db().aILabelingJob.findUnique({ where: { id: jobId }, select })
+      ? db().aILabelingJob.findUnique({ where: { id: jobId }, select })
       : kind === 'learning'
-        ? await db().aILearningJob.findUnique({ where: { id: jobId }, select })
-        : await db().aITaxonomySyncJob.findUnique({ where: { id: jobId }, select })
+        ? db().aILearningJob.findUnique({ where: { id: jobId }, select })
+        : db().aITaxonomySyncJob.findUnique({ where: { id: jobId }, select })
+  const job = await loadJob()
   if (!job) return null
   if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
     return { status: job.status, changed: false }
@@ -135,11 +137,26 @@ export async function cancelAIJob(
     leaseOwner: null,
     leaseExpiresAt: null
   }
-  if (kind === 'labeling') await db().aILabelingJob.update({ where: { id: jobId }, data })
-  else if (kind === 'learning') await db().aILearningJob.update({ where: { id: jobId }, data })
-  else await db().aITaxonomySyncJob.update({ where: { id: jobId }, data })
+  if (kind === 'learning') await lockLearningTaxonomy(job.taxonomyId)
+  const change = {
+    where: { id: jobId, status: { in: ['pending', 'processing'] satisfies AILabelingJobStatus[] } },
+    data,
+    select: { externalJobId: true, connectionVersionId: true, workspaceId: true } as const
+  }
+  const [cancelled] =
+    kind === 'labeling'
+      ? await db().aILabelingJob.updateManyAndReturn(change)
+      : kind === 'learning'
+        ? await db().aILearningJob.updateManyAndReturn(change)
+        : await db().aITaxonomySyncJob.updateManyAndReturn(change)
+  if (!cancelled) {
+    const latest = await loadJob()
+    return latest ? { status: latest.status, changed: false } : null
+  }
+  if (kind === 'learning') await settleLearningRun(job.taxonomyId)
+  afterCommit(scheduleAIJobs)
 
-  const { externalJobId, connectionVersionId, workspaceId } = job
+  const { externalJobId, connectionVersionId, workspaceId } = cancelled
   if (externalJobId) {
     const requestId = await currentRequestId()
     afterCommit(() => void cancelExternalJob(workspaceId, kind, externalJobId, connectionVersionId, requestId))

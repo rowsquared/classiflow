@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { NuqsAdapter } from 'nuqs/adapters/next/app'
 import Sidebar from '@/components/Sidebar'
+import SkipToContent from '@/components/SkipToContent'
 import QueryProvider from '@/components/QueryProvider'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
 import { WorkspaceProvider } from '@/components/WorkspaceProvider'
@@ -28,11 +29,12 @@ export default async function GlobalShell({
     : null
   return (
     <WorkspaceProvider value={navigation} userId={user.id} remember={false}>
-      <QueryProvider key={`${scopeKey}:${workspace?.id ?? ''}:${workspace?.role ?? ''}`}>
+      <QueryProvider key={`${scopeKey}:${workspace?.id ?? ''}:${workspace?.role ?? ''}`} userId={user.id}>
         <NuqsAdapter>
           <div className="flex h-dvh overflow-hidden">
+            <SkipToContent />
             <Sidebar />
-            <main className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-white">
+            <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-white">
               <div className="sticky top-0 z-10 flex h-[66px] items-center justify-end border-b border-gray-200 bg-white px-8">
                 <WorkspaceSwitcher />
               </div>

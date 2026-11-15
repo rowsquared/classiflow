@@ -76,6 +76,32 @@ test('single labeling keeps drafts across tabs and visits unfinished taxonomies 
   expect((await (await page.request.get(api(`/sentences/${record!.id}`))).json()).status).toBe('submitted')
 })
 
+test('an expired session can be recovered without losing the selected label', async ({ page }) => {
+  await taxonomy(page, 'A')
+  const [record] = await records(page)
+  await page.goto(view(`/queue/${record!.id}`))
+  await page.getByRole('button', { name: /^02\b/ }).click()
+  const signOut = await page.request.post('/api/auth/sign-out', {
+    headers: { origin: new URL(page.url()).origin },
+    data: {}
+  })
+  expect(signOut.status(), await signOut.text()).toBe(200)
+  await page.getByRole('button', { name: /^Submit/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Your session has ended' })
+  await expect(dialog).toBeVisible()
+  const popupPromise = page.waitForEvent('popup')
+  await dialog.getByRole('link', { name: 'Sign in in a new tab' }).click()
+  const popup = await popupPromise
+  await signIn(popup)
+  await popup.close()
+  await dialog.getByRole('button', { name: 'Continue' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Remove label 02' })).toBeVisible()
+  await page.getByRole('button', { name: /^Submit/ }).click()
+  await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/queue$`))
+  expect((await (await page.request.get(api(`/sentences/${record!.id}`))).json()).status).toBe('submitted')
+})
+
 test('single flag and skip failures stay visible, modified shortcuts are ignored and an in-flight save blocks duplicates', async ({
   page
 }) => {

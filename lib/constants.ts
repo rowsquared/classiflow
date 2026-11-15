@@ -20,19 +20,49 @@ export const isUnknownNodeCode = (code: string | null | undefined): boolean => {
   if (code === null || code === undefined) return false
   return UNKNOWN_NODE_CODE_SET.has(code)
 }
-export const AI_LABELING_BATCH_SIZE = parseInt(process.env.AI_LABELING_BATCH_SIZE || '1000', 10)
-export const AI_LEARNING_BATCH_SIZE = parseInt(process.env.AI_LEARNING_BATCH_SIZE || '100', 10)
-export const AI_LEARNING_MIN_NEW_ANNOTATIONS = parseInt(process.env.AI_LEARNING_MIN_NEW_ANNOTATIONS || '500', 10)
-export const AI_JOB_POLL_INTERVAL_MS = parseInt(process.env.AI_JOB_POLL_INTERVAL_MS || '60000', 10)
-export const AI_JOB_POLL_TIMEOUT_MS = parseInt(process.env.AI_JOB_POLL_TIMEOUT_MS || '18000000', 10)
+function positiveAISetting(name: string, value: string | undefined, fallback: number): number {
+  if (value === undefined || value === '') return fallback
+  const parsed = Number(value)
+  if (!/^\d+$/.test(value.trim()) || !Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2_147_483_647) {
+    throw new Error(`${name} must be a positive integer no greater than 2147483647`)
+  }
+  return parsed
+}
+
+export const AI_LABELING_BATCH_SIZE = positiveAISetting(
+  'AI_LABELING_BATCH_SIZE',
+  process.env.AI_LABELING_BATCH_SIZE,
+  1000
+)
+export const AI_LEARNING_BATCH_SIZE = positiveAISetting(
+  'AI_LEARNING_BATCH_SIZE',
+  process.env.AI_LEARNING_BATCH_SIZE,
+  100
+)
+export const AI_LEARNING_MIN_NEW_ANNOTATIONS = positiveAISetting(
+  'AI_LEARNING_MIN_NEW_ANNOTATIONS',
+  process.env.AI_LEARNING_MIN_NEW_ANNOTATIONS,
+  500
+)
+export const AI_JOB_POLL_INTERVAL_MS = positiveAISetting(
+  'AI_JOB_POLL_INTERVAL_MS',
+  process.env.AI_JOB_POLL_INTERVAL_MS,
+  60_000
+)
+export const AI_JOB_POLL_TIMEOUT_MS = positiveAISetting(
+  'AI_JOB_POLL_TIMEOUT_MS',
+  process.env.AI_JOB_POLL_TIMEOUT_MS,
+  18_000_000
+)
 export const AI_SOURCE_SLUG = process.env.AI_SOURCE_SLUG || ''
 // Jobs sent to the AI service at once (lib/ai-job-monitor.ts admission): per
 // workspace and for the whole deployment. Further jobs wait as "pending".
-export const AI_MAX_ACTIVE_JOBS_PER_WORKSPACE = Math.max(
-  1,
-  parseInt(process.env.AI_MAX_ACTIVE_JOBS_PER_WORKSPACE || '3', 10) || 3
+export const AI_MAX_ACTIVE_JOBS_PER_WORKSPACE = positiveAISetting(
+  'AI_MAX_ACTIVE_JOBS_PER_WORKSPACE',
+  process.env.AI_MAX_ACTIVE_JOBS_PER_WORKSPACE,
+  3
 )
-export const AI_MAX_ACTIVE_JOBS = Math.max(1, parseInt(process.env.AI_MAX_ACTIVE_JOBS || '10', 10) || 10)
+export const AI_MAX_ACTIVE_JOBS = positiveAISetting('AI_MAX_ACTIVE_JOBS', process.env.AI_MAX_ACTIVE_JOBS, 10)
 
 /**
  * The AI service namespace of one workspace: the deployment's AI_SOURCE_SLUG

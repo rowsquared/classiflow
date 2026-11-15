@@ -128,7 +128,7 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
             skip('The part is already done')
             continue
           }
-          if (!command.dryRun) await reassignTask(user, round, part.position, handOver.toUserId)
+          await reassignTask(user, round, part.position, handOver.toUserId, command.dryRun)
         }
         applied++
       } catch (error) {

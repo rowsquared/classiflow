@@ -14,6 +14,7 @@ import { logError } from '@/lib/logger'
 // against the workspace memberships.
 
 const MAX_IDS = 10000
+const MAX_ASSIGNMENTS = 200_000
 
 const assignSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(MAX_IDS),
@@ -81,6 +82,12 @@ export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }
     }
 
     const { sentenceIds, userIds } = validation.data
+    if (sentenceIds.length * userIds.length > MAX_ASSIGNMENTS) {
+      return NextResponse.json(
+        { error: 'Select fewer records or assignees (at most 200,000 assignments)' },
+        { status: 400 }
+      )
+    }
 
     const denied = await denyUnlessSentencesVisible(user, sentenceIds)
     if (denied) return denied

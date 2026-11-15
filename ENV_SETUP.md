@@ -14,7 +14,7 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | `DATABASE_URL` | yes (app outside Compose; Compose builds it) | none | yes | PostgreSQL URL of the **schema owner**: runs migrations and recovery scripts. Local dev: `postgresql://classiflow:classiflow_password@localhost:5434/classiflow?schema=public` |
 | `POSTGRES_PASSWORD` | yes, with `docker-compose.yml` | none (Compose refuses to start) | yes | Password of the Compose PostgreSQL service. PostgreSQL keeps the password it was initialised with: changing it later needs `ALTER ROLE` as well |
 | `POSTGRES_USER`, `POSTGRES_DB` | no | `classiflow` | no | Compose PostgreSQL user and database |
-| `DATABASE_POOL_SIZE` | no | `10` | no | Connections per app instance (`pg` pool, `lib/prisma.ts`). See DEPLOYMENT.md "Running more than one instance" |
+| `DATABASE_POOL_SIZE` | no | `20` | no | Connections per app instance (`pg` pool, `lib/prisma.ts`). See DEPLOYMENT.md "Running more than one instance" |
 | `APP_DB_USER`, `APP_DB_PASSWORD` | yes in production (Compose refuses to start without them) | none | password: yes | Least-privilege role the server runs as, bound by workspace row security; created by `scripts/start.sh`. See DEPLOYMENT.md "Database roles" |
 | `ALLOW_OWNER_RUNTIME` | no | unset | no | `true` lets the production server run as the schema owner without `APP_DB_USER`; row security then does not apply. Emergencies only |
 
@@ -24,7 +24,9 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | --- | --- | --- | --- | --- |
 | `BETTER_AUTH_SECRET` | yes | none (Compose refuses to start; the server refuses Better Auth's default in production) | yes | Signs session cookies. At least 32 characters. Changing it signs everyone out |
 | `BETTER_AUTH_URL` | yes in Compose and hosted deployments | none | no | Public HTTPS origin of the app, without a path. Better Auth trusts this origin for sign-in requests. HTTP is allowed on loopback for local testing |
-| `SIGN_IN_RATE_LIMIT` | no | `10` | no | Sign-in attempts per client IP per minute, shared by all instances (production only). The IP comes from `X-Forwarded-For` |
+| `SIGN_IN_RATE_LIMIT` | no | `10` | no | Sign-in attempts per client IP per minute, shared by all instances |
+| `SIGN_IN_ACCOUNT_RATE_LIMIT` | no | `10` | no | Sign-in attempts per account every 15 minutes, shared by email and username sign-ins across all instances |
+| `TRUSTED_PROXY_HOPS` | no | `1` | no | Number of trusted proxies that append to `X-Forwarded-For`. The app counts from the right. Set `0` for direct local connections |
 
 ## First admin
 
@@ -136,3 +138,4 @@ tokens, cookies and record text are redacted if passed by mistake.
 | `APP_DB_USER`, `APP_DB_PASSWORD` | `scripts/restore-check.ts` | Runtime role to set up and check on a restored database (DEPLOYMENT.md "Backups") |
 | `TEST_DATABASE_URL` | `npm run test:integration`, `npm run bench:progress` | Disposable database whose name ends in `_test` (the benchmark reads a database seeded by `scripts/bench/seed-progress.ts`) |
 | `BENCH_ITERATIONS`, `BENCH_FILTER`, `BENCH_OUT`, `BENCH_LEGACY` | `npm run bench:progress` | Runs per call (15), only calls whose name contains the text, write the table to a file, module with older report functions to compare (DEVELOPMENT.md "Benchmarks") |
+| `BENCH_MIXED` | `npm run bench:progress` | Set to `1` for ten concurrent progress viewers and four labeling writes per iteration. This modifies seeded test records |

@@ -1,4 +1,3 @@
-import LoadError from '@/components/LoadError'
 import { listImports } from '@/lib/server/imports'
 import { requirePageUser } from '@/lib/server/page-user'
 import { withWorkspace } from '@/lib/workspace/db'
@@ -14,8 +13,7 @@ export default async function SentenceAdminPage({ params }: { params: Promise<{ 
     data = await withWorkspace(workspaceId, () => listImports(workspaceId))
   } catch (error) {
     await logError('Record imports page failed to load', error)
-    return <LoadError title="Sentences" what="the record imports" />
   }
 
-  return <SentenceAdminClient initialImports={data.imports} />
+  return <SentenceAdminClient initialImports={data?.imports} />
 }

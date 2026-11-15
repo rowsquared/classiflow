@@ -195,7 +195,7 @@ The default admin user is **automatically created** on first deployment using th
 Migrations run automatically on each deployment via the start command. If you need to run migrations manually:
 
 ```bash
-npx prisma migrate deploy
+node_modules/.bin/prisma migrate deploy
 ```
 
 ### Verify Deployment
@@ -234,25 +234,8 @@ The docker-compose setup creates an internal network where:
 
 ### Database Backups
 
-#### For Docker Compose Deployment:
-
-Container names are generated per deployment (the compose file sets none, so
-production and staging can share a host). Find the Postgres container first:
-
-```bash
-docker ps --filter "ancestor=postgres:18-alpine" --format '{{.Names}}'
-
-# Backup (--no-owner keeps the dump restorable under a different role)
-docker exec <postgres-container> pg_dump --no-owner -U classiflow classiflow > backup.sql
-
-# Restore
-cat backup.sql | docker exec -i <postgres-container> psql -U classiflow classiflow
-```
-
-For automated backups, consider:
-- Setting up a cron job to backup the Docker volume
-- Using Coolify's backup commands if available
-- Implementing external backup solutions
+For a Docker Compose deployment, run the custom-format dump and restore drill
+from [Backups](DEPLOYMENT.md#backups) in the deployed Compose project's context.
 
 #### For Separate Database Deployment:
 
@@ -305,7 +288,7 @@ To scale the application:
 ### Migration Issues
 
 **Issue**: Migrations don't run
-- **Solution**: Ensure the start command is `sh scripts/start.sh` (it runs `npx prisma migrate deploy` first)
+- **Solution**: Ensure the start command is `sh scripts/start.sh`. It runs `node_modules/.bin/prisma migrate deploy` first.
 - Check write permissions for Prisma
 
 **Issue**: Migration fails with permissions error

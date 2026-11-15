@@ -689,7 +689,7 @@ export async function stopRound(user: CurrentUser, round: Round, reason: string)
  * else: the old part is cancelled (kept for the history), a new one is
  * created in the same position, and the previous person loses access.
  */
-export async function reassignTask(user: CurrentUser, round: Round, position: number, userId: string) {
+export async function reassignTask(user: CurrentUser, round: Round, position: number, userId: string, dryRun = false) {
   await requireManager(user, round)
   const task = round.tasks.find(t => t.position === position)
   if (!task) throw new DoubleAnnotationError('No such part', 404)
@@ -705,6 +705,7 @@ export async function reassignTask(user: CurrentUser, round: Round, position: nu
   }
   if (task.assigneeId === userId) return
   await requireAssignable(user, [userId])
+  if (dryRun) return
   const tx = db()
   await tx.doubleTask.update({ where: { id: task.id }, data: { status: 'cancelled' } })
   await tx.doubleTask.create({

@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 // Progress and queue benchmarks against a seeded database (scripts/bench/seed-progress.ts).
 // Same harness as the integration tests: migrations applied, the app connects as
 // the least-privilege runtime role. TEST_DATABASE_URL must end in _test and hold
-// the seeded data; the benchmark only reads. See docs/archive/plans-2026-10/progress-dashboard.md.
+// the seeded data. The optional mixed workload writes labels on seeded records.
 export default defineConfig({
   resolve: {
     alias: {

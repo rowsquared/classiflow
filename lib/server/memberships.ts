@@ -8,7 +8,7 @@ import { deliverSoon } from '@/lib/mail/outbox'
 import 'server-only'
 import type { CurrentUser, Role } from '@/lib/api-auth'
 import { db } from '@/lib/workspace/db'
-import { getVisibleUser, mayManageAccount, resolveSupervisor } from '@/lib/server/users'
+import { getVisibleUser, resolveSupervisor } from '@/lib/server/users'
 import { isLastWorkspaceAdmin, lockWorkspaceAdmins, validateSupervisor } from '@/lib/user-rules'
 import { audit } from '@/lib/audit'
 
@@ -105,10 +105,8 @@ export async function updateMembership(req: Request, actor: CurrentUser, targetU
   if (status === 'suspended' && userId === actor.id) {
     return NextResponse.json({ error: 'You cannot suspend yourself' }, { status: 400 })
   }
-  if ((name !== undefined || email !== undefined || newPassword) && !(await mayManageAccount(actor, userId))) {
-    return forbidden(
-      'This account is used beyond this workspace; only a platform admin can change its name, email or password'
-    )
+  if ((name !== undefined || email !== undefined || newPassword) && actor.authority !== 'platform') {
+    return forbidden('Only a platform admin can change an account’s name, email or password')
   }
 
   if (newPassword) {

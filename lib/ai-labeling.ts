@@ -24,7 +24,7 @@ import { isWellFormedRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
 // POST requests (sending batches) get a longer timeout since the server
 // may take time to accept a large payload. GET requests (status polling)
 // should respond quickly.
-const AI_REQUEST_TIMEOUT_POST_MS = 3 * 60 * 1000 // 3 minutes
+export const AI_REQUEST_TIMEOUT_POST_MS = 3 * 60 * 1000 // 3 minutes
 const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
 
 /**
@@ -34,6 +34,17 @@ const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
 export type TaxomindConnection = { baseUrl: string; credential: string; requestId?: string | null }
 
 type Sent = { data?: unknown; response: Response }
+
+export class TaxomindRequestError extends Error {
+  name = 'TaxomindRequestError'
+
+  constructor(
+    message: string,
+    readonly retryable: boolean
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Redirects are refused: an approved endpoint must not hand the bearer token
@@ -58,14 +69,18 @@ async function send(
     sent = await request(AbortSignal.timeout(timeoutMs))
   } catch (error: unknown) {
     if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      throw new Error(`AI service request timed out after ${timeoutMs / 1000}s (${method} ${path})`)
+      throw new TaxomindRequestError(
+        `AI service request timed out after ${timeoutMs / 1000}s (${method} ${path})`,
+        true
+      )
     }
     if (error instanceof SyntaxError) {
       throw new Error(`AI service returned a body that is not JSON (${method} ${path})`)
     }
     if (error instanceof TypeError) {
       // fetch failed: DNS, refused connection, TLS, or a refused redirect
-      throw new Error(`AI service could not be reached (${method} ${path}): ${error.message}`)
+      const redirect = error.cause instanceof Error && error.cause.message === 'unexpected redirect'
+      throw new TaxomindRequestError(`AI service could not be reached (${method} ${path})`, !redirect)
     }
     throw error
   }
@@ -73,7 +88,8 @@ async function send(
   const { data, response } = sent
   if (!response.ok) {
     // Error bodies can echo record text. This message is logged and stored.
-    throw new Error(`AI service returned HTTP ${response.status} (${method} ${path})`)
+    const retryable = response.status === 408 || response.status === 429 || response.status >= 500
+    throw new TaxomindRequestError(`AI service returned HTTP ${response.status} (${method} ${path})`, retryable)
   }
   return data
 }

@@ -6,6 +6,7 @@ import { checkPassword, revokeSessions, setPassword } from '@/lib/passwords'
 import { z } from 'zod'
 import { passwordProblem } from '@/lib/password-policy'
 import { logError } from '@/lib/logger'
+import { allowRequest } from '@/lib/rate-limit'
 
 const resetPasswordSchema = z.object({
   currentPassword: z.string().max(256),
@@ -20,6 +21,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { currentPassword, newPassword } = resetPasswordSchema.parse(body)
+
+    if (!(await allowRequest(`reset-password:${currentUser.id}`, { windowSeconds: 900, max: 10 }))) {
+      return NextResponse.json(
+        { error: 'Too many password change attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': '900' } }
+      )
+    }
 
     if (!(await checkPassword(prisma, currentUser.id, currentPassword))) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })

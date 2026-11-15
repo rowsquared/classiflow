@@ -2,12 +2,12 @@ import type { NextRequest } from 'next/server'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-/** True for a state-changing request whose Origin is another site. See middleware.ts. */
+/** True for a state-changing request whose Origin is another site. See proxy.ts. */
 export function isCrossSiteMutation(request: NextRequest): boolean {
   if (SAFE_METHODS.has(request.method)) return false
   if (
     request.nextUrl.pathname.startsWith('/api/auth/') &&
-    !request.nextUrl.pathname.startsWith('/api/auth/reset-password')
+    !/^\/api\/auth\/(reset-password|forgot-password|set-password)(\/|$)/.test(request.nextUrl.pathname)
   ) {
     return false
   }

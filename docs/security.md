@@ -37,10 +37,12 @@ How classiflow decides who may do what. Keep this in step with `lib/api-auth.ts`
 - Server pages under `app/` load data through `lib/server/*`, which apply the
   caller's scope the same way the API does; admin pages redirect other roles
   (`lib/server/page-user.ts`).
-- Sign-in is rate limited per client IP: `SIGN_IN_RATE_LIMIT` attempts a minute
-  (default 10), counted in the `RateLimit` table so every instance shares it.
-  Better Auth enables it in production only. Unknown usernames are still hashed
-  against, so timing does not reveal which accounts exist.
+- Sign-in limits are shared across instances. The defaults are ten attempts per
+  trusted client IP per minute and ten attempts per account every 15 minutes.
+  Username and email sign-ins share the account's limit. Configure
+  `TRUSTED_PROXY_HOPS` for the reverse proxy chain (DEPLOYMENT.md "Reverse proxy").
+  Signed-in password changes allow ten attempts per account every 15 minutes.
+  The application's counters use `AppRateLimit`; Better Auth maintains its own table.
 - Content-Security-Policy is enforced with a per-request nonce for scripts
   (`proxy.ts`); styles allow `'unsafe-inline'` for React style attributes.
 
@@ -75,7 +77,7 @@ Only when mail is configured (ENV_SETUP.md "Email"; `lib/mail/`).
   who has no account may choose a name and password at `/api/invitations/setup`;
   the account, membership and invitation acceptance commit together. An existing
   identity must sign in instead and its credentials are never replaced. A resend replaces the link; withdrawing kills it.
-- **Changing an email** follows the local-account rule below; the old address
+- **Changing an email** requires a platform admin. The old address
   gets a notice and open links of the account end. The audit entry holds no
   addresses.
 - Mail bodies, links, tokens and passwords never go into `OutgoingMail`, logs,
@@ -247,10 +249,10 @@ admin) with a valid session who does not have to reset their password.
 | `/users` | POST | admin (new account + membership; access by handed-over password, invitation link or emailed password); adding an existing account directly: platform admin |
 | `/users/import`, `/users/import/[id]`, `/users/import/template` | POST, GET | admin (CSV member import: new accounts; an existing email is added directly by platform admins, invited by workspace admins, restored only when confirmed, unchanged when already a member; profiles and passwords are never changed) |
 | `/users/export` | GET | admin (every member of this workspace as CSV; no secrets) |
-| `/users/[id]/mail` | POST | admin (not supervisors); password link or invitation resend, local-account rule |
+| `/users/[id]/mail` | POST | password links require a platform admin. Workspace admins may resend a setup invitation to an account that belongs only to their workspace and has never signed in |
 | `/invitations`, `/invitations/[id]` | GET, POST, DELETE | admin (invite an email address, resend, withdraw) |
 | `/users/[id]` | GET | self, admin, or supervisor of that member |
-| `/users/[id]` | PUT, DELETE | admin; role, supervisor, suspension (DELETE suspends). Name, email and password only for accounts that belong to this workspace alone and never signed in (the local-account rule), otherwise platform admin |
+| `/users/[id]` | PUT, DELETE | workspace admins manage role, supervisor and suspension (DELETE suspends). Name, email and password changes require a platform admin |
 | `/export` | GET (`labels=confirmed`, `statusColumns`, `format=details\|pairs\|agreement\|analysis`) | admin: every format; supervisor: the double annotation formats only, for records they can see (their team) except records they hold a part in; re-checked before every page of the stream |
 | `/export/summary` | GET | admin; supervisor (counts within the same scope) |
 | `/progress/overview`, `/progress/activity` | GET | member; workload and activity in the caller's scope. `personId` / `teamId` narrow it and get 403 when outside the scope (labellers: only themselves, no team) |
@@ -289,10 +291,8 @@ Removed memberships must be explicitly restored; their IDs and history remain.
 only. Creating a user with an email in use answers 409 with that account's ID
 so the form opens it instead.
 
-Global profile, platform role, disable, password and session controls in the new
-editor are platform-admin-only. The existing narrow API exception for managing
-never-signed-in, single-workspace accounts remains; the new editor does not
-expose it (see the pending decision in `plans/open-items.md`). Workspace admins
+Global profile, platform role, disable, password and session controls require
+a platform admin in the editor and API. Workspace admins
 invite existing people without an account lookup. Without mail, they can create
 a new account with a temporary password, but must ask a platform admin to grant
 an existing account access. Several grants commit separately and report their

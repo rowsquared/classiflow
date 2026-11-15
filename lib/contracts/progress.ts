@@ -144,7 +144,14 @@ export type DoubleProgress = {
     fullKappa: number | null
   }>
   /** Per labeller, over the compared pairs: full-path agreement, review decisions and how often theirs was chosen. */
-  labellers: Array<{ name: string; compared: number; agreed: number; decided: number; chosen: number }>
+  labellers: Array<{
+    id: string | null
+    name: string
+    compared: number
+    agreed: number
+    decided: number
+    chosen: number
+  }>
   /** The code pairs that disagree most (at the first differing level). */
   confusions: Array<{
     taxonomyKey: string

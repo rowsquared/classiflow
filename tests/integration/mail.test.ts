@@ -257,7 +257,7 @@ describe('password links', () => {
     expect((await check(`${user.id}.${'A'.repeat(43)}`)).status).toBe(404)
   })
 
-  it('admins send a link to local accounts only; supervisors cannot', async () => {
+  it('only platform admins can send a password link, including for new local accounts', async () => {
     const local = await newMember('password', { tempPassword: 'temporary-start-77' })
     signInAs(supervisor)
     const asSupervisor = await memberMailRoute.POST(
@@ -267,6 +267,13 @@ describe('password links', () => {
     expect(asSupervisor.status).toBe(403)
 
     signInAs(admin)
+    const asWorkspaceAdmin = await memberMailRoute.POST(
+      request('/x', { method: 'POST', body: { purpose: 'password_link' } }),
+      params({ userId: local.id })
+    )
+    expect(asWorkspaceAdmin.status).toBe(403)
+
+    signInAs(platformAdmin)
     const res = await memberMailRoute.POST(
       request('/x', { method: 'POST', body: { purpose: 'password_link' } }),
       params({ userId: local.id })
@@ -279,6 +286,7 @@ describe('password links', () => {
 
     const shared = await createUser('labeller')
     await prisma.user.update({ where: { id: shared.id }, data: { lastLogin: new Date() } })
+    signInAs(admin)
     const refused = await memberMailRoute.POST(
       request('/x', { method: 'POST', body: { purpose: 'password_link' } }),
       params({ userId: shared.id })
@@ -359,13 +367,13 @@ describe('creating members with mail', () => {
 })
 
 describe('changing a member email', () => {
-  it('local accounts: new address, old links dead, a notice to the old address, no address in the audit', async () => {
+  it('platform admins can change the address, invalidate old links and notify the old address', async () => {
     const member = await newMember('password', { tempPassword: 'temporary-start-88' })
     await forgot(member.email)
     await settleBackgroundTasks()
     const token = tokenFrom(webhook.mails.at(-1))
 
-    signInAs(admin)
+    signInAs(platformAdmin)
     const res = await memberRoute.PUT(
       request('/x', { method: 'PUT', body: { email: `NEW-${member.email}` } }),
       params({ userId: member.id })
@@ -384,9 +392,9 @@ describe('changing a member email', () => {
     expect(JSON.stringify(entry.payload)).not.toContain('@')
   })
 
-  it('refuses taken addresses and accounts used beyond this workspace', async () => {
+  it('refuses taken addresses and workspace admin changes to a new account', async () => {
     const member = await newMember('password', { tempPassword: 'temporary-start-99' })
-    signInAs(admin)
+    signInAs(platformAdmin)
     const taken = await memberRoute.PUT(
       request('/x', { method: 'PUT', body: { email: admin.email, role: 'supervisor' } }),
       params({ userId: member.id })
@@ -396,9 +404,12 @@ describe('changing a member email', () => {
     expect(membership.role).toBe('labeller')
 
     const shared = await createUser('labeller')
-    await prisma.user.update({ where: { id: shared.id }, data: { lastLogin: new Date() } })
+    signInAs(admin)
     const refused = await memberRoute.PUT(
-      request('/x', { method: 'PUT', body: { email: 'other@test.local' } }),
+      request('/x', {
+        method: 'PUT',
+        body: { email: 'other@test.local', name: 'Changed', newPassword: 'different-pass-124' }
+      }),
       params({ userId: shared.id })
     )
     expect(refused.status).toBe(403)

@@ -159,6 +159,15 @@ model RateLimit {
   lastRequest BigInt
 }
 
+// Fixed-window limits owned by classiflow. Better Auth prunes its own table.
+model AppRateLimit {
+  key         String @id
+  count       Int
+  lastRequest BigInt
+
+  @@index([lastRequest])
+}
+
 // An independently managed classification exercise: its own records,
 // taxonomies, members, roles and AI learning.
 model Workspace {
@@ -241,6 +250,7 @@ model Taxonomy {
   createdAt                       DateTime  @default(now())
   updatedAt                       DateTime  @updatedAt
   lastLearningAt                  DateTime?
+  legacyLearningCutoff            DateTime?
   lastLearningJobId               String?
   lastLearningStatus              String?
   lastLearningError               String?
@@ -499,6 +509,9 @@ model AILearningJob {
   failedSentences     Int                 @default(0)
   batchSize           Int                 @default(100)
   filterCriteria      Json?
+  learningRunId       String?
+  selectionCutoff     DateTime?
+  queuedAnnotationCount Int?
   connectionVersionId String
   externalJobId       String?
   startedAt           DateTime            @default(now())
@@ -520,6 +533,7 @@ model AILearningJob {
   @@index([status])
   @@index([createdById])
   @@index([taxonomyId])
+  @@index([workspaceId, taxonomyId, learningRunId])
   @@index([workspaceId, startedAt])
 }
 
@@ -544,6 +558,8 @@ model AILearningJobInput {
   jobId       String
   sentenceId  String
   position    Int
+  annotationIds String[] @default([])
+  annotations Json?
 
   job      AILearningJob @relation(fields: [workspaceId, jobId], references: [workspaceId, id], onDelete: Cascade)
   sentence Sentence      @relation(fields: [workspaceId, sentenceId], references: [workspaceId, id], onDelete: Cascade)

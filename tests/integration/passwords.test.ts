@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/lib/generated/prisma/client'
 import { setPassword } from '@/lib/passwords'
 import { createUser, createWorkspace, params, plainParams, prisma, request, resetDatabase, signInAs } from './helpers'
@@ -6,6 +6,15 @@ import { createUser, createWorkspace, params, plainParams, prisma, request, rese
 import * as membersRoute from '@/app/api/workspaces/[workspaceId]/users/route'
 import * as accountRoute from '@/app/api/users/[userId]/route'
 import * as resetPasswordRoute from '@/app/api/auth/reset-password/route'
+import * as authRoute from '@/app/api/auth/[...all]/route'
+
+vi.hoisted(() => {
+  process.env.BETTER_AUTH_URL = 'http://localhost:3000'
+  process.env.BETTER_AUTH_SECRET = 'integration-password-test-only-0123456789'
+  process.env.SIGN_IN_ACCOUNT_RATE_LIMIT = '10'
+  process.env.SIGN_IN_RATE_LIMIT = '10'
+  process.env.TRUSTED_PROXY_HOPS = '1'
+})
 
 let admin: User, platformAdmin: User
 
@@ -62,5 +71,60 @@ describe('password policy', () => {
     expect((await change('too-short')).status).toBe(400)
     expect((await change('quiet-river-stone')).status).toBe(200)
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).mustResetPassword).toBe(false)
+  })
+
+  it('shares sign-in limits across email, username and client addresses', async () => {
+    const user = await createUser('labeller')
+    await prisma.appRateLimit.create({
+      data: {
+        key: `classiflow:sign-in:account:${user.id}`,
+        count: 9,
+        lastRequest: BigInt(Date.now())
+      }
+    })
+    const signIn = (field: 'username' | 'email', address: string) =>
+      authRoute.POST(
+        new Request(`http://localhost:3000/api/auth/sign-in/${field}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-forwarded-for': address },
+          body: JSON.stringify({ [field]: user[field].toUpperCase(), password: 'known-wrong-password' })
+        })
+      )
+    expect((await signIn('username', '192.0.2.10')).status).toBe(401)
+    expect((await signIn('email', '192.0.2.11')).status).toBe(429)
+  })
+
+  it('uses the proxy-added address and ignores a forged prefix', async () => {
+    const user = await createUser('labeller')
+    await prisma.appRateLimit.create({
+      data: { key: 'classiflow:sign-in:ip:192.0.2.20', count: 10, lastRequest: BigInt(Date.now()) }
+    })
+    const limited = await authRoute.POST(
+      new Request('http://localhost:3000/api/auth/sign-in/username', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': '192.0.2.21, 192.0.2.20' },
+        body: JSON.stringify({ username: user.username, password: 'known-wrong-password' })
+      })
+    )
+    expect(limited.status).toBe(429)
+  })
+
+  it('limits password changes per signed-in user', async () => {
+    const user = await createUser('labeller')
+    signInAs(user)
+    await prisma.appRateLimit.create({
+      data: {
+        key: `classiflow:reset-password:${user.id}`,
+        count: 10,
+        lastRequest: BigInt(Date.now())
+      }
+    })
+    const result = await resetPasswordRoute.POST(
+      request('/api/auth/reset-password', {
+        method: 'POST',
+        body: { currentPassword: 'wrong', newPassword: 'quiet-river-stone' }
+      })
+    )
+    expect(result.status).toBe(429)
   })
 })

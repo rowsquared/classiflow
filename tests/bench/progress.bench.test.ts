@@ -21,7 +21,10 @@ vi.mock('@/lib/prisma', async importOriginal => {
   const original = await importOriginal<typeof import('@/lib/prisma')>()
   const { PrismaClient } = await import('@/lib/generated/prisma/client')
   const client = new PrismaClient({
-    adapter: new original.SerialTransactionPg({ connectionString: process.env.DATABASE_URL, max: 5 }),
+    adapter: new original.SerialTransactionPg({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.DATABASE_POOL_SIZE) || 20
+    }),
     log: [{ emit: 'event', level: 'query' }]
   })
   client.$on('query', () => {
@@ -33,6 +36,7 @@ vi.mock('@/lib/prisma', async importOriginal => {
 import { withWorkspace } from '@/lib/workspace/db'
 import * as progress from '@/lib/server/progress'
 import { getQueueStats, listQueue } from '@/lib/server/sentences'
+import { applyBulkLabels } from '@/lib/server/bulk-label'
 
 const WORKSPACE = 'bench'
 const ITERATIONS = Number(process.env.BENCH_ITERATIONS) || 15
@@ -214,6 +218,64 @@ async function measure(run: () => Promise<unknown>) {
 }
 
 describe('progress benchmark', () => {
+  it.skipIf(process.env.BENCH_MIXED !== '1')('measures a mixed workload with ten viewers and label saves', async () => {
+    const writer = viewer('u_lab2', 'labeller', 'm_lab2')
+    const reads: number[] = []
+    const writes: number[] = []
+    const timed = async <T>(fn: () => Promise<T>, samples: number[]) => {
+      const start = performance.now()
+      const result = await fn()
+      samples.push(performance.now() - start)
+      return result
+    }
+
+    for (let i = 0; i < ITERATIONS + 2; i++) {
+      const readTimes = i < 2 ? [] : reads
+      const writeTimes = i < 2 ? [] : writes
+      const requests = Array.from({ length: 10 }, (_, n) => {
+        const user = n % 2 === 0 ? viewers.admin : viewers.supervisor
+        return Promise.all([
+          timed(() => withWorkspace(WORKSPACE, () => progress.getProgressOverview(user, short)), readTimes),
+          timed(
+            () => withWorkspace(WORKSPACE, () => progress.getProgressActivity(user, { ...short, granularity: 'day' })),
+            readTimes
+          ),
+          timed(() => withWorkspace(WORKSPACE, () => progress.getProgressPeople(user, people(short))), readTimes)
+        ])
+      })
+      const saves = Array.from({ length: 4 }, (_, n) =>
+        timed(
+          () =>
+            withWorkspace(
+              WORKSPACE,
+              () =>
+                applyBulkLabels(writer, {
+                  sentenceIds: [`s${49 + 48 * n}`],
+                  taxonomyKey: 'A',
+                  annotations: [
+                    { level: 1, nodeCode: '01' },
+                    { level: 2, nodeCode: '011' },
+                    { level: 3, nodeCode: i % 2 ? '0110' : '0111' }
+                  ]
+                }),
+              { write: true }
+            ),
+          writeTimes
+        )
+      )
+      const [, results] = await Promise.all([Promise.all(requests), Promise.all(saves)])
+      for (const result of results) expect(result.status, await result.text()).toBe(200)
+    }
+
+    const summary = [reads, writes].map(times => {
+      times.sort((a, b) => a - b)
+      return { count: times.length, p50: Math.round(percentile(times, 0.5)), p95: Math.round(percentile(times, 0.95)) }
+    })
+    process.stdout.write(
+      `${JSON.stringify({ pool: Number(process.env.DATABASE_POOL_SIZE) || 20, reads: summary[0], writes: summary[1] })}\n`
+    )
+  })
+
   it('measures the reports', async () => {
     const legacyModule = process.env.BENCH_LEGACY
     const legacy = legacyModule ? ((await import(/* @vite-ignore */ legacyModule)) as Legacy) : null
