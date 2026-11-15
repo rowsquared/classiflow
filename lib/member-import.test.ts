@@ -25,6 +25,14 @@ describe('parseMemberCsv', () => {
     expect(creationOrder([...result.rows].reverse()).map(r => r.line)).toEqual([2, 3])
   })
 
+  it('accepts an Excel semicolon-delimited file with quoted names', () => {
+    const text = `${HEADER.replaceAll(',', ';')}\r\nana;ana@x.org;"Bäcker, Ana; Jr.";labeller;;generate;\r\n`
+    const result = parseMemberCsv(text, { mailEnabled: false })
+    expect(result.fileErrors).toEqual([])
+    expect(result.errors).toEqual([])
+    expect(result.rows[0]).toMatchObject({ line: 2, name: 'Bäcker, Ana; Jr.' })
+  })
+
   it('handles a BOM, CRLF, quoted commas and multi-line cells with correct line numbers', () => {
     const text = `﻿${HEADER}\r\nana,ana@x.org,"Rossi, Ana",labeller,,generate,\r\nbob,bob@x.org,"Bob\r\nSecond line",labeller,,generate,\r\n,bad,,,,,\r\n`
     const result = parseMemberCsv(text, { mailEnabled: false })

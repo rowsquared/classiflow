@@ -51,7 +51,7 @@ export default function ProgressFilters({ state, range, known, showPickers, onCh
     <div className="mb-6 border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
         <fieldset>
-          <legend className="mb-1 block text-xs text-gray-600">Period</legend>
+          <legend className="mb-1 block text-xs text-gray-600">Period (UTC)</legend>
           <div className="flex flex-wrap gap-1" role="group">
             {RANGE_PRESETS.map(days => {
               const active = !custom && !editing && state.days === days

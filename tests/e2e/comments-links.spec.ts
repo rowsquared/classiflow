@@ -85,7 +85,9 @@ test('record and discussion copy actions produce stable links that work without 
   const freshTab = await context.newPage()
   await freshTab.goto(discussionLink)
   await expect(freshTab.getByRole('region', { name: 'Comments', exact: true })).toBeVisible()
-  await expect(freshTab.getByText('Sentence navigation unavailable')).toBeVisible()
+  await freshTab.getByRole('button', { name: 'Close comments' }).click()
+  await expect(freshTab.getByRole('button', { name: 'Previous sentence' })).toHaveCount(0)
+  await expect(freshTab.getByRole('button', { name: 'Next sentence' })).toHaveCount(0)
   await freshTab.close()
 })
 

@@ -47,7 +47,7 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
 
       # Authentication (Better Auth, lib/auth.ts)
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL to the public app origin}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
       SIGN_IN_RATE_LIMIT: ${SIGN_IN_RATE_LIMIT:-10}
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
@@ -63,9 +63,9 @@ services:
       DEMO_SEED: ${DEMO_SEED:-}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
 
-      # Email (optional; off without the secret). ENV_SETUP.md "Email".
+      # Email requires the webhook URL and secret. ENV_SETUP.md "Email".
       N8N_EMAIL_WEBHOOK_SECRET: ${N8N_EMAIL_WEBHOOK_SECRET:-}
-      N8N_EMAIL_WEBHOOK_URL: ${N8N_EMAIL_WEBHOOK_URL:-https://n8n.rowsquared.com/webhook/send-email}
+      N8N_EMAIL_WEBHOOK_URL: ${N8N_EMAIL_WEBHOOK_URL:-}
       N8N_EMAIL_WEBHOOK_HEADER: ${N8N_EMAIL_WEBHOOK_HEADER:-send-email-api}
       N8N_EMAIL_WEBHOOK_TIMEOUT: ${N8N_EMAIL_WEBHOOK_TIMEOUT:-15}
       APP_BASE_URL: ${APP_BASE_URL:-}

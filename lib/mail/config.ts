@@ -1,10 +1,8 @@
 /**
  * Outgoing email settings (ENV_SETUP.md "Email"), read once per process.
- * Mail is sent through the rowsquared "E-MAIL API" n8n workflow, which owns
- * the SMTP credentials; there is no SMTP transport and no console transport
- * (credentials and links must never end up in a log).
+ * The configured n8n workflow sends the email using its own SMTP credentials.
  *
- * Mail is on when N8N_EMAIL_WEBHOOK_SECRET and a public base URL are both set.
+ * Mail needs an explicit webhook URL and secret, and a public base URL.
  * The base URL (APP_BASE_URL, else BETTER_AUTH_URL) goes into every link and is
  * never taken from the request's Host header.
  */
@@ -23,8 +21,6 @@ export type MailConfig = {
   /** Days sent, failed and unknown outbox rows are kept; null: forever. */
   retentionDays: number | null
 }
-
-const DEFAULT_WEBHOOK_URL = 'https://n8n.rowsquared.com/webhook/send-email'
 
 function positive(value: string | undefined, fallback: number): number {
   const n = Number(value)
@@ -47,10 +43,11 @@ function baseUrlFrom(env: Env): string | null {
 
 export function readMailConfig(env: Env = process.env): MailConfig {
   const secret = env.N8N_EMAIL_WEBHOOK_SECRET?.trim() || ''
+  const webhookUrl = env.N8N_EMAIL_WEBHOOK_URL?.trim() || ''
   const baseUrl = baseUrlFrom(env)
   return {
-    transport: secret && baseUrl ? 'n8n' : 'off',
-    webhookUrl: env.N8N_EMAIL_WEBHOOK_URL?.trim() || DEFAULT_WEBHOOK_URL,
+    transport: webhookUrl && secret && baseUrl ? 'n8n' : 'off',
+    webhookUrl,
     webhookHeader: env.N8N_EMAIL_WEBHOOK_HEADER?.trim() || 'send-email-api',
     webhookSecret: secret,
     timeoutMs: positive(env.N8N_EMAIL_WEBHOOK_TIMEOUT, 15) * 1000,

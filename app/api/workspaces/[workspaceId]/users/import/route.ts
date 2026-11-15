@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { workspaceRoute } from '@/lib/api-auth'
+import { decodeCsv } from '@/lib/csv-import'
 import { MEMBER_IMPORT_MAX_BYTES } from '@/lib/member-import'
 import { commitImport, ImportChangedError, importOutcome, prepareImport, previewRows } from '@/lib/server/member-import'
 
@@ -39,7 +40,11 @@ export const POST = workspaceRoute(
       if (stored) return NextResponse.json({ ok: true, replayed: true, ...stored }, { headers: NO_STORE })
     }
 
-    const prepared = await prepareImport(user, await file.text())
+    const decoded = decodeCsv(await file.arrayBuffer())
+    if (!decoded.ok) {
+      return NextResponse.json({ ok: false, fileErrors: [decoded.error] }, { status: 400 })
+    }
+    const prepared = await prepareImport(user, decoded.text)
     if (prepared.fileErrors.length) {
       return NextResponse.json({ ok: false, fileErrors: prepared.fileErrors }, { status: 400 })
     }

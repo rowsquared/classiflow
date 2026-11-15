@@ -25,6 +25,14 @@ describe('parseTaxonomyCsv', () => {
     expect(parseTaxonomyCsv(HEAD).errors[0]?.message).toMatch(/no data rows/)
   })
 
+  it('accepts semicolon separators and preserves quoted punctuation and codes', () => {
+    const { nodes, errors } = parseTaxonomyCsv(
+      '\uFEFFid;"label";parent_id;level\r\n01;"Bäcker, Konditor; Gruppe";;1\r\n'
+    )
+    expect(errors).toEqual([])
+    expect(nodes[0]).toMatchObject({ code: '01', label: 'Bäcker, Konditor; Gruppe' })
+  })
+
   it('reports row problems with row numbers', () => {
     const csv = [HEAD, '01,A,,1', '01,B,,1', '-99,C,,1', ',D,,1', '05,,,1', '06,F,,x', '07,G,,6'].join('\n')
     const msgs = parseTaxonomyCsv(csv).errors.map(e => `${e.row}:${e.message}`)

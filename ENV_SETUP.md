@@ -23,7 +23,7 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `BETTER_AUTH_SECRET` | yes | none (Compose refuses to start; the server refuses Better Auth's default in production) | yes | Signs session cookies. At least 32 characters. Changing it signs everyone out |
-| `BETTER_AUTH_URL` | yes in production | `http://localhost:3000` in Compose | no | Public URL of the app (`https://…`, no trailing path). Better Auth trusts this origin for sign-in requests |
+| `BETTER_AUTH_URL` | yes in Compose and hosted deployments | none | no | Public HTTPS origin of the app, without a path. Better Auth trusts this origin for sign-in requests. HTTP is allowed on loopback for local testing |
 | `SIGN_IN_RATE_LIMIT` | no | `10` | no | Sign-in attempts per client IP per minute, shared by all instances (production only). The IP comes from `X-Forwarded-For` |
 
 ## First admin
@@ -33,7 +33,7 @@ changing them later does nothing. To recover access see DEPLOYMENT.md "Admin Use
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
-| `DEFAULT_ADMIN_PASSWORD` | on the first start | none | yes | At least 8 characters; well-known placeholders are refused in production. Must be changed at first sign-in |
+| `DEFAULT_ADMIN_PASSWORD` | on the first start | none | yes | At least 10 characters. Production rejects well-known placeholders. Change it at first sign-in |
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | no | Sign-in name: letters, digits, `.`, `_`, `-`; stored in lower case |
 | `DEFAULT_ADMIN_EMAIL` | no | `admin@classiflow.local` (`admin@example.com` in Compose) | no | Sign-in email |
 | `DEFAULT_ADMIN_NAME` | no | `System Administrator` (`Admin User` in Compose) | no | Display name |
@@ -59,17 +59,16 @@ CSV files for the import screens.
 
 ## Email (optional)
 
-Mail goes through the rowsquared "E-MAIL API" n8n workflow, which owns the SMTP
-credentials (the same variable names as survey-hub). Mail is **on** when
-`N8N_EMAIL_WEBHOOK_SECRET` is set and a public base URL is known; otherwise it
-is off: no invitation or emailed-password options, no "Forgot password?", and
-admins hand over temporary passwords themselves. There is no SMTP transport.
+The configured n8n workflow sends mail using its own SMTP credentials. To
+enable mail, set both `N8N_EMAIL_WEBHOOK_URL` and `N8N_EMAIL_WEBHOOK_SECRET`,
+and configure the public app URL. With mail off, admins hand over temporary
+passwords themselves.
 For local testing, `node scripts/mock-mail-webhook.mjs` (DEVELOPMENT.md).
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `N8N_EMAIL_WEBHOOK_SECRET` | for mail | empty (mail off) | yes | Value of the header the workflow checks. Give classiflow its own value so it can be rotated separately |
-| `N8N_EMAIL_WEBHOOK_URL` | no | `https://n8n.rowsquared.com/webhook/send-email` | no | Workflow endpoint |
+| `N8N_EMAIL_WEBHOOK_URL` | for mail | empty (mail off) | no | Explicit workflow endpoint. Set it before upgrading an existing deployment that used the old default |
 | `N8N_EMAIL_WEBHOOK_HEADER` | no | `send-email-api` | no | Name of the header that carries the secret |
 | `N8N_EMAIL_WEBHOOK_TIMEOUT` | no | `15` (seconds) | no | Bound on one delivery; the workflow answers after its SMTP send. No answer in time counts as "unknown" (it may have been sent), never as failed |
 | `APP_BASE_URL` | no | `BETTER_AUTH_URL` | no | Public URL used in mail links. Never taken from the request's `Host` header |
@@ -102,11 +101,6 @@ AI features stay disabled.
 
 `AI_LABELING_API_KEY` is no longer read: a deployment-wide token would give
 every workspace the same Taxomind access. Enter tokens per workspace instead.
-
-## Progress reports
-
-| Variable | Required | Default | Secret | Purpose |
-| --- | --- | --- | --- | --- |
 
 ## Runtime and build
 

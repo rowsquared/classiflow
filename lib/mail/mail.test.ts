@@ -4,21 +4,25 @@ import { escapeHtml, renderMail } from './layout'
 import { foldSubject, outcomeForStatus, sendViaN8n } from './n8n'
 import { credentialsMail, invitationMail, passwordLinkMail, passwordChangedMail, emailChangedMail } from './templates'
 
+const webhookUrl = 'https://mail.example.org/webhook/send-email'
 const config = readMailConfig({
   N8N_EMAIL_WEBHOOK_SECRET: 'secret-value',
+  N8N_EMAIL_WEBHOOK_URL: webhookUrl,
   N8N_EMAIL_WEBHOOK_TIMEOUT: '1',
   APP_BASE_URL: 'https://app.example.org/'
 })
 const message = { to: 'a@example.org', subject: 'Hi', html: '<p>x</p>', text: 'x' }
 
 describe('mail configuration', () => {
-  it('is off without the secret or a base URL, and never reads the request host', () => {
+  it('requires an explicit webhook URL, secret and base URL', () => {
     expect(readMailConfig({}).transport).toBe('off')
-    expect(readMailConfig({ N8N_EMAIL_WEBHOOK_SECRET: 's' }).transport).toBe('off')
-    expect(readMailConfig({ N8N_EMAIL_WEBHOOK_SECRET: 's', BETTER_AUTH_URL: 'https://b.org' })).toMatchObject({
+    const settings = { N8N_EMAIL_WEBHOOK_SECRET: 's', BETTER_AUTH_URL: 'https://b.org' }
+    expect(readMailConfig(settings).transport).toBe('off')
+    expect(readMailConfig({ N8N_EMAIL_WEBHOOK_SECRET: 's', N8N_EMAIL_WEBHOOK_URL: webhookUrl }).transport).toBe('off')
+    expect(readMailConfig({ ...settings, N8N_EMAIL_WEBHOOK_URL: webhookUrl })).toMatchObject({
       transport: 'n8n',
       baseUrl: 'https://b.org',
-      webhookUrl: 'https://n8n.rowsquared.com/webhook/send-email',
+      webhookUrl,
       webhookHeader: 'send-email-api',
       timeoutMs: 15_000,
       invitationHours: 72,

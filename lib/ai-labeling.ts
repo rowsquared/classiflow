@@ -33,7 +33,7 @@ const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
  */
 export type TaxomindConnection = { baseUrl: string; credential: string; requestId?: string | null }
 
-type Sent = { data?: unknown; error?: unknown; response: Response }
+type Sent = { data?: unknown; response: Response }
 
 /**
  * Redirects are refused: an approved endpoint must not hand the bearer token
@@ -70,10 +70,10 @@ async function send(
     throw error
   }
 
-  const { data, error, response } = sent
+  const { data, response } = sent
   if (!response.ok) {
-    const text = typeof error === 'string' ? error : error === undefined ? '' : JSON.stringify(error)
-    throw new Error(`AI labeling API error (${response.status}): ${text || response.statusText}`)
+    // Error bodies can echo record text. This message is logged and stored.
+    throw new Error(`AI service returned HTTP ${response.status} (${method} ${path})`)
   }
   return data
 }

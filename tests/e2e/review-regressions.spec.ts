@@ -85,7 +85,6 @@ test('single flag and skip failures stay visible, modified shortcuts are ignored
   await page.goto(path)
   await page.getByRole('button', { name: /^02\b/ }).click()
   await page.route(`**${api(`/sentences/${record!.id}/annotations`)}`, async route => {
-    if (route.request().headers()['x-warmup']) return route.continue()
     await route.fulfill({ status: 500, json: { error: 'Save unavailable' } })
   })
   await page.getByRole('button', { name: /^Flag/ }).click()

@@ -61,9 +61,6 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
   try {
     const { sentenceId } = routeParams
 
-    if (req.headers.get('x-warmup') === '1') {
-      return NextResponse.json({ ok: true, warmup: true })
-    }
     const userId = user.id
 
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db, inCurrentWorkspace, scopeWorkspaceId } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
+import { decodeCsv } from '@/lib/csv-import'
 import { formatCsvErrors, parseTaxonomyCsv } from '@/lib/taxonomy-csv'
 import { createTaxonomyNodes } from '@/lib/taxonomy-nodes'
 import { MAX_UPLOAD_BYTES } from '@/lib/upload'
@@ -29,16 +30,18 @@ export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, 
   if (!contentType.includes('text/csv')) {
     return NextResponse.json({ error: 'Content-Type must be text/csv' }, { status: 400 })
   }
-  const csv = await req.text()
-  if (csv.length > MAX_UPLOAD_BYTES) {
+  const bytes = await req.arrayBuffer()
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
     return NextResponse.json({ error: 'File is too large' }, { status: 400 })
   }
+  const decoded = decodeCsv(bytes)
+  if (!decoded.ok) return NextResponse.json({ error: decoded.error }, { status: 400 })
 
   const existing = await db().taxonomyNode.findMany({
     where: { taxonomyId: taxonomy.id },
     select: { code: true, level: true }
   })
-  const { nodes, errors } = parseTaxonomyCsv(csv, {
+  const { nodes, errors } = parseTaxonomyCsv(decoded.text, {
     maxDepth: taxonomy.maxDepth,
     existingNodes: new Map(existing.map(n => [n.code, n.level]))
   })

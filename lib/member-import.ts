@@ -1,4 +1,5 @@
 import { parse } from 'csv-parse/sync'
+import { csvDelimiter } from '@/lib/csv-import'
 import { passwordProblem } from '@/lib/password-policy'
 
 /**
@@ -71,6 +72,7 @@ export function parseMemberCsv(text: string, opts: { mailEnabled: boolean }): Pa
     // CRLF to LF first: csv-parse counts both characters of a CRLF inside a
     // quoted cell as line breaks, which would shift the reported lines.
     records = parse(text.replace(/\r\n/g, '\n'), {
+      delimiter: csvDelimiter(text),
       bom: true,
       info: true,
       relax_column_count: true,

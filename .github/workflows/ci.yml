@@ -1,19 +1,13 @@
 # CI and the production deploy gate. See "Deploy triggers" in COOLIFY_DEPLOYMENT.md.
 #
-# staging: no staging environment is configured yet; pushes do not run CI.
+# staging: Coolify deploys every push and CI runs on the same commit.
 # main:    Coolify auto-deploy is OFF. deploy-prod below is the only trigger,
 #          after smoke, checks, integration and e2e pass.
-#
-# Temporarily (21 October 2026) pushes to staging do not run CI, to save
-# Actions minutes while we push often. Before promoting, run it by hand:
-# `gh workflow run CI --ref staging` (or "Run workflow" in the Actions tab),
-# so the commit carries the smoke and checks results the main ruleset needs.
-# To restore, add staging back to push.branches below.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
   pull_request:
     branches: [main, staging]
@@ -35,6 +29,7 @@ jobs:
     timeout-minutes: 20
     env:
       COMPOSE_PROJECT_NAME: classiflow-ci
+      BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: ci-only-not-a-real-secret-0123456789
       DEFAULT_ADMIN_EMAIL: admin@classiflow.local
       DEFAULT_ADMIN_PASSWORD: ci-password

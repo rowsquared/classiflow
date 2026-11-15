@@ -6,7 +6,7 @@ This guide covers production deployment for classiflow. The app provides the UI 
 
 - Docker (and Docker Compose) or a container platform
 - PostgreSQL 18 (the version CI and the Compose files use; others are untested)
-- A domain with HTTPS (recommended for production)
+- A domain with HTTPS for hosted deployments
 - Environment variables (see below)
 
 ## Option 1: Docker Compose (app + Postgres)
@@ -23,9 +23,9 @@ cd classiflow
 ```bash
 cp .env.example .env
 ```
-Compose refuses to start without `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`,
-`APP_DB_USER` and `APP_DB_PASSWORD`;
-there are no built-in fallbacks.
+Compose requires `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+`APP_DB_USER` and `APP_DB_PASSWORD`. Set `BETTER_AUTH_URL` to the public HTTPS
+origin when hosting the app. The sample URL is for local testing.
 
 3. Start the stack:
 ```bash
@@ -41,14 +41,15 @@ Note: For local access you must expose port 3000 in `docker-compose.yml`. For pr
 Use this when you already manage PostgreSQL elsewhere.
 
 1. Set `DATABASE_URL` to point at your Postgres instance.
-2. Provide all required auth and admin environment variables.
+2. Provide the required auth and admin environment variables and set
+   `APP_DB_USER` and `APP_DB_PASSWORD` for the runtime database role.
 3. Ensure the container start command runs migrations and initializes the admin user:
 
 ```bash
 sh scripts/start.sh
 ```
 
-It applies migrations, optionally sets up the runtime database role (see
+It applies migrations, sets up the runtime database role (see
 [Database roles](#database-roles)), creates the first admin, seeds the demo
 workspace when `DEMO_SEED` is set (staging only, ENV_SETUP.md "Demo data") and
 starts the server.
@@ -123,16 +124,16 @@ usable token, and the keys alone hold no data:
 ## Reverse proxy
 
 - Terminate TLS at the proxy and forward `Host` (or `X-Forwarded-Host`) unchanged: state-changing API calls whose browser `Origin` does not match are refused (403).
-- Set a request body limit of at least 50 MB for CSV uploads (the application refuses larger files). The app rate-limits sign-in per client IP itself (`SIGN_IN_RATE_LIMIT`), reading the IP from `X-Forwarded-For`, so the proxy must set that header (and strip any value the client sent). A proxy rate limit on `POST /api/auth/sign-in/*` is still a sensible second layer.
+- Set a request body limit of at least 51 MiB for CSV uploads to allow for the 50 MiB file and multipart overhead. The app rate-limits sign-in per client IP itself (`SIGN_IN_RATE_LIMIT`), reading the IP from `X-Forwarded-For`, so the proxy must set that header (and strip any value the client sent). A proxy rate limit on `POST /api/auth/sign-in/*` is still a sensible second layer.
 - Add `Strict-Transport-Security` at the proxy. The app itself sends `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (`next.config.ts`) and an enforced, nonce-based `Content-Security-Policy` (`proxy.ts`).
 
 ## Mail
 
-Optional. With `N8N_EMAIL_WEBHOOK_SECRET` set (ENV_SETUP.md "Email") classiflow
-sends invitations, password links, emailed temporary passwords and account
-notices through the rowsquared n8n "E-MAIL API" workflow; the workflow must
-accept classiflow's secret. Links use `APP_BASE_URL` (or `BETTER_AUTH_URL`),
-never the request's host, so set it to the public `https://` address.
+Set `N8N_EMAIL_WEBHOOK_URL` and `N8N_EMAIL_WEBHOOK_SECRET` to enable invitations,
+password links, emailed temporary passwords and account notices. The n8n
+workflow must accept classiflow's secret. Set `APP_BASE_URL` (or
+`BETTER_AUTH_URL`) to the public HTTPS address used in email links. See
+[email settings](ENV_SETUP.md#email-optional) for details.
 
 - **Outbox:** every mail is a row in `OutgoingMail` (purpose, status, timestamps;
   never the body, a link, a token or a password). It is sent right after the
@@ -204,7 +205,8 @@ The account must change it at next sign-in, its existing sessions are signed out
 
 ## Audit log
 
-Admins see an audit trail at **Audit Log** (`/admin/audit`, API `GET /api/audit`):
+Admins see an audit trail at **Audit log** (`/w/[workspaceId]/admin/audit`, API
+`GET /api/workspaces/[workspaceId]/audit`). It covers
 user, membership, invitation, member import, mail (admin-requested mail and
 its outcome), taxonomy, import, assignment, bulk-label, export and AI-job changes, and
 refused access (`access.denied`, by role or by record scope). Each entry has

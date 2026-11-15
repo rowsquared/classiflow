@@ -125,53 +125,48 @@ export default function RecordPanel({
         </div>
       </div>
 
-      {/* Navigation Buttons - Bottom Right */}
-      <div className="p-4 flex items-center justify-between gap-2 bg-white">
-        <div className="flex items-center gap-3 text-xs font-medium text-gray-600">
-          {sentenceIds.length > 0 && currentIndex >= 0 ? (
-            <>
-              <span>
-                Sentence {currentIndex + 1} of {sentenceIds.length}
-              </span>
+      {currentIndex >= 0 && currentIndex < sentenceIds.length && (
+        <div className="p-4 flex items-center justify-between gap-2 bg-white">
+          <div className="flex items-center gap-3 text-xs font-medium text-gray-600">
+            <span>
+              Record {currentIndex + 1} of {sentenceIds.length}
+            </span>
+            <div
+              className="w-32 h-1.5 bg-gray-200"
+              role="progressbar"
+              aria-label="Position in the list"
+              aria-valuemin={1}
+              aria-valuemax={sentenceIds.length}
+              aria-valuenow={currentIndex + 1}
+            >
               <div
-                className="w-32 h-1.5 bg-gray-200"
-                role="progressbar"
-                aria-label="Position in the list"
-                aria-valuemin={1}
-                aria-valuemax={sentenceIds.length}
-                aria-valuenow={currentIndex + 1}
-              >
-                <div
-                  className="h-full bg-indigo-600 transition-all"
-                  style={{ width: `${((currentIndex + 1) / sentenceIds.length) * 100}%` }}
-                />
-              </div>
-            </>
-          ) : (
-            <span>Sentence navigation unavailable</span>
-          )}
+                className="h-full bg-indigo-600 transition-all"
+                style={{ width: `${((currentIndex + 1) / sentenceIds.length) * 100}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              disabled={disabled || currentIndex === 0}
+              onClick={onPrevious}
+              className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
+              title="Previous sentence"
+              aria-label="Previous sentence"
+            >
+              <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+            </button>
+            <button
+              disabled={disabled}
+              onClick={onNext}
+              className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
+              title="Next sentence"
+              aria-label="Next sentence"
+            >
+              <ChevronRight className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            disabled={disabled || currentIndex <= 0}
-            onClick={onPrevious}
-            className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
-            title="Previous sentence"
-            aria-label="Previous sentence"
-          >
-            <ChevronLeft className="w-5 h-5" aria-hidden="true" />
-          </button>
-          <button
-            disabled={disabled}
-            onClick={onNext}
-            className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
-            title="Next sentence"
-            aria-label="Next sentence"
-          >
-            <ChevronRight className="w-5 h-5" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+      )}
     </ResizablePanel>
   )
 }

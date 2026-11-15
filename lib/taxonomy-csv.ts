@@ -1,5 +1,6 @@
 import { parse } from 'csv-parse/sync'
 import { isUnknownNodeCode } from '@/lib/constants'
+import { csvDelimiter } from '@/lib/csv-import'
 
 /**
  * Taxonomy CSV parsing and validation, shared by validate, create, replace
@@ -60,6 +61,7 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
   let headers: string[] = []
   try {
     records = parse(csv, {
+      delimiter: csvDelimiter(csv),
       columns: (header: string[]) => {
         headers = header.map(h => String(h).trim())
         return headers

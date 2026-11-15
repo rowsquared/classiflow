@@ -104,14 +104,8 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   }
 
   const getProgress = (job: AIJob) => {
-    if (job.type === 'learning' || job.type === 'taxonomy_sync') {
-      // These jobs don't have detailed progress tracking
-      if (job.status === 'completed') return 100
-      if (job.status === 'processing') return 50
-      if (job.status === 'failed' || job.status === 'cancelled') return 0
-      return 0 // pending
-    }
-    if (!job.totalSentences || job.totalSentences === 0) return 0
+    if (job.type !== 'labeling') return null
+    if (!job.totalSentences) return 0
     return Math.round(((job.processedSentences || 0) / job.totalSentences) * 100)
   }
 
@@ -225,15 +219,19 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{job.taxonomy}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 bg-gray-200 h-2">
-                            <div
-                              className="bg-indigo-500 h-2 transition-all duration-300"
-                              style={{ width: `${progress}%` }}
-                            />
+                        {progress === null ? (
+                          <span className="text-xs text-gray-600">{job.status === 'processing' ? 'Running' : '—'}</span>
+                        ) : (
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <div className="flex-1 bg-gray-200 h-2">
+                              <div
+                                className="bg-indigo-500 h-2 transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-600 whitespace-nowrap">{progress}%</span>
                           </div>
-                          <span className="text-xs text-gray-600 whitespace-nowrap">{progress}%</span>
-                        </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {job.type === 'learning' || job.type === 'taxonomy_sync' ? (

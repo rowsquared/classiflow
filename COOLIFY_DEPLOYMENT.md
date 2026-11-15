@@ -7,18 +7,10 @@ This guide will help you deploy the classiflow application on Coolify.
 - A Coolify instance (self-hosted or cloud)
 - Git repository access
 
-## Deployment Methods
+## Deploy with Docker Compose
 
-There are two ways to deploy this application in Coolify:
-
-1. **Docker Compose (Recommended)** - Includes PostgreSQL in the same deployment
-2. **Dockerfile Only** - Requires separate PostgreSQL database
-
----
-
-## Method 1: Docker Compose Deployment (Recommended)
-
-This method deploys both the application and PostgreSQL database together using docker-compose.yml.
+Docker Compose deploys the application and PostgreSQL together. For an
+external database, see [App container + external Postgres](DEPLOYMENT.md#option-2-app-container--external-postgres).
 
 ### 1. Create the Application
 
@@ -69,8 +61,8 @@ Also turn on **Include Source Commit in Build** in the application's settings so
 #### Optional email variables
 
 ```bash
-# Mail through the rowsquared n8n "E-MAIL API" workflow (ENV_SETUP.md "Email").
-# Without the secret, mail is off and admins hand over temporary passwords.
+# Mail requires both the workflow URL and its secret (ENV_SETUP.md "Email").
+N8N_EMAIL_WEBHOOK_URL=https://mail.example.org/webhook/send-email
 N8N_EMAIL_WEBHOOK_SECRET=<classiflow's own value, accepted by the workflow>
 # Only if links should use a different public URL than BETTER_AUTH_URL:
 # APP_BASE_URL=https://classiflow.example.org
@@ -186,68 +178,6 @@ The default admin user is **automatically created** on first deployment using th
 
 ---
 
-## Method 2: Dockerfile Deployment (Separate Database)
-
-Use this method if you want to manage PostgreSQL separately or use Coolify's managed database.
-
-### 1. Create PostgreSQL Database
-
-In your Coolify dashboard:
-
-1. Navigate to **Databases** → **Add New Database**
-2. Select **PostgreSQL**
-3. Configure:
-   - **Name**: `classiflow-db`
-   - **PostgreSQL Version**: `16` (or latest)
-   - **Username**: `classiflow`
-   - **Password**: Generate a secure password
-   - **Database Name**: `classiflow`
-4. Click **Create**
-5. Note the internal connection string
-
-### 2. Create the Application
-
-1. Navigate to **Projects** → **Add New Resource** → **Application**
-2. Select your Git provider and repository
-3. Configure build settings:
-   - **Build Pack**: `dockerfile`
-   - **Dockerfile Location**: `./Dockerfile`
-   - **Port**: `3000`
-
-### 3. Configure Environment Variables
-
-```env
-# Database (use the connection string from the separate database)
-DATABASE_URL=postgresql://classiflow:your-password@classiflow-db:5432/classiflow?schema=public
-
-# Authentication (Better Auth)
-BETTER_AUTH_URL=https://your-domain.com
-BETTER_AUTH_SECRET=your-generated-secret-here
-
-# Default Admin User
-DEFAULT_ADMIN_EMAIL=admin@example.com
-DEFAULT_ADMIN_PASSWORD=<a long random password>  # required for the first start; placeholders are refused
-DEFAULT_ADMIN_NAME=Admin User
-DEFAULT_ADMIN_USERNAME=admin  # Optional: defaults to "admin"
-```
-
-### 4. Add Start Command
-
-In Coolify, set the start command to run migrations and initialize admin:
-
-```bash
-sh scripts/start.sh
-```
-
-**Note**: The `init-admin.ts` script creates the default admin only while the database has no admin, using the environment variables you configured. If it cannot (for example no or a placeholder password), it exits with an error and the container does not start.
-
-### 5. Deploy
-
-1. Click **Deploy** to start the deployment
-2. Monitor the build logs
-3. Once deployed, the database migrations will run automatically
-4. Access your application at your configured domain
-
 ## Post-Deployment
 
 ### First Login
@@ -290,7 +220,7 @@ Expected response:
 
 ### Database Persistence
 
-When using **Method 1 (Docker Compose)**:
+With Docker Compose:
 - PostgreSQL data is stored in a Docker volume (`postgres_data`)
 - This volume persists across container restarts and redeployments
 - **Important**: Always configure backups for production use
@@ -461,14 +391,9 @@ depends on the branch; see [Deploy triggers](#deploy-triggers).
 
 The two environments are triggered differently, on purpose.
 
-> **Currently (21 October 2026) staging deploys nothing:** no staging
-> environment is updated on push. The table below is the intended setup.
-> CI is also not run on staging pushes for now; start it by hand
-> (`gh workflow run CI --ref staging`) before running `promote-main.mjs`.
-
 | Branch | Coolify auto-deploy | What deploys it |
 | --- | --- | --- |
-| `staging` | on (once configured) | Coolify deploys on every push once staging exists. CI must currently be started manually; restore automatic CI by adding `staging` to `push.branches` in `.github/workflows/ci.yml`. |
+| `staging` | on | Coolify deploys and CI runs on every push. |
 | `main` (production) | **off** | The `deploy-prod` job in `.github/workflows/ci.yml` calls Coolify's deploy API only after `smoke`, `checks`, `integration` and `e2e` pass. |
 
 Staging may be briefly broken; the fast feedback is worth more than a gate.
@@ -510,8 +435,8 @@ node scripts/promote-main.mjs
 
 The script refuses anything that is not a fast-forward, so `main` never holds a
 commit that was not on `staging` first and the two branches stay in sync. Never
-push or merge into `main` by hand. The `main` ruleset requires the `smoke` and
-`checks` checks, so the push is rejected until CI has passed on `staging` for
+push or merge into `main` by hand. The `main` ruleset requires `smoke`, `checks`,
+`integration` and `e2e`, so the push is rejected until CI has passed on `staging` for
 that commit.
 
 **Roll back by going forward**: revert the bad commit on `staging`, let CI pass,

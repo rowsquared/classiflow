@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { db, inCurrentWorkspace } from '@/lib/workspace/db'
 import { parse } from 'csv-parse/sync'
 import { workspaceRoute } from '@/lib/api-auth'
+import { csvDelimiter } from '@/lib/csv-import'
 import { readUpload } from '@/lib/upload'
 import type { CaughtError, CsvRow } from '@/lib/utils'
 import { Prisma } from '@/lib/generated/prisma/client'
@@ -38,6 +39,7 @@ export const POST = workspaceRoute(
       let records: CsvRow[]
       try {
         records = parse(csvText, {
+          delimiter: csvDelimiter(csvText),
           columns: (header: string[]) => {
             headers = header.map(h => String(h).trim())
             return headers

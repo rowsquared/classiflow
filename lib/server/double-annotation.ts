@@ -568,10 +568,9 @@ export async function recordChangedResult(
 }
 
 /**
- * Undoes a review decision (the toast's Undo): the outcome returns to its
- * comparison (agreed or disagreed), the result to the answer it came from,
- * the round is active again when it had completed, and the record is pending
- * until it is confirmed again.
+ * Undoes a review decision (the toast's Undo). Restore the provisional
+ * answer and reopen the round if another decision is needed. Keep the
+ * original comparison for reporting.
  */
 export async function reopenReview(user: CurrentUser, round: Round, taxonomyId: string) {
   await requireManager(user, round)
@@ -582,8 +581,13 @@ export async function reopenReview(user: CurrentUser, round: Round, taxonomyId: 
   if (round.status === 'cancelled') {
     throw new DoubleAnnotationError('Double annotation was stopped for this record', 409)
   }
-  const source = outcome.sourceTaskId ? await taskLabels([outcome.sourceTaskId], taxonomyId) : []
-  const state = outcome.matched ? 'agreed' : 'disagreed'
+  const answers = await taskLabels(
+    round.tasks.map(task => task.id),
+    taxonomyId
+  )
+  const source = answers.filter(label => label.taskId === outcome.sourceTaskId)
+  const other = answers.filter(label => label.taskId !== outcome.sourceTaskId)
+  const state = outcome.matched && source.length > 0 && sameLabels(source, other) ? 'agreed' : 'disagreed'
   await db().doubleOutcome.update({
     where: { roundId_taxonomyId: { roundId: round.id, taxonomyId } },
     data: {

@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Modal from '@/components/Modal'
+import { csvDelimiter } from '@/lib/csv-import'
+import { readUpload } from '@/lib/upload'
 import { formatImportErrors, maxLevelOf, type RowError } from '@/lib/taxonomy-admin'
 import type { CsvRow } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
@@ -22,7 +24,15 @@ type ValidationResult = {
 async function detectMaxDepth(file: File): Promise<number | null> {
   try {
     const { parse } = await import('csv-parse/sync')
-    const rows = parse(await file.text(), { columns: true, skip_empty_lines: true, bom: true, cast: false })
+    const upload = await readUpload(file)
+    if (!upload.ok) return null
+    const rows = parse(upload.text, {
+      delimiter: csvDelimiter(upload.text),
+      columns: true,
+      skip_empty_lines: true,
+      bom: true,
+      cast: false
+    })
     return maxLevelOf(rows as CsvRow[])
   } catch {
     return null

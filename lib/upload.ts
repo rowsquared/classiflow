@@ -1,3 +1,5 @@
+import { decodeCsv } from '@/lib/csv-import'
+
 /**
  * Reads an uploaded CSV from multipart form data with a size limit, so an
  * oversized file is refused before it is decoded and parsed. The request body
@@ -15,5 +17,7 @@ export async function readUpload(entry: FormDataEntryValue | null): Promise<Uplo
   if (entry.size > MAX_UPLOAD_BYTES) {
     return { ok: false, error: `File is larger than ${MAX_UPLOAD_BYTES / 1024 / 1024} MB` }
   }
-  return { ok: true, name: entry.name, text: await entry.text() }
+  const decoded = decodeCsv(await entry.arrayBuffer())
+  if (!decoded.ok) return decoded
+  return { ...decoded, name: entry.name }
 }

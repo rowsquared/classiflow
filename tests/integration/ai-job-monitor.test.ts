@@ -501,7 +501,7 @@ describe('AI job monitor against a stub service', () => {
     )
   })
 
-  it("fails the job with the service's answer when the start request is refused", async () => {
+  it('stores the HTTP status without the error body when a start request is refused', async () => {
     const [a] = await createSentences(1)
     createdReply = () => ({ code: 401, body: { detail: 'Invalid token' } })
     const job = await labelingJob([a.id])
@@ -510,7 +510,7 @@ describe('AI job monitor against a stub service', () => {
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
-    expect(done.errorMessage).toBe('AI labeling API error (401): {"detail":"Invalid token"}')
+    expect(done.errorMessage).toBe('AI service returned HTTP 401 (POST /label)')
   })
 
   it('leaves a job alone while another instance holds its lease', async () => {
@@ -722,7 +722,7 @@ describe('taxonomy sync against a stub service', () => {
     const warn = vi.spyOn(logger, 'warn')
     await client.cancelJob('label', 'ext-404') // unknown job: 404, logged, not thrown
     expect(String((warn.mock.calls[0]?.[0] as { err?: Error } | undefined)?.err?.message)).toContain(
-      'AI labeling API error (404)'
+      'AI service returned HTTP 404'
     )
     warn.mockRestore()
     started.push({ resource: 'taxonomies', body: {}, polls: 0 })

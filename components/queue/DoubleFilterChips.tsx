@@ -41,6 +41,7 @@ export default function DoubleFilterChips({
       <span className="text-sm text-gray-700">Double annotation</span>
       {DOUBLE_FILTERS.map(value => {
         const pressed = active === value
+        const tone = value === 'gap' && counts.gap === 0 ? CHIPS.any.tone : CHIPS[value].tone
         return (
           <button
             key={value}
@@ -48,7 +49,7 @@ export default function DoubleFilterChips({
             aria-pressed={pressed}
             onClick={() => onChange(pressed ? null : value)}
             className={`px-2 py-0.5 text-sm border focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-              pressed ? 'bg-indigo-600 border-indigo-600 text-white' : CHIPS[value].tone
+              pressed ? 'bg-indigo-600 border-indigo-600 text-white' : tone
             }`}
           >
             {CHIPS[value].label} · {counts[value].toLocaleString()}

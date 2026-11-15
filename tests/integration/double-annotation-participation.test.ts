@@ -288,6 +288,39 @@ describe('double annotation participation', () => {
     expect((await save(r.id, path('B', '01', '011'))).status).toBe(409)
   })
 
+  it('undoing a decision after a revised agreement returns the record to review', async () => {
+    const [r] = await createSentences(1, [alice.id])
+    await start([r.id])
+    for (const labeller of [alice, bob]) {
+      signInAs(labeller)
+      expect((await save(r.id, path('A', '01', '011'))).status).toBe(200)
+    }
+    expect((await save(r.id, path('A', '01', '012'))).status).toBe(200)
+    for (const labeller of [alice, bob]) {
+      signInAs(labeller)
+      expect((await save(r.id, path('B', '01', '011'))).status).toBe(200)
+    }
+
+    signInAs(sam)
+    expect((await save(r.id, path('A', '01', '012'))).status).toBe(200)
+    expect((await record(r.id)).status).toBe('submitted')
+    const reopened = await commandRoute.POST(
+      request('/x', { method: 'POST', body: { action: 'reopen', taxonomyKey: 'A' } }),
+      params({ sentenceId: r.id })
+    )
+    expect(reopened.status).toBe(200)
+    expect(await record(r.id)).toMatchObject({ status: 'pending', double: { status: 'active' } })
+    expect(
+      await prisma.doubleOutcome.findFirstOrThrow({ where: { sentenceId: r.id, taxonomyId: taxA.id } })
+    ).toMatchObject({
+      state: 'disagreed',
+      matched: true,
+      revisedAfterCompare: true,
+      resultCodes: []
+    })
+    expect(await effective(r.id, taxA.id)).toEqual(['01', '011'])
+  })
+
   it('analysis exports: pairs side by side with the match per level, and the agreement summary', async () => {
     const r = await reviewedRecord()
     signInAs(alice)

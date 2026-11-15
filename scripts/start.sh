@@ -6,6 +6,18 @@
 # refuses to start without it.
 set -e
 
+# Hosted deployments must use HTTPS. Local Compose and CI can use loopback.
+node -e '
+  const url = URL.parse(process.env.BETTER_AUTH_URL ?? "")
+  const loopback = url && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+  const valid = url && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/" &&
+    (url.protocol === "https:" || (url.protocol === "http:" && loopback))
+  if (!valid) {
+    console.error("Set BETTER_AUTH_URL to the public HTTPS origin. HTTP is allowed for localhost only.")
+    process.exit(1)
+  }
+'
+
 if [ -z "${APP_DB_USER:-}" ]; then
   if [ "${NODE_ENV:-}" = "production" ] && [ "${ALLOW_OWNER_RUNTIME:-}" != "true" ]; then
     echo "✗ APP_DB_USER and APP_DB_PASSWORD are required: the server must not run as the schema owner (DEPLOYMENT.md \"Database roles\")." >&2

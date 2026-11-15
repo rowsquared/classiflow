@@ -35,7 +35,7 @@ beforeEach(async () => {
   signInAs(admin)
 })
 
-function multipart(url: string, method: string, fields: Record<string, string>, csv?: string, fileName = 'data.csv') {
+function multipart(url: string, method: string, fields: Record<string, string>, csv?: BlobPart, fileName = 'data.csv') {
   const form = new FormData()
   Object.entries(fields).forEach(([k, v]) => form.append(k, v))
   if (csv !== undefined) form.append('file', new File([csv], fileName, { type: 'text/csv' }))
@@ -145,6 +145,27 @@ describe('taxonomy CSV lifecycle', () => {
 })
 
 describe('record import and export', () => {
+  it('accepts semicolon-separated UTF-8 with quoted delimiters and preserves ids', async () => {
+    const csv = '\uFEFFid;"field_title, original";support_note\r\n001;"Bäcker; Konditor, Geselle";"A;B"\r\n'
+    const imported = await recordImportRoute.POST(multipart('/x?dryRun=false', 'POST', {}, csv), params())
+    expect(imported.status).toBe(200)
+    expect(await prisma.sentence.findFirstOrThrow({ where: { recordKey: '001' } })).toMatchObject({
+      field1: 'Bäcker; Konditor, Geselle',
+      fieldMapping: { '1': 'title, original' },
+      support1: 'A;B'
+    })
+  })
+
+  it('rejects Windows-1252 in the dry run and the commit', async () => {
+    const csv = Uint8Array.from('field_title\r\nBäcker\r\n', char => char.charCodeAt(0))
+    for (const dryRun of [true, false]) {
+      const result = await recordImportRoute.POST(multipart(`/x?dryRun=${dryRun}`, 'POST', {}, csv), params())
+      expect(result.status).toBe(400)
+      expect(await result.json()).toMatchObject({ error: expect.stringContaining('Save it as CSV UTF-8') })
+    }
+    expect(await prisma.sentence.count()).toBe(0)
+  })
+
   it('exports declared field and support columns even when every value is empty', async () => {
     const response = await recordImportRoute.POST(
       multipart('/x?dryRun=false', 'POST', {}, 'id,field_title,field_description,support_region\n007,,,\n'),

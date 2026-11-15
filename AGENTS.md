@@ -146,8 +146,8 @@ cannot be hard-deleted; disable them instead.
 | Taxonomy browsing | `app/w/[workspaceId]/taxonomies/[key]/page.tsx` |
 | Administration | `app/w/[workspaceId]/admin/`: `taxonomy/` (screen parts in `components/taxonomy-admin/`), `sentences/`, `team/` (`components/team/`), `export/`, `ai-jobs/`, `ai/`, `audit/`; `/admin` redirects to `/admin/taxonomy` |
 | Progress | `app/w/[workspaceId]/progress/page.tsx`, `components/progress/` (dashboard: sections, filters, chart/table, people), `lib/progress-url.ts` (view in the URL), `lib/server/progress.ts` and `app/api/workspaces/[workspaceId]/progress/{overview,activity,people}` (fixed query count, `lib/reporting-dates.ts` for UTC days/weeks), `LabelingActivity` written by the label saves (`operationId` from `lib/save-operation.ts`) |
-| Record APIs | `app/api/sentences/`; queue queries, stats, imports, assignment, bulk labels, individual records/annotations/comments/flags |
-| Other data APIs | `app/api/taxonomies/`, `app/api/imports/`, `app/api/users/`, `app/api/export/` |
+| Record APIs | `app/api/workspaces/[workspaceId]/sentences/` for queue queries, stats, imports, assignment, bulk labels, and individual records, annotations, comments and flags |
+| Other data APIs | `taxonomies/`, `imports/`, `users/` and `export/` under `app/api/workspaces/[workspaceId]/`. Global accounts also have `app/api/users/` and `app/api/user-directory/` |
 | AI APIs | `ai-labeling/` starts labeling and learning, `taxonomies/[key]/sync-ai` queues a sync, `ai-jobs/` provides combined history, active jobs, cancellation, `ai-settings/` the workspace connection; `/api/ai-endpoints` approved services (platform); UI in `app/w/[workspaceId]/admin/ai/` and `app/workspaces/AIEndpointsPanel.tsx` |
 | Authentication | `lib/auth.ts` (Better Auth server), `lib/auth-client.ts` (browser), `lib/api-auth.ts`, `lib/passwords.ts`, `proxy.ts`, `app/api/auth/` |
 | Database | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/`, shared client in `lib/prisma.ts` |
@@ -246,9 +246,11 @@ browser-local `list` navigation key. Discussion content opens in a `Modal`
 
 ### CSV boundaries
 
+CSV imports accept UTF-8 files with comma or semicolon separators.
+
 - Record import accepts an optional `id`, one to five `field_*` columns, and up
-  to five `support_*` columns. `app/api/sentences/import/route.ts` supports a dry
-  run; the admin UI validates before committing.
+  to five `support_*` columns. `app/api/workspaces/[workspaceId]/sentences/import/route.ts`
+  supports a dry run. The admin UI validates before committing.
 - Taxonomy CSV uses `id`, `label`, `parent_id`, `level`, plus optional
   `definition`, `examples`, and `synonyms`. Every handler (validate, create,
   replace via PUT, incremental `/[key]/import`) uses `lib/taxonomy-csv.ts`;

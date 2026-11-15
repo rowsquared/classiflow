@@ -1,5 +1,6 @@
 import { commentSummaries } from '@/lib/server/comment-summaries'
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
@@ -7,6 +8,8 @@ import { logError } from '@/lib/logger'
 import { commentAudienceFilter } from '@/lib/server/double-annotation'
 
 const MAX_COMMENT_LENGTH = 10_000
+const deleteCommentSchema = z.object({ commentId: z.string().min(1) })
+const resolveCommentSchema = deleteCommentSchema.extend({ resolved: z.boolean() })
 
 // Comment access follows record access: anyone who can see the record can read,
 // add and resolve its comments. Only the author or an admin may delete one.
@@ -106,11 +109,11 @@ export const PATCH = workspaceRoute<'sentenceId'>([], async (req, { user, params
     const { sentenceId } = routeParams
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
     if (denied) return denied
-    const { commentId, resolved } = await req.json()
-
-    if (!commentId || typeof resolved !== 'boolean') {
+    const parsed = resolveCommentSchema.safeParse(await req.json().catch(() => null))
+    if (!parsed.success) {
       return NextResponse.json({ ok: false, error: 'commentId and resolved flag are required' }, { status: 400 })
     }
+    const { commentId, resolved } = parsed.data
 
     const comment = await db().comment.findUnique({
       where: { id: commentId },
@@ -151,11 +154,11 @@ export const DELETE = workspaceRoute<'sentenceId'>([], async (req, { user, param
     const denied = await denyUnlessSentencesVisible(user, [sentenceId])
     if (denied) return denied
 
-    const { commentId } = await req.json()
-
-    if (!commentId) {
+    const parsed = deleteCommentSchema.safeParse(await req.json().catch(() => null))
+    if (!parsed.success) {
       return NextResponse.json({ ok: false, error: 'commentId is required' }, { status: 400 })
     }
+    const { commentId } = parsed.data
 
     const comment = await db().comment.findUnique({
       where: { id: commentId },

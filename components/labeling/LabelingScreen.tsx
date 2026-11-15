@@ -140,20 +140,6 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   }
   const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id))
 
-  // Warm the annotations route so the first flag/submit is not delayed by compilation.
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch(api(`/sentences/${sentenceId}/annotations`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-warmup': '1' },
-      body: '{}',
-      signal: controller.signal
-    }).catch(() => {
-      // Ignore warmup errors - real requests will still work
-    })
-    return () => controller.abort()
-  }, [api, sentenceId])
-
   const updateRecord = (patch: Partial<LabelingRecord>) =>
     queryClient.setQueryData<LabelingRecord>(recordKey, old => (old ? { ...old, ...patch } : old))
   // Labels, flags and statuses changed: the queue's lists and counts are out of date.

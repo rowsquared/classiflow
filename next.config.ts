@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // React Compiler (babel-plugin-react-compiler) memoizes components and hooks.
   reactCompiler: true,
+  experimental: {
+    // Allow multipart headers and fields around a 50 MiB CSV file.
+    proxyClientMaxBodySize: '51mb'
+  },
   // Security headers. The Content-Security-Policy needs a per-request nonce,
   // so proxy.ts sets it.
   async headers() {
