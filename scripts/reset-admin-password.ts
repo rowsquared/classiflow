@@ -7,7 +7,7 @@
 //
 // The account must change the password at next sign-in, and all of its existing
 // sessions end. Only admin accounts can be reset this way (other users are reset
-// by an admin in the Team page). The password is never logged.
+// by an admin on the Users page). The password is never logged.
 import { connect } from './lib/db.ts'
 import { revokeSessions, setPassword } from '../lib/passwords.ts'
 import { passwordProblem } from '../lib/password-policy.ts'
@@ -35,7 +35,7 @@ async function resetAdminPassword() {
   const weak = passwordProblem(newPassword, { username: user.username })
   if (weak) throw new Error(`NEW_PASSWORD is not acceptable: ${weak}`)
   if (user.role !== 'admin') {
-    throw new Error(`"${user.username}" is not an admin; reset it from the Team page instead`)
+    throw new Error(`"${user.username}" is not an admin; reset it from the Users page instead`)
   }
 
   await prisma.$transaction(async tx => {

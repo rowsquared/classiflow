@@ -63,6 +63,11 @@ export const AI_MAX_ACTIVE_JOBS_PER_WORKSPACE = positiveAISetting(
   3
 )
 export const AI_MAX_ACTIVE_JOBS = positiveAISetting('AI_MAX_ACTIVE_JOBS', process.env.AI_MAX_ACTIVE_JOBS, 10)
+export const AI_MAX_ACTIVE_JOBS_PER_ENDPOINT = positiveAISetting(
+  'AI_MAX_ACTIVE_JOBS_PER_ENDPOINT',
+  process.env.AI_MAX_ACTIVE_JOBS_PER_ENDPOINT,
+  5
+)
 
 /**
  * The AI service namespace of one workspace: the deployment's AI_SOURCE_SLUG

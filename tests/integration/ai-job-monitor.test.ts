@@ -310,7 +310,7 @@ describe('AI job monitor against a stub service', () => {
 
     expect(done.status).toBe('completed')
     expect(done.externalJobId).toBe('ext-1')
-    expect(done.failedSentences).toBe(2)
+    expect(done.failedSentences).toBe(3)
     expect(done.leaseOwner).toBeNull()
     expect(started).toHaveLength(1)
     expect(started[0]?.body).toEqual({
@@ -363,7 +363,7 @@ describe('AI job monitor against a stub service', () => {
     )
   })
 
-  it('marks the job failed with the service error', async () => {
+  it('marks the job failed without storing arbitrary service error text', async () => {
     const [a] = await createSentences(1)
     statusReply = () => ({ body: { status: 'failed', error: 'model not trained' } })
     const job = await labelingJob([a.id])
@@ -372,7 +372,7 @@ describe('AI job monitor against a stub service', () => {
     const done = await settle(job.id)
 
     expect(done.status).toBe('failed')
-    expect(done.errorMessage).toBe('model not trained')
+    expect(done.errorMessage).toBe('External AI job failed')
   })
 
   it('marks the job failed when Taxomind cancelled it', async () => {

@@ -27,6 +27,8 @@ import { currentRequestId } from '@/lib/request-id'
  */
 
 export type AuditAction =
+  | 'user.signed_in'
+  | 'user.sign_in_failed'
   | 'user.created'
   | 'user.updated'
   | 'user.deleted'
@@ -72,6 +74,8 @@ export type AuditAction =
   | 'ai.labeling_started'
   | 'ai.learning_started'
   | 'ai.job_cancelled'
+  | 'ai.results_saved'
+  | 'ai.job_failed'
   | 'ai.enabled'
   | 'ai.disabled'
   | 'ai.connection_created'
@@ -177,4 +181,41 @@ export function startAuditRetention() {
   setTimeout(run, 60_000).unref?.()
   retentionTimer = setInterval(run, PRUNE_INTERVAL_MS)
   retentionTimer.unref?.()
+}
+
+export async function listAudit(workspaceId: string | null, params: URLSearchParams) {
+  const limit = Math.min(Math.max(parseInt(params.get('limit') || '50', 10) || 50, 1), 200)
+  const action = params.get('action')
+  const where: Prisma.AuditLogWhereInput = { workspaceId }
+  if (action) where.action = action.endsWith('.') ? { startsWith: action } : action
+  for (const key of ['entityType', 'entityId', 'actorId'] as const) {
+    const value = params.get(key)
+    if (value) where[key] = value
+  }
+  const cursor = params.get('cursor')
+
+  const entries = await (workspaceId === null ? prisma : db()).auditLog.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      createdAt: true,
+      action: true,
+      entityType: true,
+      entityId: true,
+      actorId: true,
+      actorName: true,
+      payload: true
+    }
+  })
+  const hasMore = entries.length > limit
+  const page = hasMore ? entries.slice(0, limit) : entries
+
+  return {
+    ok: true,
+    entries: page,
+    nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null
+  }
 }

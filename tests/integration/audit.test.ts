@@ -21,6 +21,7 @@ import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 import * as assignRoute from '@/app/api/workspaces/[workspaceId]/sentences/assign/route'
 import * as annotationsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route'
 import * as auditRoute from '@/app/api/workspaces/[workspaceId]/audit/route'
+import * as platformAuditRoute from '@/app/api/audit/route'
 
 let admin: User
 
@@ -34,6 +35,26 @@ beforeEach(async () => {
 
 const entries = (action?: string) =>
   prisma.auditLog.findMany({ where: action ? { action } : {}, orderBy: { createdAt: 'asc' } })
+
+it('keeps platform audit events separate and restricts them to platform admins', async () => {
+  const base = { action: 'export.downloaded', entityType: 'workspace', entityId: 'record' }
+  await prisma.auditLog.createMany({
+    data: [
+      { ...base, workspaceId: wsId() },
+      { ...base, workspaceId: null }
+    ]
+  })
+
+  const platform = await platformAuditRoute.GET(request('/api/audit'))
+  expect(platform.status).toBe(200)
+  expect((await platform.json()).entries).toHaveLength(1)
+
+  signInAs(await createUser('admin'))
+  expect((await platformAuditRoute.GET(request('/api/audit'))).status).toBe(403)
+  const workspace = await auditRoute.GET(request('/api/audit'), params())
+  expect(workspace.status).toBe(200)
+  expect((await workspace.json()).entries).toHaveLength(1)
+})
 
 let created = 0
 async function createViaApi(role = 'labeller') {

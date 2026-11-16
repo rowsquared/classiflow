@@ -96,3 +96,10 @@ html:not(.sidebar-hydrated)[data-sidebar-collapsed='false'] .sidebar-container,
 html:not(.sidebar-hydrated):not([data-sidebar-collapsed]) .sidebar-container {
   width: 256px !important;
 }
+
+@media (max-width: 1023px) {
+  html:not(.sidebar-hydrated)[data-sidebar-collapsed='false'] .sidebar-container,
+  html:not(.sidebar-hydrated):not([data-sidebar-collapsed]) .sidebar-container {
+    width: 66px !important;
+  }
+}

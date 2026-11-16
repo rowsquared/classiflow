@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import TaxonomyBrowser, { type SelectedLabel } from '../TaxonomyBrowser'
 import { useActiveTaxonomies } from '@/components/labeling/data'
 import ResizablePanel from '../ResizablePanel'
 import Modal, { useDialog } from '../Modal'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { fetchJson } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { canSubmitLabels, withUnknownAt } from '@/lib/labeling'
 import { SaveOperation } from '@/lib/save-operation'
 import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
@@ -21,11 +22,22 @@ interface BulkLabelPanelProps {
 }
 
 export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComplete }: BulkLabelPanelProps) {
-  const { api } = useWorkspacePaths()
+  const { workspaceId, api } = useWorkspacePaths()
   const taxonomyQuery = useActiveTaxonomies()
   const taxonomies = taxonomyQuery.data ?? []
   const [activeTaxonomyIndex, setActiveTaxonomyIndex] = useState(0)
   const activeTaxonomy = taxonomies[activeTaxonomyIndex]
+  const preview = useQuery({
+    queryKey: queryKeys.bulkLabelPreview(workspaceId, activeTaxonomy?.key, sentenceIds),
+    queryFn: ({ signal }) =>
+      fetchJson<{ previouslyLabelled: number }>(api('/sentences/bulk-label'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sentenceIds, taxonomyKey: activeTaxonomy?.key, preview: true }),
+        signal
+      }),
+    enabled: Boolean(activeTaxonomy)
+  })
   const [drafts, setDrafts] = useState<Record<string, SelectedLabel[]>>({})
   const selectedLabels = activeTaxonomy ? (drafts[activeTaxonomy.key] ?? []) : []
   const setSelectedLabels = (labels: SelectedLabel[]) => {
@@ -131,7 +143,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
             <div>
               <h2 className="text-lg font-medium text-gray-900">Bulk label</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Labeling {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'}
+                Labelling {sentenceIds.length} {sentenceIds.length === 1 ? 'record' : 'records'}
               </p>
             </div>
             <button
@@ -147,6 +159,13 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
             <div role="alert" className="m-4 p-3 text-sm text-red-800 bg-red-50 border border-red-200">
               {error}
             </div>
+          )}
+          {preview.data && preview.data.previouslyLabelled > 0 && (
+            <p role="status" className="mx-4 mt-3 text-sm text-amber-800">
+              Submitting replaces existing labels for this taxonomy on{' '}
+              {preview.data.previouslyLabelled.toLocaleString()} selected{' '}
+              {preview.data.previouslyLabelled === 1 ? 'record' : 'records'}.
+            </p>
           )}
           {taxonomyQuery.isPending ? (
             <p role="status" className="p-6 text-gray-600">
@@ -208,7 +227,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
                   disabled={submitting}
                   className={buttonClass('secondary')}
                   aria-pressed={flagged}
-                  title={flagged ? 'Unflag all selected sentences' : 'Flag all selected sentences'}
+                  title={flagged ? 'Unflag all selected records' : 'Flag all selected records'}
                 >
                   <Flag className="w-4 h-4" aria-hidden="true" />
                   Flag
@@ -257,7 +276,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
               </p>
             )}
             <label htmlFor="bulk-comment" className="block text-sm text-gray-700 mb-2">
-              Comment for all selected sentences
+              Comment for all selected records
             </label>
             <textarea
               id="bulk-comment"

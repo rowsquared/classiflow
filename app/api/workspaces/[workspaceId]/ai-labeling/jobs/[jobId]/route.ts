@@ -23,6 +23,6 @@ export const GET = workspaceRoute<'jobId'>(['admin'], async (req, { params: rout
   } catch (caught) {
     const error = caught as CaughtError
     await logError('Failed to fetch AI labeling job', error)
-    return NextResponse.json({ error: error?.message || 'Failed to fetch job' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch job' }, { status: 500 })
   }
 })

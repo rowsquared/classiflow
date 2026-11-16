@@ -2,7 +2,8 @@
 import { workspaceApi } from '@/lib/workspace/urls'
 
 import { useState } from 'react'
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { parseAsInteger, parseAsStringLiteral, useQueryStates } from 'nuqs'
 import PageHeader from '@/components/PageHeader'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { fetchJson } from '@/lib/query/fetch'
@@ -10,7 +11,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { formatRelativeTime } from '@/lib/utils'
 import { AlertCircle, CheckCircle2, Clock, Loader2, X, XCircle } from 'lucide-react'
 import Modal from '@/components/Modal'
-import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
+import { badgeClass, buttonClass, dialogPanelClass, panelClass, type BadgeTone } from '@/components/ui/styles'
 
 export type AIJob = {
   id: string
@@ -44,13 +45,25 @@ type Props = {
 
 const PAGE_SIZE = 20
 const isActiveJob = (job: AIJob) => job.status === 'pending' || job.status === 'processing'
+const filters = {
+  page: parseAsInteger.withDefault(1),
+  status: parseAsStringLiteral(['all', 'pending', 'processing', 'completed', 'failed', 'cancelled']).withDefault('all')
+}
+const statusTones: Record<AIJob['status'], BadgeTone> = {
+  completed: 'accent',
+  failed: 'danger',
+  processing: 'info',
+  cancelled: 'neutral',
+  pending: 'warn'
+}
 
 export default function AIJobsClient({ initialJobs, initialPagination }: Props) {
   const workspaceId = useWorkspaceInfo()?.id ?? ''
   const queryClient = useQueryClient()
   const [selectedJob, setSelectedJob] = useState<AIJob | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [page, setPage] = useState(1)
+  const [jobToCancel, setJobToCancel] = useState<AIJob | null>(null)
+  const [{ status: statusFilter, page: requestedPage }, setFilters] = useQueryStates(filters, { history: 'push' })
+  const page = Math.max(1, requestedPage)
 
   const params = new URLSearchParams({ page: page.toString(), limit: String(PAGE_SIZE) })
   if (statusFilter !== 'all') params.append('status', statusFilter)
@@ -87,21 +100,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const baseClasses = 'px-2 py-1 rounded text-xs font-medium capitalize'
-    switch (status) {
-      case 'completed':
-        return `${baseClasses} bg-green-100 text-green-800`
-      case 'failed':
-        return `${baseClasses} bg-red-100 text-red-800`
-      case 'processing':
-        return `${baseClasses} bg-indigo-100 text-indigo-800`
-      case 'cancelled':
-        return `${baseClasses} bg-gray-100 text-gray-800`
-      default:
-        return `${baseClasses} bg-yellow-100 text-yellow-800`
-    }
-  }
+  const getStatusBadge = (status: AIJob['status']) => badgeClass(statusTones[status], 'capitalize')
 
   const getProgress = (job: AIJob) => {
     if (job.type !== 'labeling') return null
@@ -112,43 +111,34 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   const getJobTypeLabel = (type: string) => {
     switch (type) {
       case 'labeling':
-        return 'Labeling'
+        return 'Labelling'
       case 'learning':
         return 'Learning'
       case 'taxonomy_sync':
         return 'Taxonomy sync'
       default:
-        return 'AI Job'
+        return 'AI job'
     }
   }
 
   const handleJobClick = (job: AIJob) => setSelectedJob(job)
 
-  const handleCancelJob = async (job: AIJob, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent row click
-
-    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-      return // Can't cancel completed/failed/cancelled jobs
-    }
-
-    if (!confirm(`Are you sure you want to cancel this ${getJobTypeLabel(job.type).toLowerCase()} job?`)) {
-      return
-    }
-
-    try {
-      await fetchJson(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
+  const cancelJob = useMutation({
+    mutationFn: (job: AIJob) =>
+      fetchJson(workspaceApi(`/ai-jobs/${job.id}/cancel`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: job.type })
-      })
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to cancel job')
-    } finally {
+      }),
+    onSuccess: async () => {
+      setJobToCancel(null)
       // This list, the header badge and the taxonomy statuses show the job.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.aiJobs(workspaceId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.taxonomies(workspaceId) })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.aiJobs(workspaceId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.taxonomies(workspaceId) })
+      ])
     }
-  }
+  })
 
   return (
     <div className="flex flex-col h-screen">
@@ -164,10 +154,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
             <select
               id="ai-job-status"
               value={statusFilter}
-              onChange={e => {
-                setStatusFilter(e.target.value)
-                setPage(1)
-              }}
+              onChange={e => void setFilters({ status: filters.status.parse(e.target.value), page: 1 })}
               className="px-3 py-2 border border-gray-500 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-gray-900"
             >
               <option value="all">All</option>
@@ -190,15 +177,15 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Type</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Taxonomy</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Progress</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Details</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Created by</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Started</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Completed</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Type</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Taxonomy</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Progress</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Details</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Created by</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Started</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Completed</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -255,7 +242,11 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         {(job.status === 'pending' || job.status === 'processing') && (
                           <button
-                            onClick={e => handleCancelJob(job, e)}
+                            onClick={e => {
+                              e.stopPropagation()
+                              cancelJob.reset()
+                              setJobToCancel(job)
+                            }}
                             className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
                           >
                             Cancel
@@ -279,7 +270,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => void setFilters({ page: Math.max(1, page - 1) })}
                 disabled={page === 1}
                 className={buttonClass('secondary', 'sm')}
               >
@@ -289,7 +280,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                 Page {pagination.page} of {pagination.pages}
               </span>
               <button
-                onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                onClick={() => void setFilters({ page: Math.min(pagination.pages, page + 1) })}
                 disabled={page === pagination.pages}
                 className={buttonClass('secondary', 'sm')}
               >
@@ -301,6 +292,42 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
       </div>
 
       {/* Job Detail Modal */}
+      {jobToCancel && (
+        <Modal
+          label="Cancel AI job"
+          onClose={() => {
+            if (!cancelJob.isPending) setJobToCancel(null)
+          }}
+        >
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">Cancel AI job?</h2>
+            <p className="text-sm text-gray-700">
+              Cancel the {getJobTypeLabel(jobToCancel.type).toLowerCase()} job for {jobToCancel.taxonomy}.
+            </p>
+            {cancelJob.error && (
+              <p role="alert" className="text-sm text-red-800">
+                {cancelJob.error.message}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                className={buttonClass('secondary')}
+                disabled={cancelJob.isPending}
+                onClick={() => setJobToCancel(null)}
+              >
+                Keep job
+              </button>
+              <button
+                className={buttonClass('danger')}
+                disabled={cancelJob.isPending}
+                onClick={() => cancelJob.mutate(jobToCancel)}
+              >
+                Cancel job
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {selectedJob && (
         <Modal label="Job details" onClose={() => setSelectedJob(null)} closeOnOverlayClick>
           <div

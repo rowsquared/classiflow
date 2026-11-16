@@ -88,6 +88,9 @@ test('audit log', async ({ page }) => {
   await page.goto(pagePath('/admin/audit'))
   await expect(page.getByLabel('Show')).toBeVisible()
   await expectAccessible(page, 'audit')
+  await page.goto('/audit')
+  await expect(page.getByRole('heading', { name: 'Platform audit log' })).toBeVisible()
+  await expectAccessible(page, 'platform audit')
 })
 
 test('taxonomy administration and its create dialog', async ({ page }) => {
@@ -140,7 +143,12 @@ test('accounts', async ({ page }) => {
     .getByRole('button', { name: /^Edit / })
     .first()
     .click()
-  await expect(page.getByRole('heading', { name: 'Workspace access' })).toBeVisible()
+  await expect(
+    page
+      .getByRole('heading', { name: 'Workspace access' })
+      .or(page.getByRole('tabpanel', { name: 'Workspaces' }))
+      .first()
+  ).toBeVisible()
   await expectAccessible(page, 'global user workspace access')
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Add user', exact: true }).click()

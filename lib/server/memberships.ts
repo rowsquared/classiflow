@@ -148,8 +148,8 @@ export async function updateMembership(req: Request, actor: CurrentUser, targetU
       ...(supervisorMembershipId !== undefined ? { supervisorMembershipId } : {})
     }
   })
-  // A suspended member no longer supervises anyone here.
-  if (status === 'suspended') {
+  // Supervisors must have an active membership and a management role.
+  if (status === 'suspended' || role === 'labeller') {
     await db().workspaceMembership.updateMany({
       where: { supervisorMembershipId: membership.id },
       data: { supervisorMembershipId: null }

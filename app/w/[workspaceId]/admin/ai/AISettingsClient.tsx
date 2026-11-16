@@ -89,30 +89,34 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
 
-  const call = async (path: string, method: string, body?: unknown, success?: string) => {
+  const call = async (path: string, method: string, body?: unknown, success?: string, updateSettings = true) => {
     setBusy(true)
     setMessage(null)
     try {
-      const res = await fetch(api(path), {
+      const data = await fetchJson<AISettings>(api(path), {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body)
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setMessage({ type: 'error', text: data.error || 'The change could not be saved' })
-        return false
-      }
-      queryClient.setQueryData(settingsKey, data as AISettings)
+      if (updateSettings) queryClient.setQueryData(settingsKey, data)
       if (success) setMessage({ type: 'success', text: success })
       return true
-    } catch {
-      setMessage({ type: 'error', text: 'The change could not be saved' })
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'The change could not be saved' })
       return false
     } finally {
       setBusy(false)
     }
   }
+
+  const checkConnection = () =>
+    call(
+      '/ai-settings/connection?test=true',
+      'POST',
+      { endpointId, credential },
+      'The AI service accepted this token.',
+      false
+    )
 
   const saveConnection = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -278,13 +282,21 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
                     previous one until they finish.
                   </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <button
                     type="submit"
                     disabled={busy || readOnly || !endpointId || !credential}
                     className={buttonClass('primary')}
                   >
                     Save connection
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || readOnly || !endpointId || !credential}
+                    className={buttonClass('secondary')}
+                    onClick={() => void checkConnection()}
+                  >
+                    Test connection
                   </button>
                   {active && (
                     <button

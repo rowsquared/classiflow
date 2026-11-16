@@ -53,7 +53,7 @@ describe('n8n transport', () => {
     ])
   })
 
-  it('posts to, subject and HTML body with the secret header', async () => {
+  it('posts both message formats with the secret header', async () => {
     const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }))
     expect(await sendViaN8n(config, { ...message, subject: 'Line one\r\nBcc: x' }, fetchImpl)).toEqual({
       outcome: 'sent'
@@ -63,7 +63,8 @@ describe('n8n transport', () => {
     expect(JSON.parse(init.body as string)).toEqual({
       to: 'a@example.org',
       subject: 'Line one Bcc: x',
-      body: '<p>x</p>'
+      body: '<p>x</p>',
+      text: message.text
     })
   })
 

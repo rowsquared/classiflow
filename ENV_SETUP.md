@@ -52,7 +52,8 @@ not stop the server. Do not set it in production.
 
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
-| `DEMO_SEED` | no | off | no | `true` seeds the demo workspace when it does not exist; `reset` deletes and rebuilds it on every start, which also moves its history up to the current date |
+| `DEPLOYMENT_ENV` | no | `production` | no | Set to `staging` on a staging deployment to allow demo seeding |
+| `DEMO_SEED` | no | off | no | On staging, `true` seeds the demo workspace when it does not exist. `reset` rebuilds it on each start and moves its history up to the current date |
 | `DEMO_PASSWORD` | no | none | yes | Password of the demo accounts (`demo.grace` workspace admin, `demo.amina` and `demo.lukas` supervisors, `demo.sofia`, `demo.daniel`, … labellers). Without it they cannot sign in. Set on creation and on `reset` |
 
 Locally: `npm run db:seed-demo` (add `-- --reset` to rebuild). `node
@@ -95,11 +96,12 @@ AI features stay disabled.
 | `AI_LABELING_API_URL` | no | unset | no | Optional: registered once as an *approved* Taxomind service at start-up (base URL including any path prefix such as `/api`). It configures no workspace; each still needs its own connection and token. Platform admins can approve and retire services in the UI instead |
 | `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` | no | 3 | no | AI jobs (labelling, learning, taxonomy sync) one workspace may have running at the AI service; more wait as "pending" |
 | `AI_MAX_ACTIVE_JOBS` | no | 10 | no | The same ceiling for the whole deployment; queued jobs are admitted fairly across workspaces |
-| `AI_LABELING_BATCH_SIZE` | no | 1000 / 100 | no | Records per labelling job (default; a workspace admin can set its own under Admin › AI Settings) |
-| `AI_LEARNING_BATCH_SIZE` | no | 100 / 100 | no | Records per learning job (default, overridable per workspace) |
+| `AI_LABELING_BATCH_SIZE` | no | 1000 | no | Records per labelling job (default, overridable per workspace) |
+| `AI_LEARNING_BATCH_SIZE` | no | 100 | no | Records per learning job (default, overridable per workspace) |
 | `AI_LEARNING_MIN_NEW_ANNOTATIONS` | no | 500 / 500 | no | New human labels needed before learning can start (default, overridable per workspace) |
-| `AI_JOB_POLL_INTERVAL_MS` | no | 60000 / 5000 | no | Status poll interval; also sets the job lease length (2 × interval + 60 s) |
-| `AI_JOB_POLL_TIMEOUT_MS` | no | 18000000 (5 h) / 600000 | no | A job still running after this is marked failed |
+| `AI_JOB_POLL_INTERVAL_MS` | no | 60000 | no | Status poll interval in milliseconds |
+| `AI_JOB_POLL_TIMEOUT_MS` | no | 18000000 (5 h) | no | Maximum remote running time in milliseconds, after which the app marks the job failed and requests cancellation |
+| `AI_MAX_ACTIVE_JOBS_PER_ENDPOINT` | no | 5 | Processing jobs allowed across all workspaces using the same AI endpoint |
 
 `AI_LABELING_API_KEY` is no longer read: a deployment-wide token would give
 every workspace the same Taxomind access. Enter tokens per workspace instead.

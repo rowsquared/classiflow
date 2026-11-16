@@ -187,6 +187,12 @@ type WorkspaceHandler<P> = (
   context: { user: CurrentUser; session: AuthSession; params: P }
 ) => Promise<Response>
 
+class RollbackResponse extends Error {
+  constructor(readonly response: Response) {
+    super('Workspace route returned a server error')
+  }
+}
+
 /**
  * A route handler under /api/workspaces/[workspaceId]/...: checks the session,
  * the workspace and the role, then runs the handler inside the workspace's
@@ -213,11 +219,17 @@ export function workspaceRoute<Segment extends string = never>(
       const write = req.method !== 'GET' && req.method !== 'HEAD'
       if (write && user.archived) return workspaceArchived()
       if (!transaction) return await handler(req, { user, session, params: resolved })
-      return await withWorkspace(user.workspaceId, () => handler(req, { user, session, params: resolved }), {
-        write,
-        timeoutMs
-      })
+      return await withWorkspace(
+        user.workspaceId,
+        async () => {
+          const response = await handler(req, { user, session, params: resolved })
+          if (write && response.status >= 500) throw new RollbackResponse(response)
+          return response
+        },
+        { write, timeoutMs }
+      )
     } catch (caught) {
+      if (caught instanceof RollbackResponse) return caught.response
       if (caught instanceof WorkspaceArchivedError) return workspaceArchived()
       // Anything a handler did not turn into a response: logged with the
       // request ID (which the response also carries), never shown to the caller.

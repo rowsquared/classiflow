@@ -88,9 +88,9 @@ async function checkRole(owner: PrismaClient, user: string) {
     WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations'
       AND NOT (has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'SELECT')
            AND has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'INSERT')
-           AND has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'UPDATE')
-           AND has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'DELETE'))`
-  for (const { table } of missing) fail(`runtime role lacks row access to "${table}"`)
+           AND has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'UPDATE') = (tablename <> 'AuditLog')
+           AND has_table_privilege(${user}, format('%I.%I', schemaname, tablename), 'DELETE') = (tablename <> 'AuditLog'))`
+  for (const { table } of missing) fail(`runtime role has unexpected grants on "${table}"`)
 
   const [extra] = await owner.$queryRaw<Array<{ migrations: boolean; recovery: boolean; create: boolean }>>`
     SELECT has_table_privilege(${user}, format('%I._prisma_migrations', current_schema()), 'SELECT') AS migrations,

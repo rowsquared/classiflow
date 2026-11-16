@@ -175,7 +175,7 @@ test('the export contains the human label with its leading zero', async ({ page 
 test('the audit log lists the export and can be filtered', async ({ page }) => {
   await signIn(page)
   await expect(page).toHaveURL(/\/queue$/)
-  await page.getByRole('link', { name: 'Audit log' }).click()
+  await page.getByRole('link', { name: 'Audit log', exact: true }).click()
 
   await expect(page.getByRole('cell', { name: 'export.downloaded' })).toBeVisible()
   await page.getByLabel('Show').selectOption({ label: 'Users' })
@@ -215,8 +215,10 @@ test('records can be imported from a CSV file with their ids kept', async ({ pag
     mimeType: 'text/csv',
     buffer: Buffer.from('id,field_job_title,support_region\n0042,"baker, head",north\n')
   })
-  await page.getByRole('button', { name: 'Upload' }).click()
-  await expect(page.getByText('Successfully imported 1 sentences!')).toBeVisible()
+  await page.getByRole('button', { name: 'Validate CSV' }).click()
+  await expect(page.getByText('1 records ready to import')).toBeVisible()
+  await page.getByRole('button', { name: 'Import 1 records' }).click()
+  await expect(page.getByText('Imported 1 records.')).toBeVisible()
 
   // The CSV id is kept as the record's key in this workspace.
   const res = await page.request.get(api('/sentences?q=baker'))

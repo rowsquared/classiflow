@@ -32,6 +32,7 @@ export default function EditTaxonomyDialog({
   const [levelNames, setLevelNames] = useState<Record<string, string>>(taxonomy.levelNames || {})
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [orphanWarning, setOrphanWarning] = useState<string | null>(null)
 
   async function handleEdit(confirmOrphans = false) {
     setSubmitting(true)
@@ -48,10 +49,7 @@ export default function EditTaxonomyDialog({
 
       // The new file drops codes that existing labels use: replace only if the admin agrees.
       if (res.status === 409 && data.code === 'ORPHANED_LABELS') {
-        setSubmitting(false)
-        if (window.confirm(`${data.error}\n\nReplace the taxonomy anyway?`)) {
-          await handleEdit(true)
-        }
+        setOrphanWarning(data.error || 'Some saved codes are missing from the replacement file.')
         return
       }
 
@@ -146,6 +144,34 @@ export default function EditTaxonomyDialog({
           </button>
         </div>
       </div>
+      {orphanWarning && (
+        <Modal
+          label="Replace taxonomy"
+          onClose={() => {
+            if (!submitting) setOrphanWarning(null)
+          }}
+        >
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">Replace taxonomy?</h2>
+            <p className="text-sm text-gray-700">{orphanWarning}</p>
+            <div className="flex justify-end gap-2">
+              <button className={buttonClass('secondary')} disabled={submitting} onClick={() => setOrphanWarning(null)}>
+                Go back
+              </button>
+              <button
+                className={buttonClass('danger')}
+                disabled={submitting}
+                onClick={() => {
+                  setOrphanWarning(null)
+                  void handleEdit(true)
+                }}
+              >
+                Replace taxonomy
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Modal>
   )
 }

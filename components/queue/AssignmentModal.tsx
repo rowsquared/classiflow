@@ -186,7 +186,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Manage assignments</h2>
             <p className="text-sm text-gray-600 mt-1">
-              {sentenceIds.length} {sentenceIds.length === 1 ? 'sentence' : 'sentences'} selected
+              {sentenceIds.length} {sentenceIds.length === 1 ? 'record' : 'records'} selected
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Close">

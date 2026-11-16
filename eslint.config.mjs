@@ -65,6 +65,20 @@ const eslintConfig = [
     }
   },
   {
+    files: ['app/**', 'components/**', 'lib/**', 'proxy.ts', 'instrumentation.ts'],
+    // Workspace deletion uses a static, integration-tested allowlist of table names.
+    ignores: ['lib/server/workspaces.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'MemberExpression[property.name=/^[$](query|execute)RawUnsafe$/]',
+          message: 'Use parameterized Prisma tagged templates for application SQL.'
+        }
+      ]
+    }
+  },
+  {
     // React Compiler rules (eslint-plugin-react-hooks 7). Components that break
     // them are skipped by the compiler, not miscompiled, so they fail lint:
     // derive state while rendering, key components to reset them, or use

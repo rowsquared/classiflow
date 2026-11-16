@@ -64,7 +64,7 @@ const b64 = (buffer: Buffer) => buffer.toString('base64url')
 
 export function encryptCredential(plaintext: string, aad: string, keyring: Keyring): string {
   const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', keyring.active.key, iv)
+  const cipher = createCipheriv('aes-256-gcm', keyring.active.key, iv, { authTagLength: 16 })
   cipher.setAAD(Buffer.from(aad, 'utf8'))
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
   return [FORMAT, keyring.active.id, b64(iv), b64(cipher.getAuthTag()), b64(ciphertext)].join('.')
@@ -84,7 +84,7 @@ export function decryptCredential(stored: string, aad: string, keyring: Keyring)
   const key = keyring.keys.get(keyId)
   if (!key) throw new CredentialError(`The AI credential key "${keyId}" is not in AI_CREDENTIALS_KEYS`)
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key.key, Buffer.from(iv, 'base64url'))
+    const decipher = createDecipheriv('aes-256-gcm', key.key, Buffer.from(iv, 'base64url'), { authTagLength: 16 })
     decipher.setAAD(Buffer.from(aad, 'utf8'))
     decipher.setAuthTag(Buffer.from(tag, 'base64url'))
     return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'base64url')), decipher.final()]).toString('utf8')

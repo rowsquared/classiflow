@@ -10,7 +10,7 @@ import { BatchSpanProcessor, NodeTracerProvider } from '@opentelemetry/sdk-trace
  * server-side fetch (including calls to the AI service). instrumentation.ts
  * imports this module only when telemetry is on, so it costs nothing otherwise.
  */
-export function startTelemetry(): void {
+export function startTelemetry(): () => Promise<void> {
   const provider = new NodeTracerProvider({
     resource: resourceFromAttributes({
       'service.name': process.env.OTEL_SERVICE_NAME || 'classiflow',
@@ -19,4 +19,5 @@ export function startTelemetry(): void {
     spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())]
   })
   provider.register()
+  return () => provider.shutdown()
 }

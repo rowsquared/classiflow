@@ -16,11 +16,11 @@ test('bulk labelling: select records in the queue, label them at once, export sh
     await expect(rows(page).filter({ hasText: text })).toHaveCount(1)
     await page.getByLabel(`Select record: ${text}`).check()
   }
-  await expect(page.getByText('2 sentences selected')).toBeVisible()
+  await expect(page.getByText('2 records selected')).toBeVisible()
 
   await page.getByRole('button', { name: 'Bulk label' }).click()
   const panel = page.getByRole('dialog', { name: 'Bulk label' })
-  await expect(panel.getByText('Labeling 2 sentences')).toBeVisible()
+  await expect(panel.getByText('Labelling 2 records')).toBeVisible()
   // "02 Technicians" is a leaf at level 1, so it completes the path.
   await panel.getByRole('button', { name: /^02\b/ }).click()
   const bulkRequest = page.waitForResponse(
@@ -35,7 +35,7 @@ test('bulk labelling: select records in the queue, label them at once, export sh
     await expect(rows(page).filter({ hasText: text })).toHaveCount(0)
   }
   // ...and the selection goes with them.
-  await expect(page.getByText(/sentences? selected/)).toHaveCount(0)
+  await expect(page.getByText(/records? selected/)).toHaveCount(0)
 
   // The export carries the bulk label for both records, codes as strings.
   const res = await page.request.get(api('/export'))

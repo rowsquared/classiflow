@@ -36,7 +36,7 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
     })
 
     if (!sentence) {
-      return NextResponse.json({ error: 'Sentence not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 })
     }
 
     // Double annotation: whoever holds a part in a round of this record sees it

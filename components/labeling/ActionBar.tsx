@@ -11,7 +11,7 @@ type ActionBarProps = {
   submitted: boolean
   onFlag: () => void
   onUnknown: () => void
-  onSkip: () => void
+  onSkip?: () => void
   onSubmit: () => void
 }
 
@@ -22,11 +22,11 @@ const skipActiveClasses = 'bg-[#E8E24A] text-[#4a4510] hover:bg-[#d8d145]'
 const disabledSubmitClasses = 'bg-indigo-600/40 text-white/85 cursor-not-allowed'
 const submittedSubmitClasses = 'bg-[#3A67BB] text-white hover:bg-[#335aa8]'
 const shortcutClasses = {
-  dark: 'text-xs px-1.5 py-0.5 rounded border border-white/15 bg-white/20 text-white',
+  dark: 'rounded border border-white/15 bg-indigo-800 px-1.5 py-0.5 text-xs text-white',
   light: 'text-xs px-1.5 py-0.5 rounded border border-black/5 bg-white/50 text-current'
 }
 
-/** The labelling actions with their keyboard shortcuts (F, U, S, Enter). */
+/** Labelling actions and their keyboard shortcuts. */
 export default function ActionBar({
   saving,
   flagged,
@@ -46,35 +46,35 @@ export default function ActionBar({
             disabled={saving}
             onClick={onFlag}
             className={`${actionButtonBaseClass} ${flagged ? flagActiveClasses : primaryActionClasses}`}
-            title="Flag/Unflag (F)"
+            title="Toggle flag (Shift+F)"
             aria-pressed={flagged}
-            aria-keyshortcuts="F"
+            aria-keyshortcuts="Shift+F"
           >
             <Flag className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Flag</span>
-            <span className={`${flagged ? shortcutClasses.light : shortcutClasses.dark}`}>F</span>
+            <span className={`${flagged ? shortcutClasses.light : shortcutClasses.dark}`}>⇧ F</span>
           </button>
           <button
             disabled={saving}
             onClick={onUnknown}
             className={`${actionButtonBaseClass} ${primaryActionClasses}`}
-            title="Unknown (U)"
-            aria-keyshortcuts="U"
+            title="Unknown (Shift+U)"
+            aria-keyshortcuts="Shift+U"
           >
             <CircleHelp className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Unknown</span>
-            <span className={shortcutClasses.dark}>U</span>
+            <span className={shortcutClasses.dark}>⇧ U</span>
           </button>
           <button
-            disabled={saving}
+            disabled={saving || !onSkip}
             onClick={onSkip}
             className={`${actionButtonBaseClass} ${skipped ? skipActiveClasses : primaryActionClasses}`}
-            title="Skip (S)"
-            aria-keyshortcuts="S"
+            title="Skip (Shift+S)"
+            aria-keyshortcuts="Shift+S"
           >
             <ChevronsRight className="w-4 h-4" aria-hidden="true" />
             <span className="text-sm font-medium">Skip</span>
-            <span className={`${skipped ? shortcutClasses.light : shortcutClasses.dark}`}>S</span>
+            <span className={`${skipped ? shortcutClasses.light : shortcutClasses.dark}`}>⇧ S</span>
           </button>
           <button
             onClick={onSubmit}

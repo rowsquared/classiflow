@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-classiflow}
@@ -45,6 +45,7 @@ services:
       # row security binds. scripts/start.sh creates/updates it on every start.
       APP_DB_USER: ${APP_DB_USER:?}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
+      ALLOW_OWNER_RUNTIME: ${ALLOW_OWNER_RUNTIME:-false}
 
       # Authentication (Better Auth, lib/auth.ts)
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL to the public app origin}
@@ -62,6 +63,7 @@ services:
       DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Admin User}
 
       # Demo workspace for staging (ENV_SETUP.md "Demo data"); never in production.
+      DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-production}
       DEMO_SEED: ${DEMO_SEED:-}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
 
@@ -73,6 +75,7 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       INVITATION_LINK_HOURS: ${INVITATION_LINK_HOURS:-72}
       PASSWORD_RESET_LINK_MINUTES: ${PASSWORD_RESET_LINK_MINUTES:-60}
+      MAIL_RETENTION_DAYS: ${MAIL_RETENTION_DAYS:-90}
 
       # AI Labeling (Optional)
       # Encrypts the workspaces' AI tokens; back it up apart from the database.
@@ -81,11 +84,12 @@ services:
       AI_LABELING_API_URL: ${AI_LABELING_API_URL:-}
       AI_MAX_ACTIVE_JOBS_PER_WORKSPACE: ${AI_MAX_ACTIVE_JOBS_PER_WORKSPACE:-3}
       AI_MAX_ACTIVE_JOBS: ${AI_MAX_ACTIVE_JOBS:-10}
-      AI_LABELING_BATCH_SIZE: ${AI_LABELING_BATCH_SIZE:-100}
-      AI_LEARNING_BATCH_SIZE: ${AI_LEARNING_BATCH_SIZE:-100}
+      AI_MAX_ACTIVE_JOBS_PER_ENDPOINT: ${AI_MAX_ACTIVE_JOBS_PER_ENDPOINT:-5}
+      AI_LABELING_BATCH_SIZE: ${AI_LABELING_BATCH_SIZE:-}
+      AI_LEARNING_BATCH_SIZE: ${AI_LEARNING_BATCH_SIZE:-}
       AI_LEARNING_MIN_NEW_ANNOTATIONS: ${AI_LEARNING_MIN_NEW_ANNOTATIONS:-500}
-      AI_JOB_POLL_INTERVAL_MS: ${AI_JOB_POLL_INTERVAL_MS:-5000}
-      AI_JOB_POLL_TIMEOUT_MS: ${AI_JOB_POLL_TIMEOUT_MS:-600000}
+      AI_JOB_POLL_INTERVAL_MS: ${AI_JOB_POLL_INTERVAL_MS:-}
+      AI_JOB_POLL_TIMEOUT_MS: ${AI_JOB_POLL_TIMEOUT_MS:-}
       AI_SOURCE_SLUG: ${AI_SOURCE_SLUG:-}
 
       # Logs and traces (ENV_SETUP.md "Logs and traces"); tracing is off
@@ -94,10 +98,11 @@ services:
       # Audit entries older than this are deleted (0 keeps them).
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-730}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-classiflow}
-    # Migrations, optional runtime DB role, admin bootstrap, then the server.
-    command: sh scripts/start.sh
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-}
+      NEXT_OTEL_VERBOSE: ${NEXT_OTEL_VERBOSE:-}
     # The server runs as an unprivileged user on port 3000: no Linux
     # capabilities or privilege escalation needed.
     cap_drop:
@@ -115,12 +120,11 @@ services:
     # Resource limits: size them from production usage, then uncomment.
     # mem_limit: 1g
     # cpus: 1.0
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

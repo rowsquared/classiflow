@@ -287,6 +287,7 @@ export async function deleteWorkspace(workspaceId: string, name: string, actorId
       return { status: 409, error: 'The workspace name does not match. Refresh and try again.' } as const
     const counts = await workspaceCounts(workspaceId)
     for (const table of WORKSPACE_DELETE_TABLES) {
+      if (table === 'AuditLog') continue // The FK removes it when the workspace is deleted.
       await db().$executeRawUnsafe(`DELETE FROM "${table}" WHERE "workspaceId" = $1`, workspaceId)
     }
     await db().workspace.delete({ where: { id: workspaceId } })

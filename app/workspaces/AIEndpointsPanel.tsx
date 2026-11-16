@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { buttonClass } from '@/components/ui/styles'
+import Modal from '@/components/Modal'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 export type ApprovedEndpoint = {
   id: string
@@ -37,6 +38,7 @@ export default function AIEndpointsPanel({
   const [baseUrl, setBaseUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [retiring, setRetiring] = useState<ApprovedEndpoint | null>(null)
   // The endpoint whose access is being edited, with the draft choice.
   const [editing, setEditing] = useState<{ id: string; all: boolean; ids: Set<string> } | null>(null)
   const workspaceName = new Map(workspaces.map(w => [w.id, w.name]))
@@ -70,15 +72,17 @@ export default function AIEndpointsPanel({
   }
 
   const retire = async (endpoint: ApprovedEndpoint) => {
-    if (!window.confirm(`Retire ${endpoint.name}? Workspaces using it cannot start new AI jobs.`)) return
     setBusy(true)
     setError(null)
     try {
       const res = await fetch(`/api/ai-endpoints/${endpoint.id}`, { method: 'DELETE' })
       if (!res.ok) setError((await res.json().catch(() => ({}))).error || 'The service could not be retired')
       await reload()
+    } catch {
+      setError('The service could not be retired')
     } finally {
       setBusy(false)
+      setRetiring(null)
     }
   }
 
@@ -112,6 +116,29 @@ export default function AIEndpointsPanel({
 
   return (
     <section className="mt-10 p-6 rounded-lg bg-white border border-gray-200 space-y-4">
+      {retiring && (
+        <Modal
+          label="Retire AI service"
+          onClose={() => {
+            if (!busy) setRetiring(null)
+          }}
+        >
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">Retire {retiring.name}?</h2>
+            <p className="text-sm text-gray-700">
+              Workspaces using this service will no longer be able to start jobs there.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button className={buttonClass('secondary')} disabled={busy} onClick={() => setRetiring(null)}>
+                Cancel
+              </button>
+              <button className={buttonClass('danger')} disabled={busy} onClick={() => void retire(retiring)}>
+                Retire service
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Approved AI services</h2>
         <p className="mt-1 text-sm text-gray-600">
@@ -169,7 +196,7 @@ export default function AIEndpointsPanel({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => retire(endpoint)}
+                      onClick={() => setRetiring(endpoint)}
                       className="text-sm text-red-700 hover:underline disabled:opacity-50"
                     >
                       Retire

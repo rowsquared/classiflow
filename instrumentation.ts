@@ -4,14 +4,15 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     // Traces only when an OTLP endpoint is configured; otherwise the SDK is
     // never loaded (lib/telemetry.ts, ENV_SETUP.md "Logs and traces").
+    let stopTelemetry: (() => Promise<void>) | undefined
     if (telemetryEnabled()) {
       const { startTelemetry } = await import('@/lib/telemetry')
-      startTelemetry()
+      stopTelemetry = startTelemetry()
     }
 
     // Continue AI jobs left behind by a restart or another instance; see lib/ai-job-monitor.ts.
     const { startJobRecovery } = await import('@/lib/ai-job-monitor')
-    startJobRecovery()
+    startJobRecovery(stopTelemetry)
     // Send queued mail left behind by a restart; see lib/mail/outbox.ts.
     const { startOutboxRecovery } = await import('@/lib/mail/outbox')
     startOutboxRecovery()

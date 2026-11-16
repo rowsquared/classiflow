@@ -2,11 +2,17 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { db, inCurrentWorkspace, scopeWorkspaceId } from '@/lib/workspace/db'
 import { z } from 'zod'
-import { Prisma } from '@/lib/generated/prisma/client'
+import type { SentenceStatus } from '@/lib/generated/prisma/client'
 import type { CurrentUser } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
-import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
+import {
+  completedTaxonomies,
+  decideStatus,
+  isComplete,
+  lockActiveTaxonomies,
+  lockSentences
+} from '@/lib/annotation-status'
 import { audit } from '@/lib/audit'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 import { logError } from '@/lib/logger'
@@ -16,6 +22,7 @@ import { participation, setParticipantFlags } from '@/lib/server/double-annotati
 const bulkLabelSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(10000),
   taxonomyKey: z.string().min(1),
+  preview: z.boolean().optional(),
   status: z.literal('skipped').optional(),
   annotations: z
     .array(
@@ -65,6 +72,7 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
 
     const {
       taxonomyKey,
+      preview,
       annotations = [],
       flagged,
       comment,
@@ -78,9 +86,10 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
     const denied = await denyUnlessSentencesVisible(user, sentenceIds)
     if (denied) return denied
 
+    await lockActiveTaxonomies(db(), user.workspaceId)
     const taxonomy = await db().taxonomy.findUnique({
       where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key: taxonomyKey } },
-      select: { id: true, maxDepth: true }
+      select: { id: true, maxDepth: true, isActive: true }
     })
     if (!taxonomy) {
       return NextResponse.json(
@@ -92,7 +101,21 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       )
     }
 
+    if (preview) {
+      const parts = await participation(user, sentenceIds)
+      const previouslyLabelled = await db().sentence.count({
+        where: {
+          id: { in: sentenceIds.filter(id => !parts.has(id)) },
+          annotations: { some: { taxonomyId: taxonomy.id, source: 'user' } }
+        }
+      })
+      return NextResponse.json({ ok: true, previouslyLabelled })
+    }
+
     if (annotations.length > 0) {
+      if (!taxonomy.isActive) {
+        return NextResponse.json({ ok: false, error: 'This taxonomy is inactive' }, { status: 409 })
+      }
       const pathError = await validateLabelPath(db(), taxonomy, annotations)
       if (pathError) {
         return NextResponse.json({ ok: false, error: pathError }, { status: 400 })
@@ -203,27 +226,30 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
       }
 
       const done = await completedTaxonomies(tx, sentenceIds, activeIds)
-      const now = new Date()
+      const lastEdit = { lastEditorId: user.id, lastEditedAt: new Date() }
+      const participantIds: string[] = []
+      const statusGroups = new Map<SentenceStatus, string[]>()
       for (const { id, status } of current) {
         if (parts.has(id)) {
           // Flag or comment on the caller's own part: the record's status stays.
-          await tx.sentence.update({ where: { id }, data: { lastEditorId: user.id, lastEditedAt: now } })
+          participantIds.push(id)
           continue
         }
-        const updateData: Prisma.SentenceUncheckedUpdateInput = {
-          status: decideStatus({
-            requested,
-            current: status,
-            wroteLabels,
-            complete: isComplete(done.get(id), activeIds)
-          }),
-          lastEditorId: user.id,
-          lastEditedAt: now
-        }
-        if (flagged !== undefined) {
-          updateData.flagged = flagged
-        }
-        await tx.sentence.update({ where: { id }, data: updateData })
+        const next = decideStatus({
+          requested,
+          current: status,
+          wroteLabels,
+          complete: isComplete(done.get(id), activeIds)
+        })
+        const ids = statusGroups.get(next) ?? []
+        ids.push(id)
+        statusGroups.set(next, ids)
+      }
+      if (participantIds.length > 0) {
+        await tx.sentence.updateMany({ where: { id: { in: participantIds } }, data: lastEdit })
+      }
+      for (const [status, ids] of statusGroups) {
+        await tx.sentence.updateMany({ where: { id: { in: ids } }, data: { ...lastEdit, status, flagged } })
       }
       return current.length
     })
@@ -243,7 +269,7 @@ export async function applyBulkLabels(user: CurrentUser, input: unknown) {
     return NextResponse.json({
       ok: true,
       labeled,
-      message: `Successfully labeled ${labeled} sentence(s)`
+      message: `Labelled ${labeled} ${labeled === 1 ? 'record' : 'records'}`
     })
   } catch (error) {
     if (error instanceof DoubleRecordsError) {

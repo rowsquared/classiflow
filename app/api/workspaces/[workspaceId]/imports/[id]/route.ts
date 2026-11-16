@@ -1,90 +1,45 @@
 import { NextResponse } from 'next/server'
-import { db, inCurrentWorkspace } from '@/lib/workspace/db'
+import { db } from '@/lib/workspace/db'
 import { workspaceRoute } from '@/lib/api-auth'
-import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
-import { logError } from '@/lib/logger'
+import { importDeletionPreview } from '@/lib/server/imports'
 
-export const DELETE = workspaceRoute<'id'>(['admin'], async (req, { user: actor, params: routeParams }) => {
-  try {
-    const { id } = routeParams
+export const GET = workspaceRoute<'id'>(['admin'], async (_req, { user, params: { id } }) => {
+  const preview = await importDeletionPreview(user.workspaceId, id)
+  return preview ? NextResponse.json(preview) : NextResponse.json({ error: 'Import not found' }, { status: 404 })
+})
 
-    // Check if import exists
-    const importRecord = await db().sentenceImport.findUnique({
-      where: { id },
-      include: {
-        _count: { select: { sentences: true } }
-      }
-    })
+export const DELETE = workspaceRoute<'id'>(['admin'], async (req, { user, params: { id } }) => {
+  const tx = db()
+  // Serialize deletion and label saves so the confirmed count cannot miss newly saved labels.
+  const locked = await tx.$queryRaw<unknown[]>`
+    SELECT id FROM "SentenceImport" WHERE "workspaceId" = ${user.workspaceId} AND id = ${id} FOR UPDATE`
+  if (locked.length === 0) return NextResponse.json({ error: 'Import not found' }, { status: 404 })
 
-    if (!importRecord) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Import not found'
-        },
-        { status: 404 }
-      )
-    }
-
-    // Delete in transaction: annotations, comments, assignments first, then sentences, then import
-    await inCurrentWorkspace(async () => {
-      const tx = db()
-      // Get all sentence IDs for this import
-      const sentences = await tx.sentence.findMany({
-        where: { importId: id },
-        select: { id: true }
-      })
-      const sentenceIds = sentences.map(s => s.id)
-
-      if (sentenceIds.length > 0) {
-        // Delete annotations first (they reference sentences)
-        await tx.sentenceAnnotation.deleteMany({
-          where: { sentenceId: { in: sentenceIds } }
-        })
-
-        // Delete comments
-        await tx.comment.deleteMany({
-          where: { sentenceId: { in: sentenceIds } }
-        })
-
-        // Delete assignments (has onDelete: Cascade but let's be explicit)
-        await tx.sentenceAssignment.deleteMany({
-          where: { sentenceId: { in: sentenceIds } }
-        })
-      }
-
-      // Delete sentences (cascade from import, but we've already cleaned up dependencies)
-      await tx.sentence.deleteMany({
-        where: { importId: id }
-      })
-
-      // Finally delete the import
-      await tx.sentenceImport.delete({
-        where: { id }
-      })
-    })
-
-    await audit({
-      actorId: actor.id,
-      action: 'import.deleted',
-      entityType: 'import',
-      entityId: id,
-      payload: { fileName: importRecord.fileName, records: importRecord._count.sentences }
-    })
-    return NextResponse.json({
-      ok: true,
-      deletedSentences: importRecord._count.sentences
-    })
-  } catch (caught) {
-    const e = caught as CaughtError
-    await logError('Failed to delete import', e)
-    return NextResponse.json(
-      {
-        ok: false,
-        error: e?.message || String(e)
-      },
-      { status: 500 }
-    )
+  await tx.$queryRaw`
+    SELECT count(*) FROM (
+      SELECT id FROM "Sentence" WHERE "workspaceId" = ${user.workspaceId} AND "importId" = ${id}
+      ORDER BY id FOR UPDATE
+    ) AS locked_records`
+  const preview = await importDeletionPreview(user.workspaceId, id)
+  if (!preview) return NextResponse.json({ error: 'Import not found' }, { status: 404 })
+  if (
+    preview.labelledRecords > 0 &&
+    req.nextUrl.searchParams.get('confirmLabelledRecords') !== String(preview.labelledRecords)
+  ) {
+    return NextResponse.json({ error: 'Confirm deletion of the current labelled records', ...preview }, { status: 409 })
   }
+
+  const sentence = { workspaceId: user.workspaceId, importId: id }
+  await tx.sentenceAnnotation.deleteMany({ where: { sentence } })
+  await tx.comment.deleteMany({ where: { sentence } })
+  await tx.sentenceImport.delete({ where: { id } })
+  await audit({
+    actorId: user.id,
+    action: 'import.deleted',
+    entityType: 'import',
+    entityId: id,
+    payload: preview
+  })
+  return NextResponse.json({ ok: true, deletedSentences: preview.records })
 })

@@ -1,5 +1,28 @@
 import { Prisma, type SentenceStatus } from '@/lib/generated/prisma/client'
 
+/** Serialize active taxonomy changes with saves that compute record completion. */
+export async function lockActiveTaxonomies(tx: Prisma.TransactionClient, workspaceId: string, exclusive = false) {
+  const key = `classiflow.taxonomy.create.${workspaceId}`
+  if (exclusive) {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${key}))`
+  } else {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock_shared(hashtext(${key}))`
+  }
+}
+
+/** A new requirement reopens ordinarily labelled records without a human answer for it. */
+export async function applyTaxonomyRequirement(tx: Prisma.TransactionClient, workspaceId: string, taxonomyId: string) {
+  await tx.sentence.updateMany({
+    where: {
+      workspaceId,
+      status: 'submitted',
+      annotations: { none: { taxonomyId, source: 'user' } },
+      doubleRounds: { none: { status: { in: ['active', 'completed'] } } }
+    },
+    data: { status: 'pending' }
+  })
+}
+
 /**
  * Record status rules, shared by the single-record and bulk annotation endpoints.
  *

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Promote staging to main as a fast-forward. See "Releases" in DEPLOYMENT.md.
+// Promote staging to main as a fast-forward. See "Releases" in COOLIFY_DEPLOYMENT.md.
 //
 // Production deploys from main, and main is only ever staging at an earlier
 // point in time. This refuses anything that is not a fast-forward, so main can
@@ -8,8 +8,8 @@
 //
 // Pushing does not deploy on its own: Coolify auto-deploy is off for
 // production, and the deploy-prod job in .github/workflows/ci.yml triggers it
-// only after the smoke and checks jobs pass. The main ruleset requires both
-// checks, so the push is also rejected until CI has passed on staging.
+// only after smoke, checks, integration and e2e pass. The main ruleset requires
+// these checks, so the push is rejected until CI has passed on staging.
 //
 //   node scripts/promote-main.mjs --dry-run   # show what would move
 //   node scripts/promote-main.mjs             # promote

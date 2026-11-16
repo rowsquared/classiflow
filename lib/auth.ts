@@ -10,9 +10,11 @@ import { USERNAME_PATTERN } from '@/lib/passwords'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@/lib/password-policy'
 import { allowRequest, clientIp } from '@/lib/rate-limit'
 import { logError } from '@/lib/logger'
+import { audit } from '@/lib/audit'
 
 const signInPerIp = { windowSeconds: 60, max: Number(process.env.SIGN_IN_RATE_LIMIT) || 10 }
 const signInPerAccount = { windowSeconds: 900, max: Number(process.env.SIGN_IN_ACCOUNT_RATE_LIMIT) || 10 }
+const adminPlugin = admin({ defaultRole: 'user', adminRoles: ['admin'] })
 
 function signInLimited(retryAfter: number) {
   return new APIError(
@@ -91,6 +93,13 @@ export const auth = betterAuth({
         // Raw SQL so a sign-in does not count as an edit of the account (updatedAt).
         after: async session => {
           await prisma.$executeRaw`UPDATE "User" SET "lastLogin" = (now() AT TIME ZONE 'UTC') WHERE id = ${session.userId}`
+          await audit({
+            workspaceId: null,
+            actorId: session.userId,
+            action: 'user.signed_in',
+            entityType: 'user',
+            entityId: session.userId
+          })
         }
       }
     }
@@ -101,9 +110,8 @@ export const auth = betterAuth({
       maxUsernameLength: 100,
       usernameValidator: name => USERNAME_PATTERN.test(name)
     }),
-    // Ban/unban and per-user session listing and revocation for admins; the
-    // roles stay ours (Role enum), and only "admin" may call these endpoints.
-    admin({ defaultRole: 'labeller', adminRoles: ['admin'] }),
+    // Keep the ban checks on session creation. Administration is handled by the app.
+    adminPlugin,
     nextCookies()
   ],
   // Account changes go through app/api/users and app/api/auth/reset-password,
@@ -117,13 +125,7 @@ export const auth = betterAuth({
     '/request-password-reset',
     '/reset-password',
     '/is-username-available',
-    '/admin/create-user',
-    '/admin/update-user',
-    '/admin/set-role',
-    '/admin/set-user-password',
-    '/admin/remove-user',
-    '/admin/impersonate-user',
-    '/admin/stop-impersonating'
+    ...Object.values(adminPlugin.endpoints).map(endpoint => endpoint.path)
   ]
 })
 

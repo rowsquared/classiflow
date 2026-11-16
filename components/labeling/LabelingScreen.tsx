@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from '@/lib/query/fetch'
 import PageHeader from '@/components/PageHeader'
+import Modal from '@/components/Modal'
 import TaxonomyBrowser from '@/components/TaxonomyBrowser'
 import { ToastContainer, type Toast } from '@/components/Toast'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -32,7 +33,7 @@ import DoublePanel, {
   type DoubleCommand,
   type ReviewState
 } from './DoublePanel'
-import { badgeClass, buttonClass } from '@/components/ui/styles'
+import { badgeClass, buttonClass, dialogPanelClass } from '@/components/ui/styles'
 import { OUTCOME_LABELS } from '@/lib/double-annotation'
 
 // Tab colours per taxonomy index (match TaxonomyBrowser's chips).
@@ -64,6 +65,13 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   // The labels being chosen for the active taxonomy. Until the user changes
   // something they are the record's saved labels (or its AI suggestion).
   const [drafts, setDrafts] = useState<Record<string, SelectedLabel[]>>({})
+  const [draftEditTimes, setDraftEditTimes] = useState<Record<string, string | null>>({})
+  const [confirmation, setConfirmation] = useState<{
+    title: string
+    text: string
+    action: string
+    run: () => void
+  } | null>(null)
   const savedLabels = sentence && activeTaxonomy ? labelsFromAnnotations(sentence.annotations, activeTaxonomy.key) : []
   const draft = activeTaxonomy ? drafts[activeTaxonomy.key] : undefined
 
@@ -93,15 +101,16 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       : undefined
   // A disagreement starts with nothing chosen: no answer is pre-selected.
   const selectedLabels = answerLabels ?? draft ?? (mode === 'decide' ? [] : savedLabels)
-  // Chosen but not submitted: the workspace switcher asks before leaving.
-  useUnsavedChanges(
-    Object.entries(drafts).some(
-      ([key, labels]) =>
-        labelsSignature(labels) !== labelsSignature(labelsFromAnnotations(sentence?.annotations ?? [], key))
-    )
+  const unsavedTaxonomies = Object.entries(drafts).filter(
+    ([key, labels]) =>
+      labelsSignature(labels) !== labelsSignature(labelsFromAnnotations(sentence?.annotations ?? [], key))
   )
+  useUnsavedChanges(unsavedTaxonomies.length > 0)
   const setSelectedLabels = (labels: SelectedLabel[]) => {
-    if (activeTaxonomy) setDrafts(previous => ({ ...previous, [activeTaxonomy.key]: labels }))
+    if (!activeTaxonomy) return
+    const key = activeTaxonomy.key
+    setDraftEditTimes(previous => (key in previous ? previous : { ...previous, [key]: sentence?.lastEditedAt ?? null }))
+    setDrafts(previous => ({ ...previous, [key]: labels }))
   }
   // The level the taxonomy browser shows (where "Unknown" applies).
   const [currentTaxonomyLevel, setCurrentTaxonomyLevel] = useState(1)
@@ -213,6 +222,19 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
 
   const goToQueue = () => router.push(href('/queue'))
 
+  function confirmLeaving(run: () => void, savedTaxonomy?: string) {
+    if (unsavedTaxonomies.every(([key]) => key === savedTaxonomy)) {
+      run()
+      return
+    }
+    setConfirmation({
+      title: 'Leave this record?',
+      text: 'There are unsaved label selections on this record.',
+      action: 'Discard selections',
+      run
+    })
+  }
+
   const navigateToSentence = (targetIndex: number) => {
     const targetId = sentenceIds[targetIndex]
     if (targetId === undefined) {
@@ -224,14 +246,15 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   }
 
   const handlePrevious = () => {
-    if (currentIndex > 0) navigateToSentence(currentIndex - 1)
+    if (currentIndex > 0) confirmLeaving(() => navigateToSentence(currentIndex - 1))
   }
 
   // The next record of the list, or back to the queue at the end.
-  const handleNext = () => {
+  const moveNext = () => {
     if (currentIndex >= 0 && currentIndex < sentenceIds.length - 1) navigateToSentence(currentIndex + 1)
     else goToQueue()
   }
+  const handleNext = () => confirmLeaving(moveNext)
 
   const handleFlag = async () => {
     if (!sentence || saving) return
@@ -250,7 +273,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       await annotationMutation.mutateAsync({ status: 'skipped', annotations: [], labelingStartedAt })
       updateRecord({ status: 'skipped' })
       invalidateQueue()
-      handleNext()
+      moveNext()
     } catch {
       showError('Failed to skip record. Please try again.')
     }
@@ -315,6 +338,8 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       const data = await annotationMutation.mutateAsync({
         status: 'submitted', // The server keeps 'pending' until every taxonomy is done
         annotations,
+        lastEditedAt:
+          activeTaxonomy.key in draftEditTimes ? draftEditTimes[activeTaxonomy.key] : sentence?.lastEditedAt,
         labelingStartedAt,
         ...(mode === 'decide' || (mode === 'change' && review.override)
           ? { reviewNote: review.note.trim() || undefined, override: mode === 'change' || undefined }
@@ -323,6 +348,16 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         operationId: saveOperation.idFor(JSON.stringify([sentenceId, annotations]))
       })
       saveOperation.succeeded()
+      setDrafts(previous => {
+        const remaining = { ...previous }
+        delete remaining[activeTaxonomy.key]
+        return remaining
+      })
+      setDraftEditTimes(previous => {
+        const remaining = { ...previous }
+        delete remaining[activeTaxonomy.key]
+        return remaining
+      })
 
       if (data.status) updateRecord({ status: data.status })
       if (mode) setReviews(previous => ({ ...previous, [activeTaxonomy.key]: EMPTY_REVIEW }))
@@ -337,7 +372,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         handleTaxonomyTabChange(nextIndex)
       } else {
         // Every taxonomy is done: on to the next record of the list.
-        handleNext()
+        confirmLeaving(moveNext, activeTaxonomy.key)
       }
     } catch (error) {
       console.error('Failed to submit:', error)
@@ -350,7 +385,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const handleKeyPressRef = useRef<(e: KeyboardEvent) => void>(() => {})
   useEffect(() => {
     handleKeyPressRef.current = (e: KeyboardEvent) => {
-      if (saving || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+      if (confirmation || saving || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.target instanceof HTMLElement) {
         // Shortcuts are for the labeling screen, not for an open dialog.
@@ -371,13 +406,20 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           document.getElementById('new-comment')?.focus()
           break
         case 'f':
-          handleFlag()
+          if (e.shiftKey) handleFlag()
           break
         case 'u':
-          handleUnknown()
+          if (e.shiftKey) handleUnknown()
           break
         case 's':
-          handleSkip()
+          if (e.shiftKey && managerView?.status !== 'active') {
+            setConfirmation({
+              title: 'Skip this record?',
+              text: 'This marks the record as skipped and opens the next record.',
+              action: 'Skip record',
+              run: () => void handleSkip()
+            })
+          }
           break
         case 'enter':
           if (canSubmit) void handleSubmit()
@@ -424,7 +466,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
       recordQuery.refetch()
       taxonomiesQuery.refetch()
     })
-  if (!sentence) return message('Sentence not found', 'error')
+  if (!sentence) return message('Record not found', 'error')
   if (taxonomies.length === 0) return message('No active taxonomies found', 'error')
 
   const isActiveTaxonomyCompleted = activeTaxonomy ? completedTaxonomies.has(activeTaxonomy.key) : false
@@ -436,8 +478,10 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     <button
       onClick={() => {
         if (isNavigatingBack) return
-        setIsNavigatingBack(true)
-        goToQueue()
+        confirmLeaving(() => {
+          setIsNavigatingBack(true)
+          goToQueue()
+        })
       }}
       disabled={isNavigatingBack || saving}
       className={buttonClass('secondary')}
@@ -449,8 +493,30 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   return (
     <>
       <ToastContainer toasts={toasts} onClose={removeToast} />
+      {confirmation && (
+        <Modal label={confirmation.title} onClose={() => setConfirmation(null)}>
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">{confirmation.title}</h2>
+            <p className="text-sm text-gray-700">{confirmation.text}</p>
+            <div className="flex justify-end gap-2">
+              <button className={buttonClass('secondary')} onClick={() => setConfirmation(null)}>
+                Cancel
+              </button>
+              <button
+                className={buttonClass('primary')}
+                onClick={() => {
+                  setConfirmation(null)
+                  confirmation.run()
+                }}
+              >
+                {confirmation.action}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <PageHeader title="Labeling" actions={backButton} />
-      <div className="h-[calc(100vh-66px)] bg-gray-50 flex overflow-hidden">
+      <div className="flex h-[calc(100dvh-66px)] flex-col overflow-y-auto bg-gray-50 lg:flex-row lg:overflow-hidden">
         <RecordPanel
           record={sentence}
           navigation={navigation}
@@ -493,11 +559,11 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
         />
 
         {/* Right Panel - Taxonomy */}
-        <div className="flex-1 bg-white relative flex flex-col overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col bg-white lg:overflow-hidden">
           {taxonomies.length > 1 && (
             <div className="bg-white">
               <div className="flex items-center justify-between px-4 pt-3">
-                <div className="flex gap-1" role="group" aria-label="Taxonomies">
+                <div className="flex flex-wrap gap-1" role="group" aria-label="Taxonomies">
                   {taxonomies.map((tax, index) => {
                     const color = TAB_COLORS[index % TAB_COLORS.length]
                     const active = activeTaxonomyIndex === index
@@ -539,14 +605,21 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
           )}
 
           {managerView && activeTaxonomy && (managerView.status === 'active' || activeOutcome) && (
-            <DoublePanel
-              view={managerView}
-              taxonomyKey={activeTaxonomy.key}
-              busy={saving}
-              review={review}
-              onReviewChange={setReview}
-              onCommand={handleDoubleCommand}
-            />
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Review panel"
+              className="shrink-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 md:max-h-[42dvh] md:overflow-auto"
+            >
+              <DoublePanel
+                view={managerView}
+                taxonomyKey={activeTaxonomy.key}
+                busy={saving}
+                review={review}
+                onReviewChange={setReview}
+                onCommand={handleDoubleCommand}
+              />
+            </div>
           )}
 
           {activeTaxonomy && (
@@ -579,7 +652,7 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             submitted={isActiveTaxonomyCompleted || sentence.status === 'submitted'}
             onFlag={handleFlag}
             onUnknown={handleUnknown}
-            onSkip={handleSkip}
+            onSkip={managerView?.status === 'active' ? undefined : () => confirmLeaving(() => void handleSkip())}
             onSubmit={() => void handleSubmit()}
           />
         </div>

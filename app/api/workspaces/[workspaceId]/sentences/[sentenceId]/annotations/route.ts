@@ -4,7 +4,13 @@ import { z } from 'zod'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { sameLabels, validateLabelPath } from '@/lib/label-path'
-import { completedTaxonomies, decideStatus, isComplete, lockSentences } from '@/lib/annotation-status'
+import {
+  completedTaxonomies,
+  decideStatus,
+  isComplete,
+  lockActiveTaxonomies,
+  lockSentences
+} from '@/lib/annotation-status'
 import { Prisma, type SentenceStatus } from '@/lib/generated/prisma/client'
 import { operationIdField, operationIdOrNew, recordLabelingActivity } from '@/lib/labeling-activity'
 import { logError } from '@/lib/logger'
@@ -37,12 +43,14 @@ const annotationSchema = z.object({
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional(), // ISO timestamp when labeling started
+  lastEditedAt: z.iso.datetime().nullable().optional(),
   operationId: operationIdField, // retries of the same save record activity once
   reviewNote: z.string().max(2000).optional(), // double annotation: the reviewer's note on a decision
   override: z.boolean().optional() // double annotation: change a confirmed result (needs reviewNote)
 })
 
 class RequestError extends Error {}
+class StaleRecordError extends Error {}
 
 /**
  * Saves one record: replaces the human labels of ONE taxonomy (others are kept),
@@ -70,7 +78,17 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
     }
-    const { annotations, status, flagged, comment, labelingStartedAt, operationId, reviewNote, override } = parsed.data
+    const {
+      annotations,
+      status,
+      flagged,
+      comment,
+      labelingStartedAt,
+      operationId,
+      reviewNote,
+      override,
+      lastEditedAt
+    } = parsed.data
 
     const taxonomyKeys = new Set(annotations.map(a => a.taxonomyKey))
     if (taxonomyKeys.size > 1) {
@@ -85,15 +103,19 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
       }
     }
 
-    let taxonomy: { id: string; maxDepth: number } | null = null
+    let taxonomy: { id: string; maxDepth: number; isActive: boolean } | null = null
+    await lockActiveTaxonomies(db(), user.workspaceId)
     const first = annotations[0]
     if (first) {
       taxonomy = await db().taxonomy.findUnique({
         where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key: first.taxonomyKey } },
-        select: { id: true, maxDepth: true }
+        select: { id: true, maxDepth: true, isActive: true }
       })
       if (!taxonomy) {
         return NextResponse.json({ error: 'Taxonomy not found' }, { status: 404 })
+      }
+      if (!taxonomy.isActive) {
+        return NextResponse.json({ error: 'This taxonomy is inactive' }, { status: 409 })
       }
       const pathError = await validateLabelPath(db(), taxonomy, annotations)
       if (pathError) {
@@ -114,9 +136,9 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
 
       const current = await tx.sentence.findUnique({
         where: { id: sentenceId },
-        select: { status: true }
+        select: { status: true, lastEditedAt: true, lastEditorId: true }
       })
-      if (!current) throw new RequestError('Sentence not found')
+      if (!current) throw new RequestError('Record not found')
 
       // A participant (a part in any round of this record) always saves their
       // own answer, also after the round closed; it never changes the result.
@@ -161,6 +183,17 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
         return { finalStatus: personal.status, done: personal.done, required: round.outcomes }
       }
 
+      if (
+        taxonomy &&
+        lastEditedAt !== undefined &&
+        current.lastEditorId !== userId &&
+        (current.lastEditedAt?.toISOString() ?? null) !== lastEditedAt
+      ) {
+        throw new StaleRecordError(
+          'Someone changed this record while you were editing. Reopen the record before saving.'
+        )
+      }
+
       const round = await activeRound(sentenceId)
       if (round) {
         const view = viewFor(user, round)
@@ -182,7 +215,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
             })
           ).recordStatus
         } else if (status === 'skipped' || status === 'escalated') {
-          recordStatus = status // a manager's record-level decision
+          throw new DoubleAnnotationError('Manage the double annotation round before changing the record status', 409)
         }
 
         if (comment && comment.trim()) {
@@ -296,6 +329,9 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
       allCompleted: requiredIds.length > 0 && requiredIds.every(id => result.done.has(id))
     })
   } catch (error) {
+    if (error instanceof StaleRecordError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
     if (error instanceof RequestError) {
       return NextResponse.json({ error: error.message }, { status: 404 })
     }

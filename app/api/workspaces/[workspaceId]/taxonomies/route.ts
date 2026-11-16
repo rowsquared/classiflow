@@ -8,6 +8,7 @@ import { readUpload } from '@/lib/upload'
 import { audit } from '@/lib/audit'
 import { listTaxonomiesWithStats } from '@/lib/server/taxonomies'
 import { logError } from '@/lib/logger'
+import { applyTaxonomyRequirement, lockActiveTaxonomies } from '@/lib/annotation-status'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
@@ -54,11 +55,8 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
       return NextResponse.json({ ok: false, error: 'maxDepth must be between 1 and 5' }, { status: 400 })
     }
 
-    // Check active taxonomy limit (all taxonomies are active now since we use hard delete)
-    // The limit is per workspace; concurrent creations wait for each other.
-    await db()
-      .$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('classiflow.taxonomy.create.' || ${actor.workspaceId}))`
-    const activeTaxonomiesCount = await db().taxonomy.count()
+    await lockActiveTaxonomies(db(), actor.workspaceId, true)
+    const activeTaxonomiesCount = await db().taxonomy.count({ where: { isActive: true } })
 
     if (activeTaxonomiesCount >= MAX_ACTIVE_TAXONOMIES) {
       return NextResponse.json(
@@ -132,6 +130,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
       })
 
       await createTaxonomyNodes(tx, scopeWorkspaceId(), taxonomy.id, parsedNodes)
+      await applyTaxonomyRequirement(tx, actor.workspaceId, taxonomy.id)
 
       return taxonomy
     })
@@ -152,40 +151,10 @@ export const POST = workspaceRoute(['admin'], async (req, { user: actor }) => {
     const error = caught as CaughtError
     await logError('Create taxonomy failed', error)
 
-    // Extract clean error message
-    let errorMessage = error?.message || String(error)
-
-    // Truncate extremely long error messages (e.g., Prisma validation errors with full data)
-    if (errorMessage.length > 1000) {
-      // Find the actual error message in the multi-line output
-      const lines = errorMessage.split('\n')
-
-      // Look for the "Argument ... is missing" or similar error
-      const errorLine = lines.find(
-        (line: string) =>
-          line.trim().startsWith('Argument') || line.includes('is missing') || line.includes('is required')
-      )
-
-      if (errorLine) {
-        // Get the line before "Argument" which usually has "Invalid ..."
-        const errorIndex = lines.indexOf(errorLine)
-        const contextLine = errorIndex > 0 ? lines[errorIndex - 1] : ''
-
-        if (contextLine && contextLine.includes('Invalid')) {
-          errorMessage = `${contextLine.trim()} ${errorLine.trim()}`
-        } else {
-          errorMessage = errorLine.trim()
-        }
-      } else {
-        // Fallback: just get first 500 chars
-        errorMessage = errorMessage.substring(0, 500) + '...'
-      }
-    }
-
     return NextResponse.json(
       {
         ok: false,
-        error: errorMessage
+        error: 'Failed to create taxonomy'
       },
       { status: 500 }
     )

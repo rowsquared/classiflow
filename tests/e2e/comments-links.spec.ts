@@ -86,8 +86,8 @@ test('record and discussion copy actions produce stable links that work without 
   await freshTab.goto(discussionLink)
   await expect(freshTab.getByRole('region', { name: 'Comments', exact: true })).toBeVisible()
   await freshTab.getByRole('button', { name: 'Close comments' }).click()
-  await expect(freshTab.getByRole('button', { name: 'Previous sentence' })).toHaveCount(0)
-  await expect(freshTab.getByRole('button', { name: 'Next sentence' })).toHaveCount(0)
+  await expect(freshTab.getByRole('button', { name: 'Previous record' })).toHaveCount(0)
+  await expect(freshTab.getByRole('button', { name: 'Next record' })).toHaveCount(0)
   await freshTab.close()
 })
 

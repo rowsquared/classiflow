@@ -13,6 +13,7 @@ import { logError } from '@/lib/logger'
 const BATCH_SIZE = 1000
 const MAX_FIELD_COLUMNS = 5
 const MAX_SUPPORT_COLUMNS = 5
+const MAX_ROWS = 100_000
 
 export const POST = workspaceRoute(
   ['admin'],
@@ -46,7 +47,8 @@ export const POST = workspaceRoute(
           },
           skip_empty_lines: true,
           bom: true,
-          trim: true
+          trim: true,
+          to: MAX_ROWS + 1
         })
       } catch (caught) {
         const e = caught as CaughtError
@@ -66,6 +68,10 @@ export const POST = workspaceRoute(
           },
           { status: 400 }
         )
+      }
+
+      if (records.length > MAX_ROWS) {
+        return NextResponse.json({ error: 'A CSV may contain at most 100,000 records' }, { status: 400 })
       }
 
       // Extract and validate headers
@@ -143,9 +149,11 @@ export const POST = workspaceRoute(
       const sentences: Omit<Prisma.SentenceCreateManyInput, 'importId' | 'workspaceId'>[] = []
       const providedIds = new Set<string>()
       const rowErrors: { row: number; message: string }[] = []
+      let emptyRecords = 0
 
       for (const [idx, record] of records.entries()) {
         const rowNum = idx + 2 // +2 for header and 0-index
+        if (!fieldColumns.some(column => record[column]?.trim())) emptyRecords++
 
         // Handle ID
         let sentenceId: string
@@ -170,14 +178,7 @@ export const POST = workspaceRoute(
         }
 
         // Extract field values
-        const field1 = fieldColumns[0]
-          ? (() => {
-              const raw = record[fieldColumns[0]]
-              if (raw === undefined || raw === null) return ''
-              const value = String(raw).trim()
-              return value
-            })()
-          : ''
+        const field1 = record[fieldColumns[0] ?? '']?.trim() ?? ''
         const field2 = fieldColumns[1] ? record[fieldColumns[1]]?.trim() || null : null
         const field3 = fieldColumns[2] ? record[fieldColumns[2]]?.trim() || null : null
         const field4 = fieldColumns[3] ? record[fieldColumns[3]]?.trim() || null : null
@@ -221,21 +222,23 @@ export const POST = workspaceRoute(
 
       // Check for existing IDs in database
       if (hasIdColumn && providedIds.size > 0) {
-        const existing = await db().sentence.findMany({
-          where: { workspaceId: user.workspaceId, recordKey: { in: Array.from(providedIds) } },
-          select: { recordKey: true }
-        })
+        const ids = Array.from(providedIds)
+        const examples: string[] = []
+        let existingCount = 0
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const existing = await db().sentence.findMany({
+            where: { workspaceId: user.workspaceId, recordKey: { in: ids.slice(i, i + BATCH_SIZE) } },
+            select: { recordKey: true }
+          })
+          existingCount += existing.length
+          examples.push(...existing.slice(0, 20 - examples.length).map(row => row.recordKey))
+        }
 
-        if (existing.length > 0) {
+        if (existingCount > 0) {
           return NextResponse.json(
             {
               ok: false,
-              errors: [
-                `${existing.length} ID(s) already exist in this workspace, e.g. ${existing
-                  .slice(0, 20)
-                  .map(e => e.recordKey)
-                  .join(', ')}`
-              ]
+              errors: [`${existingCount} ID(s) already exist in this workspace, e.g. ${examples.join(', ')}`]
             },
             { status: 400 }
           )
@@ -249,6 +252,7 @@ export const POST = workspaceRoute(
           dryRun: true,
           summary: {
             totalRows: sentences.length,
+            emptyRecords,
             hasIdColumn,
             fieldColumns: fieldColumns.map(c => c.substring(6)),
             supportColumns: supportColumns.map(c => c.substring(8)),

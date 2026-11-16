@@ -54,7 +54,7 @@ export default function QueueToolbar({
           <div className="relative w-96 max-w-[50vw]">
             <input
               type="text"
-              placeholder="Search sentences..."
+              placeholder="Search records…"
               aria-label="Search records"
               value={searchQuery}
               onChange={e => onSearchChange(e.target.value)}

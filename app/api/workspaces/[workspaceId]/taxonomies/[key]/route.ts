@@ -150,7 +150,7 @@ export const PUT = workspaceRoute<'key'>(['admin'], async (req, { user: actor, p
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || String(error)
+        error: 'Failed to update taxonomy'
       },
       { status: 500 }
     )
@@ -279,7 +279,7 @@ export const DELETE = workspaceRoute<'key'>(['admin'], async (req, { user: actor
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || String(error)
+        error: 'Failed to delete taxonomy'
       },
       { status: 500 }
     )

@@ -322,6 +322,20 @@ async function queue(count: number, minutesAgo: number) {
 }
 
 describe('job admission', () => {
+  it('leaves capacity for a different endpoint when workspaces share a busy one', async () => {
+    const [first] = await queue(2, 30)
+    await createWorkspace()
+    await queue(2, 20)
+    await createWorkspace()
+    await createAIConnection({ baseUrl: 'https://independent-endpoint.test' })
+    const [healthy] = await queue(1, 10)
+
+    const jobs = await app.$queryRaw<Admitted[]>`
+      SELECT kind, id, "workspaceId" FROM app_admit_ai_jobs(3, 4, 1, 'endpoint-test',
+        ${new Date(Date.now() + 60_000).toISOString()}::timestamp)`
+    expect(jobs.map(job => job.id)).toEqual([first, healthy])
+  })
+
   it('admits fairly across workspaces within the per-workspace and deployment ceilings', async () => {
     const a = await queue(3, 30) // oldest
     await createWorkspace()

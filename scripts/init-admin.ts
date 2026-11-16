@@ -31,34 +31,31 @@ async function initAdmin() {
   const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || ''
   const adminName = process.env.DEFAULT_ADMIN_NAME || 'System Administrator'
 
-  const existing = await prisma.user.findFirst({
-    where: {
-      OR: [{ role: 'admin' }, { email: adminEmail }, { username: adminUsername }]
-    },
-    select: { id: true }
-  })
+  const created = await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('classiflow.platform_admins'))`
+    const existing = await tx.user.findFirst({
+      where: {
+        OR: [{ role: 'admin' }, { email: adminEmail }, { username: adminUsername }]
+      },
+      select: { id: true }
+    })
+    if (existing) return false
 
-  if (existing) {
-    console.log('✓ Admin user already exists; nothing to do')
-    return
-  }
-
-  if (!USERNAME_PATTERN.test(adminUsername)) {
-    throw new Error('DEFAULT_ADMIN_USERNAME may only contain letters, digits, dot, underscore and hyphen')
-  }
-  if (!adminPassword) {
-    throw new Error('No admin exists yet and DEFAULT_ADMIN_PASSWORD is missing')
-  }
-  const weak = passwordProblem(adminPassword, { username: adminUsername, email: adminEmail, name: adminName })
-  if (weak) throw new Error(`DEFAULT_ADMIN_PASSWORD is not acceptable: ${weak}`)
-  if (PLACEHOLDER_PASSWORDS.has(adminPassword.toLowerCase())) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('DEFAULT_ADMIN_PASSWORD is a well-known placeholder; set a real password')
+    if (!USERNAME_PATTERN.test(adminUsername)) {
+      throw new Error('DEFAULT_ADMIN_USERNAME may only contain letters, digits, dot, underscore and hyphen')
     }
-    console.warn('⚠ DEFAULT_ADMIN_PASSWORD is a well-known placeholder (allowed outside production)')
-  }
+    if (!adminPassword) {
+      throw new Error('No admin exists yet and DEFAULT_ADMIN_PASSWORD is missing')
+    }
+    const weak = passwordProblem(adminPassword, { username: adminUsername, email: adminEmail, name: adminName })
+    if (weak) throw new Error(`DEFAULT_ADMIN_PASSWORD is not acceptable: ${weak}`)
+    if (PLACEHOLDER_PASSWORDS.has(adminPassword.toLowerCase())) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('DEFAULT_ADMIN_PASSWORD is a well-known placeholder; set a real password')
+      }
+      console.warn('⚠ DEFAULT_ADMIN_PASSWORD is a well-known placeholder (allowed outside production)')
+    }
 
-  await prisma.$transaction(async tx => {
     const user = await tx.user.create({
       data: {
         username: adminUsername,
@@ -70,7 +67,13 @@ async function initAdmin() {
       }
     })
     await setPassword(tx, user.id, adminPassword)
+    return true
   })
+
+  if (!created) {
+    console.log('✓ Admin user already exists; nothing to do')
+    return
+  }
 
   console.log(`✓ Admin user "${adminUsername}" created with the password from DEFAULT_ADMIN_PASSWORD`)
   console.log('  It must be changed at first sign-in.')

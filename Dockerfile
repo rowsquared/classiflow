@@ -72,5 +72,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Start the application
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider "http://localhost:${PORT}/api/live" || exit 1
+
+CMD ["sh", "scripts/start.sh"]

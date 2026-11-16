@@ -94,6 +94,7 @@ export default function ResizablePanel({
     <div ref={panelRef} className={`relative ${className}`} style={{ width: `${width}%`, flexShrink: 0, ...style }}>
       {/* Resize Handle */}
       <div
+        data-resize-handle
         onMouseDown={() => setIsResizing(true)}
         className={`absolute top-0 bottom-0 w-1 hover:w-1.5 bg-transparent hover:bg-indigo-400 cursor-ew-resize transition-all z-50 ${
           side === 'right' ? '-left-0.5' : '-right-0.5'

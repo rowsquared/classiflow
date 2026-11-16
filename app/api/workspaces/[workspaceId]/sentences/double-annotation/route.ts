@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { workspaceRoute } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
-import { lockSentences } from '@/lib/annotation-status'
+import { lockActiveTaxonomies, lockSentences } from '@/lib/annotation-status'
 import { audit } from '@/lib/audit'
 import { logError } from '@/lib/logger'
 import { db } from '@/lib/workspace/db'
@@ -22,6 +22,7 @@ const countsSchema = z.object({
   already: z.number().int(),
   needs_first: z.number().int()
 })
+const MAX_ROUND_STARTS = 1_000
 
 const startSchema = z.object({
   sentenceIds: z.array(z.string()).min(1).max(10000),
@@ -47,63 +48,76 @@ const startSchema = z.object({
  * Records already in double annotation are left unchanged; records that need
  * two people when only one was chosen are left out (both are reported).
  */
-export const POST = workspaceRoute(['admin', 'supervisor'], async (req, { user }) => {
-  try {
-    const parsed = startSchema.safeParse(await req.json().catch(() => null))
-    if (!parsed.success) return NextResponse.json({ ok: false, error: 'Invalid request data' }, { status: 400 })
-    const { firstUserId = null, secondUserId, dryRun, expect, sample, seed = 1 } = parsed.data
-    const selected = Array.from(new Set(parsed.data.sentenceIds))
-    const sentenceIds = sample && sample < 100 ? sampleRecords(selected, sample, seed) : selected
-    if (firstUserId === secondUserId) {
-      return NextResponse.json({ ok: false, error: 'Choose two different people' }, { status: 400 })
-    }
+export const POST = workspaceRoute(
+  ['admin', 'supervisor'],
+  async (req, { user }) => {
+    try {
+      const parsed = startSchema.safeParse(await req.json().catch(() => null))
+      if (!parsed.success) return NextResponse.json({ ok: false, error: 'Invalid request data' }, { status: 400 })
+      const { firstUserId = null, secondUserId, dryRun, expect, sample, seed = 1 } = parsed.data
+      const selected = Array.from(new Set(parsed.data.sentenceIds))
+      const sentenceIds = sample && sample < 100 ? sampleRecords(selected, sample, seed) : selected
+      if (sentenceIds.length > MAX_ROUND_STARTS) {
+        return NextResponse.json(
+          { ok: false, error: 'Start at most 1,000 rounds at a time. Narrow the selection or reduce the sample.' },
+          { status: 400 }
+        )
+      }
+      if (firstUserId === secondUserId) {
+        return NextResponse.json({ ok: false, error: 'Choose two different people' }, { status: 400 })
+      }
 
-    const denied = await denyUnlessSentencesVisible(user, sentenceIds)
-    if (denied) return denied
-    const auto = secondUserId === 'auto'
-    await requireAssignable(user, [...(firstUserId ? [firstUserId] : []), ...(auto ? [] : [secondUserId])])
-    const second = auto ? { auto: await autoCandidates(user) } : { userId: secondUserId }
+      const denied = await denyUnlessSentencesVisible(user, sentenceIds)
+      if (denied) return denied
+      const auto = secondUserId === 'auto'
+      await requireAssignable(user, [...(firstUserId ? [firstUserId] : []), ...(auto ? [] : [secondUserId])])
+      const second = auto ? { auto: await autoCandidates(user) } : { userId: secondUserId }
 
-    if (!dryRun) await lockSentences(db(), sentenceIds)
-    const plan = await planStart(sentenceIds, firstUserId, second)
-    const preview = {
-      counts: plan.counts,
-      sampled: sentenceIds.length,
-      mixed: plan.mixed,
-      people: plan.people,
-      losingAccess: plan.losingAccess
-    }
-    if (dryRun) return NextResponse.json({ ok: true, ...preview })
+      if (!dryRun) {
+        await lockActiveTaxonomies(db(), user.workspaceId)
+        await lockSentences(db(), sentenceIds)
+      }
+      const plan = await planStart(sentenceIds, firstUserId, second)
+      const preview = {
+        counts: plan.counts,
+        sampled: sentenceIds.length,
+        mixed: plan.mixed,
+        people: plan.people,
+        losingAccess: plan.losingAccess
+      }
+      if (dryRun) return NextResponse.json({ ok: true, ...preview })
 
-    if (!expect) {
-      return NextResponse.json({ ok: false, error: 'Preview the change first' }, { status: 400 })
-    }
-    const categories = Object.keys(plan.counts) as StartCategory[]
-    if (categories.some(c => plan.counts[c] !== expect[c])) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'The selected records changed since the preview. Check the summary again.',
-          ...preview
-        },
-        { status: 409 }
-      )
-    }
+      if (!expect) {
+        return NextResponse.json({ ok: false, error: 'Preview the change first' }, { status: 400 })
+      }
+      const categories = Object.keys(plan.counts) as StartCategory[]
+      if (categories.some(c => plan.counts[c] !== expect[c])) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'The selected records changed since the preview. Check the summary again.',
+            ...preview
+          },
+          { status: 409 }
+        )
+      }
 
-    const started = await startRounds(user, plan)
-    await audit({
-      actorId: user.id,
-      action: 'double.started',
-      entityType: 'sentence',
-      entityId: sentenceIds[0]!,
-      payload: { records: started, counts: plan.counts, firstUserId, secondUserId, sample: sample ?? 100 }
-    })
-    return NextResponse.json({ ok: true, started, ...preview })
-  } catch (error) {
-    if (error instanceof DoubleAnnotationError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: error.status })
+      const started = await startRounds(user, plan)
+      await audit({
+        actorId: user.id,
+        action: 'double.started',
+        entityType: 'sentence',
+        entityId: sentenceIds[0]!,
+        payload: { records: started, counts: plan.counts, firstUserId, secondUserId, sample: sample ?? 100 }
+      })
+      return NextResponse.json({ ok: true, started, ...preview })
+    } catch (error) {
+      if (error instanceof DoubleAnnotationError) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: error.status })
+      }
+      await logError('Starting double annotation failed', error)
+      return NextResponse.json({ ok: false, error: 'Starting double annotation failed' }, { status: 500 })
     }
-    await logError('Starting double annotation failed', error)
-    return NextResponse.json({ ok: false, error: 'Starting double annotation failed' }, { status: 500 })
-  }
-})
+  },
+  { timeoutMs: 180_000 }
+)

@@ -281,8 +281,9 @@ by Better Auth and stored on the user's `credential` `Account` row; set or check
 them only through `lib/passwords.ts`, and sign users out with
 `revokeSessions()`. Public sign-up and Better Auth's account-changing endpoints
 are disabled (`disabledPaths`); users are created and changed through
-`app/api/users` and the workspace member API (`/api/workspaces/[id]/users`). The `admin` plugin provides ban/unban and session listing for
-admins; the roles themselves stay our `Role` enum. Usernames and emails are
+`app/api/users` and the workspace member API (`/api/workspaces/[id]/users`). The
+Better Auth admin plugin enforces bans on session creation and its HTTP
+endpoints are disabled. Usernames and emails are
 stored in lower case.
 
 `proxy.ts` checks the session for page requests (sign-in redirect, initial
@@ -343,7 +344,8 @@ writes need the same scope as reads. The access matrix is in
   `AILearningJobInput`) and taxonomy sync (`AITaxonomySyncJob`). Routes create
   them `pending` and call `scheduleAIJobs()` after commit; the database
   function `app_admit_ai_jobs()` admits them to `processing` under
-  `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` / `AI_MAX_ACTIVE_JOBS`, fairly across
+  `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE`, `AI_MAX_ACTIVE_JOBS_PER_ENDPOINT` and
+  `AI_MAX_ACTIVE_JOBS`, fairly across
   workspaces. Results are stored only for the job's input rows. Learning uses
   submitted user annotations and a minimum-new-labels threshold. Each job
   stores the label revisions it sends. Successful batches credit only their
@@ -391,7 +393,7 @@ lockfile together. Do not introduce a different package manager.
 | TypeScript | `npm run typecheck` (TypeScript 7 native compiler, `--noEmit`) |
 | Lint | `npm run lint` |
 | Format | `npm run format` (Prettier; CI runs `npm run format:check`) |
-| Unit tests | `npm test`; Vitest config in `vitest.config.ts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
+| Unit tests | `npm test`; Vitest config in `vitest.config.mts`, colocated `*.test.ts` / `*.test.tsx`, Node environment |
 | Integration tests | `TEST_DATABASE_URL=.../classiflow_test npm run test:integration`; route handlers against PostgreSQL, see `tests/integration/README.md` |
 | Benchmarks | `npm run bench:progress` on a database seeded by `scripts/bench/seed-progress.ts` (DEVELOPMENT.md "Benchmarks") |
 | Browser journeys | `npm run build`, then `E2E_DATABASE_URL=.../classiflow_e2e_test npm run test:e2e` (Playwright, with axe-core accessibility checks; see `tests/e2e/README.md`) |
@@ -408,7 +410,7 @@ digest) with production dependencies only. The Compose
 startup command (`scripts/start.sh`) applies migrations as the schema owner,
 optionally switches to a least-privilege runtime role, initializes the admin,
 then runs `server.js`;
-the Dockerfile alone only starts `server.js`. Production Compose leaves app/DB
+the Docker image uses the same start command. Production Compose leaves app/DB
 ports internal for reverse-proxy hosting. `/api/health` checks database
 connectivity. See `DEPLOYMENT.md`, `COOLIFY_DEPLOYMENT.md`, and the actual workflow
 files for deployment details; these are separate from the local dev stack.

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useLayoutEffect, useRef } from 'react'
+import { useState, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -9,6 +9,9 @@ import { queryKeys } from '@/lib/query/keys'
 import { useSession, signOut, revokeOtherSessions } from '@/lib/auth-client'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 import { ToastContainer, type Toast } from '@/components/Toast'
+import Modal from '@/components/Modal'
+import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
+import { hasUnsavedChanges } from '@/lib/unsaved-changes'
 import Image from 'next/image'
 import {
   ChartColumn,
@@ -38,11 +41,26 @@ const ICON_SIZE = LOGO_SIZE * 1 // 1w = 20px
 const SPACING = LOGO_SIZE * 1 // 1w = 20px
 const HEADER_HEIGHT = LOGO_SIZE * 3 // 3w = 60px
 const FOOTER_LOGO_HEIGHT = 48 // Fixed height for R2 footer logo
+const narrowLayout = '(max-width: 1023px)'
+
+function subscribeToWidth(callback: () => void) {
+  const breakpoint = window.matchMedia(narrowLayout)
+  breakpoint.addEventListener('change', callback)
+  return () => breakpoint.removeEventListener('change', callback)
+}
 
 export default function Sidebar() {
   // Always start with false on both server and client to prevent hydration mismatch
   // We'll update to the correct state in useLayoutEffect before paint
-  const [collapsed, setCollapsed] = useState(false)
+  const [desktopCollapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [leavingFor, setLeavingFor] = useState<string | null>(null)
+  const narrow = useSyncExternalStore(
+    subscribeToWidth,
+    () => window.matchMedia(narrowLayout).matches,
+    () => false
+  )
+  const collapsed = narrow ? !mobileOpen : desktopCollapsed
   const [isHydrated, setIsHydrated] = useState(false)
   const [logoHovered, setLogoHovered] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -60,6 +78,15 @@ export default function Sidebar() {
   const workspace = useWorkspaceInfo()
   // Global pages keep the last workspace for navigation; data hooks still use the URL.
   const workspaceHref = (path: string) => `/w/${workspace?.id ?? ''}${path}`
+
+  function navigate(event: { preventDefault(): void }, href: string) {
+    if (href !== pathname && hasUnsavedChanges()) {
+      event.preventDefault()
+      setLeavingFor(href)
+    } else {
+      setMobileOpen(false)
+    }
+  }
 
   // Read from data attribute and sync state, then remove CSS override
   useLayoutEffect(() => {
@@ -98,6 +125,10 @@ export default function Sidebar() {
   }
 
   const toggleCollapse = () => {
+    if (narrow) {
+      setMobileOpen(open => !open)
+      return
+    }
     const newState = !collapsed
     setCollapsed(newState)
     localStorage.setItem('sidebar-collapsed', JSON.stringify(newState))
@@ -142,7 +173,7 @@ export default function Sidebar() {
     },
     {
       icon: <MessageSquareText className="w-full h-full" strokeWidth={1.5} />,
-      label: 'Sentences',
+      label: 'Records',
       href: '/admin/sentences',
       roles: ['admin']
     },
@@ -206,7 +237,12 @@ export default function Sidebar() {
         ]
       : []),
     { href: '/workspaces', label: 'Workspaces', icon: List },
-    ...(platform ? [{ href: '/ai-services', label: 'AI services', icon: Sparkles }] : [])
+    ...(platform
+      ? [
+          { href: '/ai-services', label: 'AI services', icon: Sparkles },
+          { href: '/audit', label: 'Platform audit log', icon: ClipboardCheck }
+        ]
+      : [])
   ]
 
   const isActive = (path: string) => {
@@ -231,6 +267,29 @@ export default function Sidebar() {
         transition: isHydrated ? 'width 300ms ease-in-out' : 'none'
       }}
     >
+      {leavingFor && (
+        <Modal label="Leave with unsaved labels?" onClose={() => setLeavingFor(null)}>
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">Leave with unsaved labels?</h2>
+            <p className="text-sm text-gray-700">Your label selections will be discarded if you leave this record.</p>
+            <div className="flex justify-end gap-2">
+              <button className={buttonClass('secondary')} onClick={() => setLeavingFor(null)}>
+                Stay here
+              </button>
+              <button
+                className={buttonClass('primary')}
+                onClick={() => {
+                  router.push(leavingFor)
+                  setLeavingFor(null)
+                  setMobileOpen(false)
+                }}
+              >
+                Discard selections
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {/* Logo Section - Height: 3w (90px) */}
       <div
         className="flex items-center border-b border-gray-200 relative"
@@ -244,8 +303,11 @@ export default function Sidebar() {
         {/* Logo and Title Container */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {/* Logo with hover expand button for collapsed state */}
-          <div
-            className="relative flex-shrink-0 cursor-pointer"
+          <button
+            type="button"
+            className="relative shrink-0 rounded-sm focus-visible:ring-2 focus-visible:ring-indigo-600"
+            aria-label="Expand sidebar"
+            disabled={!collapsed}
             style={{ width: `${LOGO_SIZE}px`, height: `${LOGO_SIZE}px` }}
             onMouseEnter={() => collapsed && setLogoHovered(true)}
             onMouseLeave={() => setLogoHovered(false)}
@@ -260,7 +322,7 @@ export default function Sidebar() {
               // Show logo
               <Image src="/logo.svg" alt="classiflow" width={LOGO_SIZE} height={LOGO_SIZE} className="w-full h-full" />
             )}
-          </div>
+          </button>
 
           {/* Product name - Fades in/out when expanded/collapsed */}
           <span
@@ -298,6 +360,7 @@ export default function Sidebar() {
                 key={item.href}
                 href={workspaceHref(item.href)}
                 prefetch={item.href === '/queue' ? false : undefined}
+                onNavigate={event => navigate(event, workspaceHref(item.href))}
                 className={`
                 flex items-center gap-4 py-3 transition-colors relative
                 ${active ? 'bg-indigo-50 text-indigo-800 font-semibold' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'}
@@ -335,6 +398,7 @@ export default function Sidebar() {
             <Link
               key={item.label}
               href={item.href}
+              onNavigate={event => navigate(event, item.href)}
               aria-current={pathname === item.href.split('?')[0] ? 'page' : undefined}
               title={collapsed ? item.label : undefined}
               className={`flex items-center gap-4 px-5 py-3 text-sm ${pathname === item.href.split('?')[0] ? 'bg-indigo-50 text-indigo-800' : 'text-gray-700 hover:bg-gray-100'}`}

@@ -6,11 +6,11 @@ import { logError } from '@/lib/logger'
 
 export default async function SentenceAdminPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
-  await requirePageUser(workspaceId, 'admin')
+  const user = await requirePageUser(workspaceId, 'admin')
 
   let data
   try {
-    data = await withWorkspace(workspaceId, () => listImports(workspaceId))
+    data = await withWorkspace(workspaceId, () => listImports(user))
   } catch (error) {
     await logError('Record imports page failed to load', error)
   }

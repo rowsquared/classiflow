@@ -419,16 +419,20 @@ export class ConnectionInputError extends Error {
  * previous version is retired; jobs that use it keep it until they finish.
  * The credential is encrypted before it reaches the database.
  */
+export async function approvedEndpoint(endpointId: string) {
+  const endpoint = await db().aIEndpoint.findFirst({
+    where: { id: endpointId, ...availableTo(scopeWorkspaceId()) },
+    select: { baseUrl: true }
+  })
+  if (!endpoint) throw new ConnectionInputError('Choose an approved AI service')
+  return endpoint
+}
+
 export async function createConnectionVersion(input: { endpointId: string; credential: string; actorId: string }) {
   const workspaceId = scopeWorkspaceId()
   const deployment = aiDeployment()
   if (!deployment.ready) throw new ConnectionInputError(AI_UNAVAILABLE_MESSAGES.deployment_not_configured)
-  const endpoint = await db().aIEndpoint.findFirst({
-    where: { id: input.endpointId, ...availableTo(workspaceId) },
-    select: { id: true }
-  })
-  if (!endpoint) throw new ConnectionInputError('Choose an approved AI service')
-
+  await approvedEndpoint(input.endpointId)
   // One version number at a time per workspace.
   await db().$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`classiflow:ai-connection:${workspaceId}`}))`
   const latest = await db().aIConnectionVersion.findFirst({ orderBy: { version: 'desc' }, select: { version: true } })

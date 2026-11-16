@@ -4,12 +4,14 @@ import { workspaceRoute } from '@/lib/api-auth'
 import type { CaughtError } from '@/lib/utils'
 import { audit } from '@/lib/audit'
 import { logError } from '@/lib/logger'
+import { applyTaxonomyRequirement, lockActiveTaxonomies } from '@/lib/annotation-status'
 
 const MAX_ACTIVE_TAXONOMIES = 3
 
 export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, params: routeParams }) => {
   try {
     const { key } = routeParams
+    await lockActiveTaxonomies(db(), actor.workspaceId, true)
 
     // Check if taxonomy exists and is deleted
     const existingTaxonomy = await db().taxonomy.findUnique({
@@ -56,6 +58,7 @@ export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, 
       where: { workspaceId_key: { workspaceId: scopeWorkspaceId(), key } },
       data: { isActive: true }
     })
+    await applyTaxonomyRequirement(db(), actor.workspaceId, restoredTaxonomy.id)
 
     await audit({
       actorId: actor.id,
@@ -74,7 +77,7 @@ export const POST = workspaceRoute<'key'>(['admin'], async (req, { user: actor, 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || String(error)
+        error: 'Failed to restore taxonomy'
       },
       { status: 500 }
     )

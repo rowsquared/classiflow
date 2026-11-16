@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Image from 'next/image'
+import { panelClass } from '@/components/ui/styles'
 
 /** The centred card of the signed-out pages (forgotten password, links, invitations). */
 export default function AuthCard({
@@ -13,7 +14,7 @@ export default function AuthCard({
 }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 overflow-y-auto">
-      <main className="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
+      <main className={`${panelClass} w-full max-w-md p-8`}>
         <div className="flex justify-center mb-6">
           <Image src="/logo.svg" alt="classiflow" width={120} height={32} className="h-8 w-auto" />
         </div>

@@ -42,16 +42,6 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor }) => {
     return NextResponse.json({ error: 'Invalid request data', details: parsed.error.issues }, { status: 400 })
   }
   const { enabled, jobSettings } = parsed.data
-  if (jobSettings) {
-    await setWorkspaceJobSettings(jobSettings)
-    await audit({
-      actorId: actor.id,
-      action: 'ai.job_settings_changed',
-      entityType: 'workspace',
-      entityId: actor.workspaceId,
-      payload: { ...jobSettings, authority: actor.authority }
-    })
-  }
   if (enabled !== undefined) {
     const unavailable = await setWorkspaceAIEnabled(enabled)
     if (unavailable) {
@@ -63,6 +53,16 @@ export const PUT = workspaceRoute(['admin'], async (req, { user: actor }) => {
       entityType: 'workspace',
       entityId: actor.workspaceId,
       payload: { authority: actor.authority }
+    })
+  }
+  if (jobSettings) {
+    await setWorkspaceJobSettings(jobSettings)
+    await audit({
+      actorId: actor.id,
+      action: 'ai.job_settings_changed',
+      entityType: 'workspace',
+      entityId: actor.workspaceId,
+      payload: { ...jobSettings, authority: actor.authority }
     })
   }
   return NextResponse.json(await workspaceAISettings())

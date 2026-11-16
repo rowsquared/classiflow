@@ -149,11 +149,11 @@ export type Report<T> = { data: T; error?: undefined } | { data?: undefined; err
 function workloadStatus(user: CurrentUser, sentence: Prisma.Sql) {
   if (user.role !== 'labeller') return Prisma.sql`${sentence}.status::text`
   return Prisma.sql`COALESCE((
-    SELECT COALESCE(t.status::text, 'pending')
-      FROM "DoubleRound" r
-      LEFT JOIN "DoubleTask" t ON t."roundId" = r.id AND t."workspaceId" = r."workspaceId"
-       AND t."assigneeId" = ${user.id} AND t.status <> 'cancelled'
-     WHERE r."sentenceId" = ${sentence}.id AND r."workspaceId" = ${sentence}."workspaceId" AND r.status = 'active'
+    SELECT t.status::text
+      FROM "DoubleTask" t
+     WHERE t."sentenceId" = ${sentence}.id AND t."workspaceId" = ${sentence}."workspaceId"
+       AND t."assigneeId" = ${user.id} AND t.status <> 'cancelled' AND t."releasedAt" IS NULL
+     ORDER BY t."createdAt" DESC
      LIMIT 1
   ), ${sentence}.status::text)`
 }

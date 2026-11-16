@@ -46,14 +46,20 @@ if [ -n "${APP_DB_USER:-}" ]; then
 fi
 
 node_script scripts/init-admin.ts
+unset DEFAULT_ADMIN_PASSWORD
 
 # Optional demo workspace for staging (ENV_SETUP.md "Demo data"). A failure
 # leaves no partial data behind and does not stop the server.
 case "${DEMO_SEED:-}" in
   true | reset)
-    DATABASE_URL=$OWNER_DATABASE_URL node_script scripts/seed-demo.ts ||
-      echo "⚠ Demo data could not be seeded; starting without it" >&2
+    if [ "${DEPLOYMENT_ENV:-production}" = "staging" ]; then
+      DATABASE_URL=$OWNER_DATABASE_URL node_script scripts/seed-demo.ts ||
+        echo "⚠ Demo data could not be seeded; starting without it" >&2
+    else
+      echo "⚠ Demo seeding requires DEPLOYMENT_ENV=staging; starting without demo data" >&2
+    fi
     ;;
 esac
+unset OWNER_DATABASE_URL APP_DB_PASSWORD DEMO_PASSWORD
 
 exec node server.js

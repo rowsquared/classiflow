@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSessionAllowingReset } from '@/lib/api-auth'
-import { audit } from '@/lib/audit'
+import { auditInTransaction } from '@/lib/audit'
 import { checkPassword, revokeSessions, setPassword } from '@/lib/passwords'
 import { z } from 'zod'
 import { passwordProblem } from '@/lib/password-policy'
 import { logError } from '@/lib/logger'
 import { allowRequest } from '@/lib/rate-limit'
+import { mailEnabled } from '@/lib/mail/config'
+import { deliverSoon, queueMail } from '@/lib/mail/outbox'
 
 const resetPasswordSchema = z.object({
   currentPassword: z.string().max(256),
@@ -44,18 +46,21 @@ export async function POST(req: NextRequest) {
 
     // New password, reset flag cleared, and every other session signed out;
     // this browser stays signed in.
-    await prisma.$transaction(async tx => {
+    const notice = await prisma.$transaction(async tx => {
       await setPassword(tx, currentUser.id, newPassword)
       await tx.user.update({ where: { id: currentUser.id }, data: { mustResetPassword: false } })
       await revokeSessions(tx, currentUser.id, session.session.id)
+      await auditInTransaction(tx, {
+        workspaceId: null,
+        actorId: currentUser.id,
+        action: 'user.password_changed',
+        entityType: 'user',
+        entityId: currentUser.id
+      })
+      return mailEnabled() ? queueMail(tx, { purpose: 'password_changed', userId: currentUser.id }) : null
     })
 
-    await audit({
-      actorId: currentUser.id,
-      action: 'user.password_changed',
-      entityType: 'user',
-      entityId: currentUser.id
-    })
+    if (notice) deliverSoon([notice])
     return NextResponse.json({ ok: true })
   } catch (error) {
     await logError('Password reset failed', error)

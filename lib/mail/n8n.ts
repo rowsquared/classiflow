@@ -26,8 +26,8 @@ export function outcomeForStatus(status: number): MailOutcome['outcome'] {
 }
 
 /**
- * Posts one message to the n8n workflow: `{ to, subject, body }` with `body`
- * as HTML, authenticated by the secret header. The workflow fixes the sender;
+ * Posts HTML (`body`) and plain text (`text`) to the n8n workflow,
+ * authenticated by the secret header. The workflow fixes the sender;
  * there is no from, cc, bcc or attachment. Never logs the payload or secret,
  * and never quotes the reply (it could echo the message).
  */
@@ -41,7 +41,12 @@ export async function sendViaN8n(
     response = await fetchImpl(config.webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json', [config.webhookHeader]: config.webhookSecret },
-      body: JSON.stringify({ to: message.to, subject: foldSubject(message.subject), body: message.html }),
+      body: JSON.stringify({
+        to: message.to,
+        subject: foldSubject(message.subject),
+        body: message.html,
+        text: message.text
+      }),
       signal: AbortSignal.timeout(config.timeoutMs),
       redirect: 'error'
     })

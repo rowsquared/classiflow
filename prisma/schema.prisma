@@ -429,6 +429,7 @@ model SentenceAnnotation {
 
   @@unique([sentenceId, taxonomyId, level])
   @@index([nodeCode])
+  @@index([taxonomyId])
   @@index([createdById, createdAt])
   @@index([workspaceId, createdAt])
 }
@@ -861,7 +862,7 @@ model AuditLog {
   requestId   String?
   createdAt   DateTime @default(now())
 
-  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   actor     User?      @relation(fields: [actorId], references: [id])
 
   @@index([workspaceId, createdAt])

@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { browserDatabaseUrl } from './tests/e2e/database'
 
 // Browser journeys against a production build (`npm run build` first) and a
 // disposable database. See tests/e2e/README.md.
@@ -18,7 +19,6 @@ export default defineConfig({
     process.platform === 'win32'
       ? join(tmpdir(), 'classiflow-e2e', createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12))
       : 'test-results',
-  globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -30,12 +30,12 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `npx next start -p ${PORT}`,
+    command: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/e2e/global-setup.ts && npx next start -p ${PORT}`,
     url: `${baseURL}/api/health`,
-    timeout: 60_000,
+    timeout: 120_000,
     reuseExistingServer: false,
     env: {
-      DATABASE_URL: process.env.E2E_DATABASE_URL || '',
+      DATABASE_URL: browserDatabaseUrl(process.env.E2E_DATABASE_URL),
       BETTER_AUTH_SECRET: 'e2e-only-not-a-real-secret-0123456789',
       BETTER_AUTH_URL: baseURL,
       // The journeys sign in more often than a person would.

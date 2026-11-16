@@ -11,8 +11,9 @@ const inter = Inter({
 })
 
 export const metadata = {
-  title: 'classiflow – labeling tool',
+  title: 'classiflow – labelling tool',
   description: 'complex classifications made easy',
+  robots: { index: false, follow: false },
   icons: {
     icon: [
       // ICO format for maximum compatibility (browsers will use this first)

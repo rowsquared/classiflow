@@ -288,7 +288,7 @@ export default function FilterPanel({
             <option value="">All imports</option>
             {(imports.data?.imports ?? []).map(imp => (
               <option key={imp.id} value={imp.id}>
-                {imp.fileName} ({imp.sentenceCount.toLocaleString()} sentences)
+                {imp.fileName} ({imp.sentenceCount.toLocaleString()} records)
               </option>
             ))}
           </select>

@@ -17,6 +17,7 @@ import {
 
 import * as annotationsRoute from '@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route'
 import * as bulkRoute from '@/app/api/workspaces/[workspaceId]/sentences/bulk-label/route'
+import * as restoreRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/[key]/restore/route'
 
 // Each test gets two active taxonomies (A, B) and a labeller assigned to fresh records.
 let labeller: User
@@ -36,7 +37,12 @@ beforeEach(async () => {
 type Label = { level: number; nodeCode: string | number }
 const save = (
   sentenceId: string,
-  body: { annotations: Array<Label & { taxonomyKey: string }>; status: string; flagged?: boolean }
+  body: {
+    annotations: Array<Label & { taxonomyKey: string }>
+    status: string
+    flagged?: boolean
+    lastEditedAt?: string | null
+  }
 ) =>
   annotationsRoute.POST(
     request(`/api/sentences/${sentenceId}/annotations`, { method: 'POST', body }),
@@ -53,6 +59,30 @@ const labelsOf = async (id: string, taxonomyId: string) =>
   )
 
 describe('single-record saves', () => {
+  it('refuses an edit based on the record state before another person saved', async () => {
+    const [r] = await createSentences(1, [labeller.id])
+    const baseEditTime = r.lastEditedAt?.toISOString() ?? null
+    signInAs(await createUser('admin'))
+    expect((await save(r.id, { annotations: pathA('02'), status: 'submitted' })).status).toBe(200)
+    signInAs(labeller)
+    const stale = await save(r.id, { annotations: pathA('01', '011'), status: 'submitted', lastEditedAt: baseEditTime })
+    expect(stale.status).toBe(409)
+    expect(await labelsOf(r.id, taxA.id)).toEqual(['02'])
+  })
+
+  it('rejects inactive taxonomies and reopens ordinary records when a missing taxonomy is restored', async () => {
+    await inWorkspace(() => db().taxonomy.update({ where: { id: taxB.id }, data: { isActive: false } }))
+    const [r] = await createSentences(1, [labeller.id])
+    expect((await save(r.id, { annotations: pathB('02'), status: 'submitted' })).status).toBe(409)
+    await save(r.id, { annotations: pathA('02'), status: 'submitted' })
+    expect(await statusOf(r.id)).toBe('submitted')
+
+    signInAs(await createUser('admin'))
+    expect((await restoreRoute.POST(request('/a/restore', { method: 'POST' }), params({ key: 'B' }))).status).toBe(200)
+    expect(await statusOf(r.id)).toBe('pending')
+    expect(await labelsOf(r.id, taxA.id)).toEqual(['02'])
+  })
+
   it('rejects incomplete, broken, numeric and mixed-taxonomy paths without writing', async () => {
     const [r] = await createSentences(1, [labeller.id])
     expect((await save(r.id, { annotations: pathA('01'), status: 'submitted' })).status).toBe(400) // not a leaf

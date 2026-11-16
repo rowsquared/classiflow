@@ -39,6 +39,7 @@ import {
   AI_JOB_POLL_INTERVAL_MS,
   AI_JOB_POLL_TIMEOUT_MS,
   AI_MAX_ACTIVE_JOBS,
+  AI_MAX_ACTIVE_JOBS_PER_ENDPOINT,
   AI_MAX_ACTIVE_JOBS_PER_WORKSPACE,
   getUnknownCodeForLevel
 } from './constants'
@@ -49,6 +50,7 @@ import { connectionClient, ensureEnvEndpoint } from './ai-connections'
 import { deploymentKeyring } from './ai-credentials'
 import { buildFieldMap } from './ai-utils'
 import { logger } from '@/lib/logger'
+import { audit } from '@/lib/audit'
 
 // ---------------------------------------------------------------------------
 // Process state
@@ -90,6 +92,8 @@ const LEASE_MS = 2 * AI_JOB_POLL_INTERVAL_MS + 60_000
 const MAX_POLL_BACKOFF_MS = 5 * 60_000
 const START_ATTEMPTS = 6
 const START_LEASE_MS = Math.max(LEASE_MS, AI_REQUEST_TIMEOUT_POST_MS + 60_000)
+const POLL_LEASE_MS = Math.max(LEASE_MS, 210_000) // Status request, result transaction and pool wait.
+const RESULT_IMPORT_ATTEMPTS = 3
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 // Prisma stores timestamps as UTC wall time; the database functions take that.
@@ -119,6 +123,7 @@ type JobRecord = {
   workspaceId: string
   taxonomyId: string
   status: string
+  startedAt: Date
   externalJobId: string | null
   connectionVersionId: string
   requestId: string | null
@@ -133,6 +138,7 @@ async function loadJobRecord(workspaceId: string, jobId: string, kind: JobKind):
       workspaceId: true,
       taxonomyId: true,
       status: true,
+      startedAt: true,
       externalJobId: true,
       connectionVersionId: true,
       requestId: true,
@@ -211,6 +217,7 @@ export async function admitQueuedJobs(): Promise<void> {
       const admitted = await prisma.$queryRaw<Array<{ kind: JobKind; id: string; workspaceId: string }>>`
         SELECT kind, id, "workspaceId" FROM app_admit_ai_jobs(
           ${AI_MAX_ACTIVE_JOBS_PER_WORKSPACE}::integer, ${AI_MAX_ACTIVE_JOBS}::integer,
+          ${AI_MAX_ACTIVE_JOBS_PER_ENDPOINT}::integer,
           ${monitorInstanceId()}, ${utcWallTime(leaseUntil)}::timestamp)`
       for (const job of admitted) runMonitor(job.id, job.kind, job.workspaceId)
     } while (state.again && !shuttingDown())
@@ -250,7 +257,7 @@ export async function ensureJobsMonitored() {
  * stop. Called once from instrumentation.ts; no-op unless the deployment can
  * run AI (AI_CREDENTIALS_KEYS).
  */
-export function startJobRecovery() {
+export function startJobRecovery(stopTelemetry?: () => Promise<void>) {
   if (globalAny.__jobRecoveryTimer) return
   let keysConfigured = false
   try {
@@ -258,9 +265,9 @@ export function startJobRecovery() {
   } catch (error) {
     logger.error({ err: error }, 'AI credential keys are not usable; AI jobs will not run')
   }
+  if (keysConfigured || stopTelemetry) installShutdownHandler(keysConfigured, stopTelemetry)
   if (!keysConfigured) return
   ensureEnvEndpoint().catch(error => logger.error({ err: error }, 'Could not register AI_LABELING_API_URL'))
-  installShutdownHandler()
   const tick = () => {
     ensureJobsMonitored().catch(error => logger.error({ err: error }, 'AI job recovery failed'))
   }
@@ -288,20 +295,25 @@ export function resumeAfterRelease() {
   globalAny.__jobRecoveryTimer = undefined
 }
 
-function installShutdownHandler() {
+function installShutdownHandler(aiConfigured: boolean, stopTelemetry?: () => Promise<void>) {
   if (globalAny.__aiShutdownHandler) return
   globalAny.__aiShutdownHandler = true
+  let stopping = false
   const onSignal = (signal: NodeJS.Signals) => {
-    releaseAllLeases()
-      .then(released => {
-        if (released > 0) logger.info({ signal, released }, 'Released AI job leases')
-      })
-      .catch(error => logger.error({ err: error }, 'Could not release AI job leases'))
-      .finally(() => {
-        // Next.js exits on its own after closing the server, unless told to
-        // leave signals to the application.
-        if (process.env.NEXT_MANUAL_SIG_HANDLE) process.exit(signal === 'SIGINT' ? 130 : 143)
-      })
+    if (stopping) return
+    stopping = true
+    const release = aiConfigured
+      ? releaseAllLeases()
+          .then(released => {
+            if (released > 0) logger.info({ signal, released }, 'Released AI job leases')
+          })
+          .catch(error => logger.error({ err: error }, 'Could not release AI job leases'))
+      : undefined
+    const flush = stopTelemetry?.().catch(error => logger.error({ err: error }, 'Could not flush telemetry'))
+    void Promise.all([release, flush]).then(() => {
+      // Next.js closes the server unless told to leave signals to the application.
+      if (process.env.NEXT_MANUAL_SIG_HANDLE) process.exit(signal === 'SIGINT' ? 130 : 143)
+    })
   }
   process.once('SIGTERM', onSignal)
   process.once('SIGINT', onSignal)
@@ -467,13 +479,14 @@ async function startExternal(kind: JobKind, job: JobRecord, client: TaxomindClie
       await wait(delay)
       continue
     }
+    const startedAt = new Date()
     const saved = await withWorkspace(job.workspaceId, () =>
       jobTable(kind).updateMany({
         where: { id: job.id, status: 'processing', leaseOwner: monitorInstanceId() },
-        data: { externalJobId, startedAt: new Date(), errorMessage: null }
+        data: { externalJobId, startedAt, errorMessage: null }
       })
     )
-    if (saved.count > 0) return externalJobId
+    if (saved.count > 0) return { externalJobId, startedAt }
     if (!(await isStillProcessing(job.workspaceId, job.id, kind))) {
       await client.cancelJob(API_RESOURCE[kind], externalJobId)
     }
@@ -502,9 +515,11 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       if (!job || job.status !== 'processing') return
 
       const { client, namespace } = await connectionClient(workspaceId, job.connectionVersionId, job.requestId)
-      const externalJobId = job.externalJobId ?? (await startExternal(kind, job, client, namespace))
+      const external = job.externalJobId
+        ? { externalJobId: job.externalJobId, startedAt: job.startedAt }
+        : await startExternal(kind, job, client, namespace)
 
-      if (externalJobId) await pollUntilComplete(job, externalJobId, client, kind)
+      if (external) await pollUntilComplete({ ...job, ...external }, external.externalJobId, client, kind)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       logger.error({ kind, jobId, err: error }, 'AI job failed')
@@ -530,19 +545,20 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
  */
 async function pollUntilComplete(job: JobRecord, externalJobId: string, client: TaxomindClient, kind: JobKind) {
   const { workspaceId, id: jobId, taxonomyId } = job
-  const startedAt = Date.now()
+  const deadline = job.startedAt.getTime() + AI_JOB_POLL_TIMEOUT_MS
   let consecutiveErrors = 0
+  let importErrors = 0
 
   while (true) {
-    if (!(await isStillProcessing(workspaceId, jobId, kind))) return // cancelled or finished elsewhere
-    if (!(await claimLease(workspaceId, jobId, kind))) {
-      if (!shuttingDown()) logger.warn({ kind, jobId }, 'AI job lease lost to another instance; stopping here')
-      return
-    }
-
+    let importing = false
     try {
+      if (!(await claimLease(workspaceId, jobId, kind, POLL_LEASE_MS))) return
+      if (Date.now() >= deadline) {
+        const timedOut = await failIfActive(workspaceId, jobId, kind, 'AI job exceeded its maximum running time')
+        if (timedOut) await client.cancelJob(API_RESOURCE[kind], externalJobId)
+        return
+      }
       const status = await client.fetchJobStatus(API_RESOURCE[kind], externalJobId)
-      consecutiveErrors = 0
 
       if (job.totalSentences !== null) {
         const progress = status.progress ?? 0
@@ -552,6 +568,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
       }
 
       if (status.status === 'completed') {
+        importing = true
         // Completion is a conditional transition: if the job was cancelled while
         // we waited for the service, nothing is written. Results and status
         // commit together, and only while the workspace is active (write: an
@@ -576,6 +593,13 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
             if (claimed.count === 0) return false
             if (kind === 'labeling') {
               await storeLabelingResults(tx, workspaceId, jobId, taxonomyId, status.result)
+              await audit({
+                actorId: null,
+                action: 'ai.results_saved',
+                entityType: 'ai_job',
+                entityId: jobId,
+                payload: { taxonomyId }
+              })
             }
             if (kind === 'learning') {
               await creditLearningBatch(taxonomyId, jobId)
@@ -591,7 +615,7 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
       }
 
       if (status.status === 'failed') {
-        await failIfActive(workspaceId, jobId, kind, status.error || 'External AI job failed')
+        await failIfActive(workspaceId, jobId, kind, 'External AI job failed')
         return
       }
 
@@ -599,22 +623,28 @@ async function pollUntilComplete(job: JobRecord, externalJobId: string, client: 
       // job still ends up cancelled: the cancel routes write that status
       // unconditionally, and failIfActive leaves a cancelled job alone.
       if (status.status === 'canceled') {
-        await failIfActive(workspaceId, jobId, kind, status.error || 'External AI job was cancelled in the AI service')
+        await failIfActive(workspaceId, jobId, kind, 'External AI job was cancelled in the AI service')
         return
       }
+      consecutiveErrors = 0
     } catch (error) {
-      if (Date.now() - startedAt >= AI_JOB_POLL_TIMEOUT_MS) {
-        throw error
+      if (importing && ++importErrors >= RESULT_IMPORT_ATTEMPTS) {
+        await failIfActive(workspaceId, jobId, kind, 'Could not save the AI job results after three attempts')
+        return
       }
       consecutiveErrors++
       logger.warn({ kind, jobId, consecutiveErrors, err: error }, 'AI job status request failed')
     }
 
-    if (Date.now() - startedAt >= AI_JOB_POLL_TIMEOUT_MS) {
-      throw new Error(`Job polling timed out after ${Math.round(AI_JOB_POLL_TIMEOUT_MS / 60000)} minutes`)
+    const delay = Math.min(pollDelay(consecutiveErrors), Math.max(1_000, deadline - Date.now()))
+    try {
+      if (!(await claimLease(workspaceId, jobId, kind, delay + POLL_LEASE_MS))) return
+    } catch (error) {
+      logger.warn({ kind, jobId, err: error }, 'Could not renew AI job lease before the next poll')
+      await wait(Math.min(delay, 30_000))
+      continue
     }
-
-    await wait(pollDelay(consecutiveErrors))
+    await wait(delay)
   }
 }
 
@@ -636,7 +666,7 @@ async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, m
     leaseOwner: null,
     leaseExpiresAt: null
   }
-  await withWorkspace(
+  return withWorkspace(
     workspaceId,
     async () => {
       const learning =
@@ -644,7 +674,10 @@ async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, m
         (await db().aILearningJob.findUnique({ where: { id: jobId }, select: { taxonomyId: true } }))
       if (learning) await lockLearningTaxonomy(learning.taxonomyId)
       const changed = await jobTable(kind).updateMany({ where, data })
-      if (learning && changed.count > 0) await settleLearningRun(learning.taxonomyId)
+      if (changed.count === 0) return false
+      if (learning) await settleLearningRun(learning.taxonomyId)
+      await audit({ actorId: null, action: 'ai.job_failed', entityType: 'ai_job', entityId: jobId, payload: { kind } })
+      return true
     },
     { write: true }
   )
@@ -654,8 +687,8 @@ async function failIfActive(workspaceId: string, jobId: string, kind: JobKind, m
  * Validates the completed labeling job's result (lib/contracts/taxomind.ts)
  * and stores the suggestions, inside the completion transaction. Only the
  * job's input records (AILabelingJobInput, read here, not from the result or
- * memory) are touched, and only codes that exist in the taxonomy (or are the
- * level's unknown code) are kept.
+ * memory) are touched. Accept contiguous suggestions along the hierarchy,
+ * including partial paths and a suffix of level-specific unknown codes.
  */
 async function storeLabelingResults(
   tx: Prisma.TransactionClient,
@@ -672,23 +705,34 @@ async function storeLabelingResults(
 
   const codes = new Set<string>()
   bySentence.forEach(list => list.forEach(s => codes.add(s.nodeCode)))
-  const known = new Set(
-    (
-      await tx.taxonomyNode.findMany({
-        where: { taxonomyId, code: { in: Array.from(codes) } },
-        select: { code: true }
-      })
-    ).map(n => n.code)
-  )
-  let unknownCodes = 0
+  const taxonomy = await tx.taxonomy.findUniqueOrThrow({ where: { id: taxonomyId }, select: { maxDepth: true } })
+  const codeList = Array.from(codes)
+  const known = new Map<string, { level: number; parentCode: string | null }>()
+  const chunkSize = 1000
+  for (let offset = 0; offset < codeList.length; offset += chunkSize) {
+    const nodes = await tx.taxonomyNode.findMany({
+      where: { taxonomyId, code: { in: codeList.slice(offset, offset + chunkSize) } },
+      select: { code: true, level: true, parentCode: true }
+    })
+    for (const node of nodes) known.set(node.code, node)
+  }
+  let invalidPaths = 0
+  const data: Prisma.SentenceAISuggestionCreateManyInput[] = []
 
   for (const [sentenceId, suggestions] of bySentence) {
-    const valid = suggestions.filter(s => known.has(s.nodeCode) || s.nodeCode === getUnknownCodeForLevel(s.level))
-    unknownCodes += suggestions.length - valid.length
-    await tx.sentenceAISuggestion.deleteMany({ where: { sentenceId, taxonomyId } })
-    if (valid.length === 0) continue
-    await tx.sentenceAISuggestion.createMany({
-      data: valid.map(s => ({
+    const sorted = [...suggestions].sort((a, b) => a.level - b.level)
+    const valid = sorted.every(({ level, nodeCode }, index) => {
+      if (level !== index + 1 || level > taxonomy.maxDepth) return false
+      if (nodeCode === getUnknownCodeForLevel(level)) return true
+      const node = known.get(nodeCode)
+      return node?.level === level && node.parentCode === (sorted[index - 1]?.nodeCode ?? null)
+    })
+    if (!valid) {
+      invalidPaths++
+      continue
+    }
+    data.push(
+      ...sorted.map(s => ({
         workspaceId,
         sentenceId,
         taxonomyId,
@@ -696,16 +740,26 @@ async function storeLabelingResults(
         nodeCode: s.nodeCode,
         confidenceScore: s.confidence
       }))
-    })
-  }
-
-  if (rejected > 0 || unknownCodes > 0) {
-    logger.warn(
-      { jobId, rejected, unknownCodes },
-      'Dropped malformed or foreign labeling results and suggestions with codes not in the taxonomy'
     )
   }
-  if (serviceErrors + rejected > 0) {
-    await tx.aILabelingJob.update({ where: { id: jobId }, data: { failedSentences: serviceErrors + rejected } })
+  const returnedIds = Array.from(bySentence.keys())
+  for (let offset = 0; offset < returnedIds.length; offset += chunkSize) {
+    await tx.sentenceAISuggestion.deleteMany({
+      where: { taxonomyId, sentenceId: { in: returnedIds.slice(offset, offset + chunkSize) } }
+    })
+  }
+  for (let offset = 0; offset < data.length; offset += chunkSize) {
+    await tx.sentenceAISuggestion.createMany({ data: data.slice(offset, offset + chunkSize) })
+  }
+
+  if (rejected > 0 || invalidPaths > 0) {
+    logger.warn(
+      { jobId, rejected, invalidPaths },
+      'Dropped labeling results for invalid taxonomy paths or records outside the job'
+    )
+  }
+  const failedSentences = serviceErrors + rejected + invalidPaths
+  if (failedSentences > 0) {
+    await tx.aILabelingJob.update({ where: { id: jobId }, data: { failedSentences } })
   }
 }

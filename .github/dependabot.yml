@@ -38,3 +38,9 @@ updates:
     target-branch: staging
     schedule:
       interval: monthly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly

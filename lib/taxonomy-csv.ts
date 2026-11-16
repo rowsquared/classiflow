@@ -23,6 +23,8 @@ const ALLOWED_HEADERS = new Set<string>([...REQUIRED_HEADERS, ...OPTIONAL_HEADER
 
 const MAX_LEVELS = 5
 const MAX_CODE_LENGTH = 100
+const MAX_LABEL_LENGTH = 2000
+const MAX_NODES = 100_000
 const MAX_ERRORS = 200
 
 export type TaxonomyCsvNode = {
@@ -68,7 +70,8 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
       },
       skip_empty_lines: true,
       bom: true,
-      cast: false
+      cast: false,
+      to: MAX_NODES + 1
     }) as Record<string, string>[]
   } catch (caught) {
     return { nodes: [], errors: [{ row: 0, message: `CSV parsing error: ${(caught as Error).message}` }] }
@@ -108,6 +111,9 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
   if (records.length === 0) {
     return { nodes: [], errors: [{ row: 0, message: 'CSV file is empty or contains no data rows' }] }
   }
+  if (existing.size + records.length > MAX_NODES) {
+    return { nodes: [], errors: [{ row: 0, message: 'A taxonomy may contain at most 100,000 nodes' }] }
+  }
 
   // Pass 1: row-local checks and the id index.
   type Row = {
@@ -141,6 +147,9 @@ export function parseTaxonomyCsv(csv: string, opts: Options = {}): ParseResult {
     }
     if (!label) {
       fail(rowNum, 'Empty label value')
+      ok = false
+    } else if (label.length > MAX_LABEL_LENGTH) {
+      fail(rowNum, 'Label is longer than 2,000 characters')
       ok = false
     }
     if (!Number.isInteger(level) || level < 1 || level > maxDepth) {

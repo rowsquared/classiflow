@@ -317,7 +317,7 @@ To scale the application:
 
 1. Use long random values for `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET` and `DEFAULT_ADMIN_PASSWORD`
 2. `APP_DB_USER`/`APP_DB_PASSWORD` are required: the server runs with row access only, under workspace row security
-3. Enable database backups and run `scripts/restore-drill.sh` on one (DEPLOYMENT.md "Backups")
+3. Verify that the deployment's database backup schedule is active.
 4. Configure SSL/TLS (handled by Coolify)
 5. Set up monitoring and alerts
 6. Review and adjust resource limits
@@ -394,7 +394,10 @@ and formatting (`npm run typecheck`, `npm run lint`, `npm test`,
 lint during the build. The `integration` and `e2e` jobs run the database
 integration tests and browser journeys, respectively; both also gate deployment.
 
-Two repository secrets drive the production deploy. Without them the job fails
+Two secrets in GitHub's `production` environment drive the deploy. Restrict
+this environment to the `main` branch. When migrating from repository secrets,
+set and verify both environment secrets first, then remove the repository copies.
+Without the two secrets the job fails
 loudly rather than skipping, because a release that quietly deploys nothing is
 the worst outcome:
 
@@ -404,6 +407,11 @@ the worst outcome:
 | `COOLIFY_API_TOKEN` | A Coolify API token with deploy permission. |
 
 ### Releases
+
+Coolify reconciles the Compose services during a deploy. When Compose
+replaces the app container, new requests can fail during startup and
+in-flight requests can be interrupted. Allow for this when scheduling
+releases that apply migrations. [Coolify rolling updates](https://coolify.io/docs/applications/deployments/rolling-updates)
 
 Work lands on `staging` (directly or by pull request). Production only moves by
 fast-forwarding `main` to `staging`:

@@ -22,6 +22,8 @@ import * as taxonomyRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/[k
 import * as validateRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/validate/route'
 import * as incrementalRoute from '@/app/api/workspaces/[workspaceId]/taxonomies/[key]/import/route'
 import * as recordImportRoute from '@/app/api/workspaces/[workspaceId]/sentences/import/route'
+import * as importsRoute from '@/app/api/workspaces/[workspaceId]/imports/route'
+import * as importRoute from '@/app/api/workspaces/[workspaceId]/imports/[id]/route'
 import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 
 let admin: User
@@ -145,6 +147,51 @@ describe('taxonomy CSV lifecycle', () => {
 })
 
 describe('record import and export', () => {
+  it('restricts import history and requires a current confirmation before deleting labelled records', async () => {
+    const response = await recordImportRoute.POST(
+      multipart('/x?dryRun=false', 'POST', {}, 'field_title\nBaker\n'),
+      params()
+    )
+    expect(response.status).toBe(200)
+    const { importId } = await response.json()
+    const caller = params({ id: importId })
+    const labeller = await createUser('labeller')
+    signInAs(labeller)
+    const list = await importsRoute.GET(request('/imports'), params())
+    expect(list.status).toBe(200)
+    expect((await list.json()).imports).toEqual([])
+    expect((await importRoute.GET(request('/imports/preview'), caller)).status).toBe(403)
+
+    signInAs(admin)
+    expect((await importsRoute.GET(request('/imports'), params())).status).toBe(200)
+    expect(await (await importRoute.GET(request('/imports/preview'), caller)).json()).toMatchObject({
+      records: 1,
+      labelledRecords: 0
+    })
+    await createTaxonomy()
+    const record = await prisma.sentence.findFirstOrThrow({ where: { importId } })
+    const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { key: 'occ' } })
+    await inWorkspace(() =>
+      db().sentenceAnnotation.create({
+        data: {
+          workspaceId: wsId(),
+          sentenceId: record.id,
+          taxonomyId: taxonomy.id,
+          level: 1,
+          nodeCode: '02',
+          source: 'user'
+        }
+      })
+    )
+
+    const remove = (count: number) =>
+      importRoute.DELETE(request(`/imports/preview?confirmLabelledRecords=${count}`, { method: 'DELETE' }), caller)
+    expect((await remove(0)).status).toBe(409)
+    expect(await prisma.sentence.count({ where: { importId } })).toBe(1)
+    expect((await remove(1)).status).toBe(200)
+    expect(await prisma.sentence.count({ where: { importId } })).toBe(0)
+  })
+
   it('accepts semicolon-separated UTF-8 with quoted delimiters and preserves ids', async () => {
     const csv = '\uFEFFid;"field_title, original";support_note\r\n001;"Bäcker; Konditor, Geselle";"A;B"\r\n'
     const imported = await recordImportRoute.POST(multipart('/x?dryRun=false', 'POST', {}, csv), params())

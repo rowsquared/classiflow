@@ -9,7 +9,7 @@
  * altered, so codes like "-99" or "0110" keep their exact value.
  */
 
-const FORMULA_START = /^[=+\-@\t\r]/
+const FORMULA_START = /^\s*[=+\-@\t\r\n]/
 
 export function neutralizeFormula(value: string): string {
   return FORMULA_START.test(value) ? `'${value}` : value

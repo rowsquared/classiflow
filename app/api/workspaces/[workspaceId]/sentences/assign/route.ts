@@ -36,10 +36,10 @@ export const GET = workspaceRoute(['admin', 'supervisor'], async (req, { user })
 
     const sentenceIds = sentenceIdsParam.split(',').filter(Boolean)
     if (sentenceIds.length === 0) {
-      return NextResponse.json({ error: 'No sentence IDs provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No record IDs provided' }, { status: 400 })
     }
     if (sentenceIds.length > MAX_IDS) {
-      return NextResponse.json({ error: `At most ${MAX_IDS} sentence IDs` }, { status: 400 })
+      return NextResponse.json({ error: `At most ${MAX_IDS} record IDs` }, { status: 400 })
     }
 
     const denied = await denyUnlessSentencesVisible(user, sentenceIds)

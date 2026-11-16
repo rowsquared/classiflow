@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth'
 import { isCrossSiteMutation } from '@/lib/cross-site'
 import { logger } from '@/lib/logger'
-import { REQUEST_ID_HEADER, requestIdFrom } from '@/lib/request-id'
+import { REQUEST_ID_HEADER } from '@/lib/request-id'
 
 // Enforced. Scripts need this request's nonce (Next adds it to its own
 // scripts; app/layout.tsx passes it to the sidebar init script), and
@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
 
   // Every request gets an ID (lib/request-id.ts): handlers read it from the
   // request headers for logs and audit entries, and the response carries it.
-  const requestId = requestIdFrom(request.headers.get(REQUEST_ID_HEADER))
+  const requestId = crypto.randomUUID()
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set(REQUEST_ID_HEADER, requestId)
   const withId = <T extends Response>(response: T) => {
@@ -93,6 +93,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files
      */
-    '/((?!_next/static|_next/image|favicon.ico|favicon-16x16.png|favicon-32x32.png|favicon.svg|logo.svg|r2-footer.svg).*)'
+    '/((?!_next/static|_next/image|api/live$|favicon.ico|favicon-16x16.png|favicon-32x32.png|favicon.svg|logo.svg|r2-footer.svg).*)'
   ]
 }

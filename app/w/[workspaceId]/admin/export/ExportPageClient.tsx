@@ -163,6 +163,10 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
             <h2 id="export-double" className="text-lg font-semibold text-gray-900">
               Double annotation analysis
             </h2>
+            <p className="text-sm text-gray-600">
+              Analysis files keep level-specific unknown codes such as <code>-9</code> and <code>-99</code>. The records
+              CSV displays these as <code>UNKNOWN</code>.
+            </p>
             {summary.data && (
               <span className="text-sm text-gray-600">
                 {formatNumber(summary.data.rounds)} rounds · {formatNumber(summary.data.pairs)} pairs ·{' '}

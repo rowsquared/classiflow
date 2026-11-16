@@ -21,6 +21,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: high
+
   smoke:
     # Builds the image exactly as Coolify does (same Dockerfile, same compose
     # file), boots the stack on an empty database and checks it came up:
@@ -42,13 +51,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build and start the stack
         # --wait blocks until every healthcheck passes, including the app's
-        # own /api/health probe, and fails if one goes unhealthy.
+        # own /api/live probe, and fails if one goes unhealthy.
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Health endpoint reports a connected database
         run: |
           body=$(docker compose exec -T app wget -qO- http://localhost:3000/api/health)
           echo "$body"
           echo "$body" | grep -q '"database":"connected"'
+          echo "$body" | grep -q '"rowSecurity":true'
       - name: Health endpoint reports the commit that was built
         run: |
           docker compose exec -T app wget -qO- http://localhost:3000/api/health \
@@ -95,6 +105,8 @@ jobs:
           cache: npm
       # Same dependency graph as the Dockerfile: exactly package-lock.json.
       - run: npm ci --no-audit --no-fund
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
@@ -181,20 +193,21 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [smoke, checks, integration, e2e]
     runs-on: ubuntu-latest
+    environment: production
     concurrency:
       group: deploy-prod
       cancel-in-progress: false
     steps:
       - name: Trigger the Coolify production deployment
         env:
-          # Repository secrets. The URL is Coolify's deploy API endpoint for the
+          # Production environment secrets. The URL is Coolify's deploy API endpoint for the
           # production application (not its git webhook):
           #   https://<coolify-host>/api/v1/deploy?uuid=<app-uuid>&force=false
           COOLIFY_PROD_WEBHOOK: ${{ secrets.COOLIFY_PROD_WEBHOOK }}
           COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
         run: |
           if [ -z "$COOLIFY_PROD_WEBHOOK" ] || [ -z "$COOLIFY_API_TOKEN" ]; then
-            echo "::error::COOLIFY_PROD_WEBHOOK and COOLIFY_API_TOKEN must both be set as repository secrets, otherwise nothing deploys production."
+            echo "::error::Set COOLIFY_PROD_WEBHOOK and COOLIFY_API_TOKEN in the GitHub production environment."
             exit 1
           fi
           deploy() {

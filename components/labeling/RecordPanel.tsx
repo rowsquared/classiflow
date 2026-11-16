@@ -79,7 +79,7 @@ export default function RecordPanel({
       maxWidth={70}
       side="left"
       storageKey="labeling-left-panel-width"
-      className="bg-white border-r border-gray-200 relative flex flex-col"
+      className="relative flex max-h-72 flex-col border-b border-gray-200 bg-white max-lg:w-full! max-lg:[&>[data-resize-handle]]:hidden lg:max-h-none lg:border-r lg:border-b-0"
     >
       <div className="flex-1 min-h-0 overflow-y-auto">
         {discussion}
@@ -150,8 +150,8 @@ export default function RecordPanel({
               disabled={disabled || currentIndex === 0}
               onClick={onPrevious}
               className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
-              title="Previous sentence"
-              aria-label="Previous sentence"
+              title="Previous record"
+              aria-label="Previous record"
             >
               <ChevronLeft className="w-5 h-5" aria-hidden="true" />
             </button>
@@ -159,8 +159,8 @@ export default function RecordPanel({
               disabled={disabled}
               onClick={onNext}
               className="p-2 text-gray-600 hover:text-[#008080] hover:bg-[#e6fbf8] rounded-lg transition-colors"
-              title="Next sentence"
-              aria-label="Next sentence"
+              title="Next record"
+              aria-label="Next record"
             >
               <ChevronRight className="w-5 h-5" aria-hidden="true" />
             </button>

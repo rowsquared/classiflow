@@ -1,305 +1,308 @@
 'use client'
-import { workspaceApi } from '@/lib/workspace/urls'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
 import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
-import { fetchJson } from '@/lib/query/fetch'
+import { fetchJson, HttpError } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import { formatDateTime } from '@/lib/utils'
+import { workspaceApi } from '@/lib/workspace/urls'
 import Modal from '@/components/Modal'
 import { buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 
-export type SentenceImport = {
+type SentenceImport = {
   id: string
   fileName: string
   uploadedAt: string
-  totalRows: number
   sentenceCount: number
 }
 
-type Props = {
-  initialImports?: SentenceImport[]
+type ImportPreview = { totalRows: number; emptyRecords: number; fieldColumns: string[]; supportColumns: string[] }
+type DeletionPreview = { records: number; labelledRecords: number }
+
+function importErrors(error: Error): string[] {
+  if (error instanceof HttpError && typeof error.body === 'object' && error.body && 'errors' in error.body) {
+    const errors = error.body.errors
+    if (Array.isArray(errors) && errors.every(item => typeof item === 'string') && errors.length > 0) return errors
+  }
+  return [error.message]
 }
 
-export default function SentenceAdminClient({ initialImports }: Props) {
+export default function SentenceAdminClient({ initialImports }: { initialImports?: SentenceImport[] }) {
   const workspaceId = useWorkspaceInfo()?.id ?? ''
-  const [sentenceFile, setSentenceFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const client = useQueryClient()
+  const [file, setFile] = useState<File | null>(null)
+  const [fileInputKey, setFileInputKey] = useState(0)
+  const [preview, setPreview] = useState<ImportPreview | null>(null)
+  const [message, setMessage] = useState('')
+  const [selectedImport, setSelectedImport] = useState<SentenceImport | null>(null)
+  const [confirmation, setConfirmation] = useState('')
   const importsQuery = useQuery({
     queryKey: queryKeys.imports(workspaceId),
     queryFn: async ({ signal }) =>
       (await fetchJson<{ imports: SentenceImport[] }>(workspaceApi('/imports'), { signal })).imports,
     initialData: initialImports
   })
-  const imports = importsQuery.data ?? []
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [selectedImport, setSelectedImport] = useState<SentenceImport | null>(null)
-  const [confirmText, setConfirmText] = useState('')
-  const [deleting, setDeleting] = useState(false)
+  const deletion = useQuery({
+    queryKey: [...queryKeys.imports(workspaceId), 'delete-preview', selectedImport?.id],
+    queryFn: ({ signal }) => fetchJson<DeletionPreview>(workspaceApi(`/imports/${selectedImport!.id}`), { signal }),
+    enabled: selectedImport !== null,
+    staleTime: 0
+  })
 
-  const handleDeleteImport = async () => {
-    if (!selectedImport || confirmText !== 'DELETE') return
-
-    try {
-      setDeleting(true)
-      const res = await fetch(workspaceApi(`/imports/${selectedImport.id}`), {
-        method: 'DELETE'
-      })
-      const data = await res.json()
-
-      if (data.ok) {
-        setMessage({
-          type: 'success',
-          text: `Successfully deleted import "${selectedImport.fileName}" and ${data.deletedSentences} sentences`
-        })
-        setDeleteModalOpen(false)
-        setConfirmText('')
-        setSelectedImport(null)
-        await importsQuery.refetch()
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to delete import' })
-      }
-    } catch (error) {
-      console.error('Delete import failed:', error)
-      setMessage({ type: 'error', text: 'Network error' })
-    } finally {
-      setDeleting(false)
-    }
+  async function refreshImports() {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: queryKeys.imports(workspaceId) }),
+      client.invalidateQueries({ queryKey: queryKeys.queue(workspaceId) })
+    ])
   }
 
-  const handleSentenceUpload = async () => {
-    if (!sentenceFile) return
-
-    setUploading(true)
-    setMessage(null)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', sentenceFile)
-
-      const dryRunRes = await fetch(workspaceApi('/sentences/import?dryRun=true'), {
-        method: 'POST',
-        body: formData
-      })
-      const dryRunData = await dryRunRes.json()
-
-      if (!dryRunRes.ok) {
-        setMessage({
-          type: 'error',
-          text: dryRunData.error || dryRunData.errors?.join(', ') || 'Validation failed'
-        })
-        setUploading(false)
-        return
-      }
-
-      const formData2 = new FormData()
-      formData2.append('file', sentenceFile)
-      const res = await fetch(workspaceApi('/sentences/import?dryRun=false'), {
-        method: 'POST',
-        body: formData2
-      })
-      const data = await res.json()
-
-      if (res.ok) {
-        setMessage({
-          type: 'success',
-          text: `Successfully imported ${data.count || 0} sentences!`
-        })
-        setSentenceFile(null)
-        await importsQuery.refetch()
-      } else {
-        setMessage({
-          type: 'error',
-          text: data.error || data.errors?.join(', ') || 'Import failed'
-        })
-      }
-    } catch (error) {
-      console.error('Sentence upload failed:', error)
-      setMessage({ type: 'error', text: 'Network error' })
-    } finally {
-      setUploading(false)
-    }
+  function clearFile() {
+    setFile(null)
+    setFileInputKey(key => key + 1)
+    setPreview(null)
   }
+
+  const upload = useMutation({
+    mutationFn: async ({ csv, dryRun }: { csv: File; dryRun: boolean }) => {
+      const body = new FormData()
+      body.append('file', csv)
+      return fetchJson<{ summary?: ImportPreview; count?: number }>(
+        workspaceApi(`/sentences/import?dryRun=${dryRun}`),
+        {
+          method: 'POST',
+          body
+        }
+      )
+    },
+    onSuccess: async (data, { dryRun }) => {
+      if (dryRun && data.summary) {
+        setPreview(data.summary)
+      } else if (!dryRun) {
+        setMessage(`Imported ${data.count?.toLocaleString()} records.`)
+        clearFile()
+        await refreshImports()
+      }
+    }
+  })
+
+  const deleteImport = useMutation({
+    mutationFn: ({ id, labelledRecords }: { id: string; labelledRecords: number }) =>
+      fetchJson<{ deletedSentences: number }>(
+        workspaceApi(`/imports/${id}?confirmLabelledRecords=${labelledRecords}`),
+        { method: 'DELETE' }
+      ),
+    onSuccess: async ({ deletedSentences }) => {
+      setMessage(`Deleted the import and ${deletedSentences.toLocaleString()} records.`)
+      setSelectedImport(null)
+      await refreshImports()
+    },
+    onError: async error => {
+      if (error instanceof HttpError && error.status === 409) {
+        setConfirmation('')
+        await deletion.refetch()
+      }
+    }
+  })
 
   return (
     <>
-      <PageHeader title="Sentences" />
-      <div className="px-8 py-8">
-        <div className="mb-8">
-          <p className="text-sm text-gray-600">Import sentences for labeling and manage import history</p>
-        </div>
-
+      <PageHeader title="Records" />
+      <div className="space-y-6 px-4 py-6 sm:px-8">
         {message && (
-          <div
-            className={`mb-6 p-4 rounded-lg ${
-              message.type === 'success'
-                ? 'bg-green-50 text-green-800 border border-green-200'
-                : 'bg-red-50 text-red-800 border border-red-200'
-            }`}
-          >
-            {message.text}
-          </div>
+          <p role="status" className="text-sm text-green-800">
+            {message}
+          </p>
         )}
-
-        <div className={`${panelClass} p-6 mb-6`}>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Import records</h2>
-
+        <section className={`${panelClass} p-6`}>
+          <h2 className="mb-4 text-lg font-semibold">Import records</h2>
           <div className="max-w-xl space-y-4">
-            <div>
-              <label htmlFor="sentence-file-input" className="block text-sm font-medium text-gray-700 mb-2">
-                CSV file
-              </label>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 relative">
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={e => setSentenceFile(e.target.files?.[0] || null)}
-                    aria-label="CSV file to import"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    id="sentence-file-input"
-                  />
-                  <div className="flex items-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors">
-                    <span className="text-sm text-gray-600 truncate flex-1">
-                      {sentenceFile ? sentenceFile.name : 'No file chosen'}
-                    </span>
-                  </div>
-                </div>
-                <label
-                  htmlFor="sentence-file-input"
-                  className="px-6 py-2.5 bg-indigo-50 text-indigo-700 font-medium rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer whitespace-nowrap border border-indigo-200"
-                >
-                  Choose file...
-                </label>
+            <label htmlFor="record-import-file" className="block text-sm font-medium">
+              CSV file to import
+            </label>
+            <input
+              key={fileInputKey}
+              type="file"
+              accept=".csv"
+              id="record-import-file"
+              disabled={upload.isPending}
+              className="block max-w-full rounded-sm border border-gray-500 p-2 text-sm"
+              onChange={event => {
+                setFile(event.target.files?.[0] ?? null)
+                setPreview(null)
+                setMessage('')
+                upload.reset()
+              }}
+            />
+            <p className="text-sm text-gray-600">
+              Use one to five <code>field_&lt;name&gt;</code> columns, up to five <code>support_&lt;name&gt;</code>{' '}
+              columns, and an optional <code>id</code> column.
+            </p>
+            {upload.error && (
+              <ul role="alert" className="list-disc space-y-1 pl-5 text-sm text-red-800">
+                {importErrors(upload.error).map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            )}
+            {preview && (
+              <div role="status" className="space-y-1 text-sm">
+                <p>
+                  <strong>{preview.totalRows.toLocaleString()} records ready to import</strong>
+                </p>
+                <p>Fields: {preview.fieldColumns.join(', ')}</p>
+                {preview.supportColumns.length > 0 && <p>Context: {preview.supportColumns.join(', ')}</p>}
+                {preview.emptyRecords > 0 && (
+                  <p className="text-amber-800">
+                    {preview.emptyRecords.toLocaleString()} records have no field values.
+                  </p>
+                )}
               </div>
-              <p className="text-xs text-gray-600 mt-2">
-                Columns: an optional <code>id</code>, one to five <code>field_&lt;name&gt;</code> columns to classify,
-                and up to five <code>support_&lt;name&gt;</code> context columns.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
+            )}
+            <div className="flex flex-wrap gap-3">
               <button
-                onClick={handleSentenceUpload}
-                disabled={!sentenceFile || uploading}
+                onClick={() => file && upload.mutate({ csv: file, dryRun: preview === null })}
+                disabled={!file || upload.isPending}
                 className={buttonClass('primary')}
               >
-                {uploading ? 'Uploading...' : 'Upload'}
+                {upload.isPending
+                  ? preview
+                    ? 'Importing…'
+                    : 'Validating…'
+                  : preview
+                    ? `Import ${preview.totalRows.toLocaleString()} records`
+                    : 'Validate CSV'}
               </button>
-              <button onClick={() => setSentenceFile(null)} className={buttonClass('secondary')}>
-                Clear
-              </button>
+              {file && (
+                <button
+                  className={buttonClass('secondary')}
+                  disabled={upload.isPending}
+                  onClick={() => {
+                    clearFile()
+                    upload.reset()
+                  }}
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
-        </div>
-
-        <div className={`${panelClass} p-6`}>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Import history</h2>
-              <p className="text-sm text-gray-600 mt-1">Track and manage your previous sentence imports</p>
-            </div>
+        </section>
+        <section className={`${panelClass} p-6`}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Import history</h2>
             <button
               onClick={() => void importsQuery.refetch()}
               disabled={importsQuery.isFetching}
-              className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+              className={buttonClass('secondary', 'sm')}
             >
               {importsQuery.isError ? 'Retry' : 'Refresh'}
             </button>
           </div>
-
           {importsQuery.isError && (
-            <p role="alert" className="mb-4 text-sm text-red-700">
+            <p role="alert" className="mb-4 text-sm text-red-800">
               Could not load import history.
             </p>
           )}
-          {importsQuery.isPending ? (
-            <div className="py-12 text-center text-gray-600">Loading imports...</div>
-          ) : imports.length === 0 && !importsQuery.isError ? (
-            <div className="py-12 text-center text-gray-600">No imports yet. Upload a CSV file to get started.</div>
-          ) : (
-            <div className="space-y-4">
-              {imports.map(importRecord => (
-                <div
-                  key={importRecord.id}
-                  className="border border-gray-200 rounded-lg p-4 flex items-center justify-between"
-                >
-                  <div>
-                    <h3 className="font-medium text-gray-900">{importRecord.fileName}</h3>
-                    <p className="text-sm text-gray-600">Uploaded on {formatDateTime(importRecord.uploadedAt)}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {importRecord.sentenceCount.toLocaleString()} sentences
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => {
-                        setSelectedImport(importRecord)
-                        setDeleteModalOpen(true)
-                      }}
-                      className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {importsQuery.isPending && (
+            <p role="status" className="text-sm text-gray-600">
+              Loading imports…
+            </p>
           )}
-        </div>
+          {importsQuery.data?.length === 0 && !importsQuery.isError && (
+            <p className="text-sm text-gray-600">No imports yet.</p>
+          )}
+          <ul className="divide-y divide-gray-200">
+            {importsQuery.data?.map(record => (
+              <li key={record.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="break-words font-medium">{record.fileName}</p>
+                  <p className="text-sm text-gray-600">
+                    {formatDateTime(record.uploadedAt)} · {record.sentenceCount.toLocaleString()} records
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedImport(record)
+                    setConfirmation('')
+                    deleteImport.reset()
+                  }}
+                  className={buttonClass('secondary', 'sm')}
+                  aria-label={`Delete import ${record.fileName}`}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
 
-      {deleteModalOpen && selectedImport && (
+      {selectedImport && (
         <Modal
           label="Delete import"
           onClose={() => {
-            setDeleteModalOpen(false)
-            setConfirmText('')
-            setSelectedImport(null)
+            if (!deleteImport.isPending) setSelectedImport(null)
           }}
         >
-          <div className={`${dialogPanelClass} max-w-lg w-full p-8`}>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete import</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Deleting the import <strong>{selectedImport.fileName}</strong> will permanently remove this import record
-              and <strong>all {selectedImport.sentenceCount.toLocaleString()} sentences</strong> associated with it.
-            </p>
-
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-red-700 font-medium mb-2">This action cannot be undone.</p>
-              <p className="text-sm text-red-700">
-                Type <strong>DELETE</strong> below to confirm.
+          <div className={`${dialogPanelClass} w-full max-w-lg space-y-4 p-6`}>
+            <h2 className="text-lg font-semibold">Delete import</h2>
+            {deletion.isFetching && (
+              <p role="status" className="text-sm">
+                Loading deletion preview…
               </p>
-            </div>
-
-            <input
-              type="text"
-              value={confirmText}
-              onChange={e => setConfirmText(e.target.value)}
-              placeholder='Type "DELETE" to confirm'
-              className="w-full px-4 py-2 border border-gray-500 rounded-lg mb-4 focus-visible:ring-2 focus-visible:ring-red-500 focus:border-red-500"
-            />
-
+            )}
+            {deletion.isError && (
+              <div className="space-y-2">
+                <p role="alert" className="text-sm text-red-800">
+                  Could not load the deletion preview.
+                </p>
+                <button className={buttonClass('secondary', 'sm')} onClick={() => void deletion.refetch()}>
+                  Retry
+                </button>
+              </div>
+            )}
+            {deletion.data && (
+              <p className="text-sm text-gray-700">
+                Deleting <strong>{selectedImport.fileName}</strong> permanently removes its{' '}
+                {deletion.data.records.toLocaleString()} records, including{' '}
+                {deletion.data.labelledRecords.toLocaleString()} labelled records and their labelling history.
+              </p>
+            )}
+            {deleteImport.error && (
+              <p role="alert" className="text-sm text-red-800">
+                {deleteImport.error.message}
+              </p>
+            )}
+            <label className="block text-sm">
+              Type <strong>DELETE</strong> to confirm
+              <input
+                value={confirmation}
+                onChange={event => setConfirmation(event.target.value)}
+                disabled={deleteImport.isPending}
+                className="mt-1 block w-full rounded-sm border border-gray-500 p-2"
+              />
+            </label>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => {
-                  setDeleteModalOpen(false)
-                  setConfirmText('')
-                  setSelectedImport(null)
-                }}
+                disabled={deleteImport.isPending}
                 className={buttonClass('secondary')}
+                onClick={() => setSelectedImport(null)}
               >
                 Cancel
               </button>
               <button
-                onClick={handleDeleteImport}
-                disabled={confirmText !== 'DELETE' || deleting}
                 className={buttonClass('danger')}
+                disabled={
+                  confirmation !== 'DELETE' || !deletion.isSuccess || deletion.isFetching || deleteImport.isPending
+                }
+                onClick={() =>
+                  deletion.data &&
+                  deleteImport.mutate({ id: selectedImport.id, labelledRecords: deletion.data.labelledRecords })
+                }
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                {deleteImport.isPending ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

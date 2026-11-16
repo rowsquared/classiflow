@@ -75,20 +75,32 @@ async function findJobs(where: Record<string, unknown>) {
 /** Labelling, learning and taxonomy sync jobs, most recent activity first, one page. */
 export async function listAIJobs(workspaceId: string, { statusParams, page, limit }: AIJobListQuery) {
   const valid = statusParams.filter((s): s is z.infer<typeof statusSchema> => statusSchema.safeParse(s).success)
-  const allJobs = await findJobs({ workspaceId, status: { in: valid.length > 0 ? valid : ALL_STATUSES } })
-
-  // Sort by most recent activity (completedAt if available, otherwise startedAt)
-  allJobs.sort((a, b) => {
-    const timeA = new Date(a.completedAt || a.startedAt).getTime()
-    const timeB = new Date(b.completedAt || b.startedAt).getTime()
-    if (timeB !== timeA) return timeB - timeA
-    return b.id.localeCompare(a.id)
-  })
-
-  const total = allJobs.length
+  const statuses = valid.length > 0 ? valid : ALL_STATUSES
+  const offset = Math.min((page - 1) * limit, Number.MAX_SAFE_INTEGER)
+  const [result] = await db().$queryRaw<{ total: number; keys: { id: string; type: AIJobType }[] }[]>`
+    WITH jobs AS (
+      SELECT id, 'labeling' AS type, COALESCE("completedAt", "startedAt") AS activity FROM "AILabelingJob"
+      WHERE "workspaceId" = ${workspaceId} AND status = ANY(${statuses}::"AILabelingJobStatus"[])
+      UNION ALL
+      SELECT id, 'learning', COALESCE("completedAt", "startedAt") FROM "AILearningJob"
+      WHERE "workspaceId" = ${workspaceId} AND status = ANY(${statuses}::"AILabelingJobStatus"[])
+      UNION ALL
+      SELECT id, 'taxonomy_sync', COALESCE("completedAt", "startedAt") FROM "AITaxonomySyncJob"
+      WHERE "workspaceId" = ${workspaceId} AND status = ANY(${statuses}::"AILabelingJobStatus"[])
+    ), page AS (
+      SELECT id, type, activity FROM jobs ORDER BY activity DESC, id DESC, type
+      LIMIT ${limit} OFFSET ${offset}
+    )
+    SELECT (SELECT count(*)::int FROM jobs) AS total,
+      COALESCE(json_agg(json_build_object('id', id, 'type', type) ORDER BY activity DESC, id DESC, type), '[]') AS keys
+    FROM page
+  `
+  const { total, keys } = result ?? { total: 0, keys: [] }
+  const rows = keys.length ? await findJobs({ workspaceId, id: { in: keys.map(key => key.id) } }) : []
+  const jobsByKey = new Map(rows.map(job => [`${job.type}:${job.id}`, job]))
   return {
     ok: true,
-    jobs: allJobs.slice((page - 1) * limit, page * limit),
+    jobs: keys.flatMap(({ id, type }) => jobsByKey.get(`${type}:${id}`) ?? []),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) }
   }
 }

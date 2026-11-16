@@ -459,7 +459,7 @@ export default function QueuePageClient({
               </div>
             ) : queue?.sentences.length === 0 ? (
               <div className="p-12 text-center text-gray-500">
-                <p className="text-lg">No sentences found</p>
+                <p className="text-lg">No records found</p>
                 <p className="text-sm mt-1">Try adjusting your filters or search query</p>
               </div>
             ) : (
@@ -541,13 +541,13 @@ export default function QueuePageClient({
               <div className="flex items-center justify-between max-w-full">
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-gray-900">
-                    {selectedIds.size} {selectedIds.size === 1 ? 'sentence' : 'sentences'} selected
+                    {selectedIds.size} {selectedIds.size === 1 ? 'record' : 'records'} selected
                   </span>
                   <div className="h-4 w-px bg-gray-300"></div>
                   <button
                     onClick={() => setBulkLabelOpen(true)}
                     className={buttonClass('primary')}
-                    title="Apply the same label to all selected sentences"
+                    title="Apply the same label to all selected records"
                   >
                     <Tag className="w-4 h-4" aria-hidden="true" />
                     Bulk label
@@ -556,7 +556,7 @@ export default function QueuePageClient({
                     <button
                       onClick={() => setAssignmentModalOpen(true)}
                       className={buttonClass('secondary')}
-                      title="Manage user assignments for selected sentences"
+                      title="Manage user assignments for selected records"
                     >
                       <Users className="w-4 h-4" aria-hidden="true" />
                       Assign / unassign
@@ -585,7 +585,7 @@ export default function QueuePageClient({
                         title={
                           unsyncedTaxonomies.length > 0
                             ? 'Sync all taxonomies with AI before sending sentences.'
-                            : 'Send selected sentences to AI for all active taxonomies'
+                            : 'Send selected records to AI for all active taxonomies'
                         }
                       >
                         <svg

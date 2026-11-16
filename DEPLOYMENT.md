@@ -53,7 +53,8 @@ It applies migrations, sets up the runtime database role (see
 [Database roles](#database-roles)), creates the first admin, seeds the demo
 workspace when `DEMO_SEED` is set (staging only, ENV_SETUP.md "Demo data") and
 starts the server.
-The default Dockerfile runs `node server.js` only, so you must override the start command in your platform (Kubernetes, ECS, Fly.io, etc.).
+The image uses this command by default. For a direct deployment on a
+container platform, provide the same settings as Compose.
 
 ## Environment Variables
 
@@ -166,13 +167,14 @@ It answers 200 with `"database": "connected"` and `"release": "<commit>"` (the
 when the database does not answer. Compare `release` with the commit you meant
 to deploy; with the repository variable `PROD_HEALTH_URL` set, the CI
 `deploy-prod` job waits for production to report the promoted commit.
+The response also reports whether row security applies to the database role.
+Use `/api/live` for process liveness. It answers without querying PostgreSQL.
 
 ## Logs, request IDs and traces
 
-The app logs JSON lines to stdout (collect them with the platform's container
-logs). Every request gets an ID: a well-formed `X-Request-ID` from the reverse
-proxy is kept (8–128 letters, digits, `.`, `_`, `:` or `-`), otherwise one is
-generated. It comes back as the `x-request-id` response header, appears on
+The app logs JSON lines to stdout. Compose rotates the application log at
+10 MiB and retains three files. The app generates an ID for each request it
+handles. It comes back as the `x-request-id` response header, appears on
 that request's log lines and is stored on its audit entries (`requestId`), so
 a reported error can be traced from the audit log to the logs. AI jobs keep the
 ID of the request that started them and send it to Taxomind as `x-request-id`
@@ -262,8 +264,20 @@ the runtime role's grants are re-applied. Then run the same checks against it
 before opening it to users:
 
 ```bash
-docker compose exec app node scripts/restore-check.ts   # uses the container's DATABASE_URL, APP_DB_USER, APP_DB_PASSWORD
+docker compose exec app node scripts/restore-check.ts
 ```
+
+## Upgrades and rollbacks
+
+Keep migrations compatible with the prior application version. Add new
+columns or tables before their first use and remove obsolete objects in a
+later release. For an incompatible migration, schedule downtime and use
+your deployment's recovery procedure.
+
+Follow the [Coolify release procedure](COOLIFY_DEPLOYMENT.md#releases).
+A code rollback reuses the new schema. If the prior version requires the
+old schema, restore it through your deployment's recovery procedure and
+deploy the corresponding application version.
 
 ## Troubleshooting
 

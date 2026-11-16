@@ -46,6 +46,9 @@ export const queryKeys = {
   taxonomyAdminList: (workspaceId: string) => ['ws', workspaceId, 'taxonomies', 'admin'] as const,
 
   audit: (workspaceId: string, params: string) => ['ws', workspaceId, 'audit', params] as const,
+  platformAudit: (params: string) => ['platform-audit', params] as const,
+  bulkLabelPreview: (workspaceId: string, taxonomy: string | undefined, recordIds: string[]) =>
+    ['ws', workspaceId, 'bulk-label-preview', taxonomy, recordIds] as const,
   members: (workspaceId: string) => ['ws', workspaceId, 'members'] as const,
   assignments: (workspaceId: string, sentenceIds: string) => ['ws', workspaceId, 'assignments', sentenceIds] as const,
 

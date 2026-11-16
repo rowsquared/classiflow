@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   // Enable standalone output for Docker deployments
   output: 'standalone',
   // React Compiler (babel-plugin-react-compiler) memoizes components and hooks.
@@ -14,6 +15,10 @@ const nextConfig: NextConfig = {
   // so proxy.ts sets it.
   async headers() {
     return [
+      {
+        source: '/api/:path*',
+        headers: [{ key: 'Content-Security-Policy', value: "default-src 'none'; frame-ancestors 'none'" }]
+      },
       {
         source: '/:path*',
         headers: [

@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 
 // Screens with unsaved work (the labelling screen's chosen but unsubmitted
 // labels) register here, so leaving the workspace through the switcher can
-// ask first. Page-local navigation (Back to Queue, next record) is unchanged.
+// ask first. Leaving or reloading the page triggers the browser's warning.
 
 const dirty = new Set<symbol>()
 
@@ -18,8 +18,14 @@ export function useUnsavedChanges(isDirty: boolean) {
     if (!isDirty) return
     const token = Symbol('unsaved')
     dirty.add(token)
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = true
+    }
+    window.addEventListener('beforeunload', beforeUnload)
     return () => {
       dirty.delete(token)
+      window.removeEventListener('beforeunload', beforeUnload)
     }
   }, [isDirty])
 }

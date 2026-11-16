@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useStoredBoolean } from '@/lib/use-local-storage'
 import { useQuery } from '@tanstack/react-query'
 import Combobox from '@/components/ui/Combobox'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -75,8 +74,7 @@ export default function DoublePanel({
   const active = view.status === 'active'
   const mode = reviewMode(view, outcome)
   // Blind review (per browser): no names while a disagreement is open, against reviewer bias.
-  const [hideNames, setHideNames] = useStoredBoolean('doubleReviewHideNames', false)
-  const anonymous = hideNames && mode === 'decide'
+  const anonymous = mode === 'decide'
   // Parts nobody has started (no answer yet) can go to someone else.
   const handOver = view.tasks.filter(
     t => t.status !== 'submitted' && !view.outcomes.some(o => o.answers.some(a => a.position === t.position))
@@ -107,12 +105,6 @@ export default function DoublePanel({
               .map(t => `${t.assignee?.name ?? 'Former member'}: ${PART_STATUS[t.status] ?? t.status}`)
               .join(' · ')}
           </span>
-        )}
-        {mode === 'decide' && (
-          <label className="ml-auto flex items-center gap-1.5 text-gray-700">
-            <input type="checkbox" checked={hideNames} onChange={e => setHideNames(e.target.checked)} />
-            Hide names while deciding
-          </label>
         )}
       </div>
       {!active && (

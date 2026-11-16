@@ -1,4 +1,5 @@
 import createClient from 'openapi-fetch'
+import { randomUUID } from 'node:crypto'
 import type { paths } from '@/lib/contracts/taxomind.openapi'
 import {
   createdJobId,
@@ -26,6 +27,7 @@ import { isWellFormedRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
 // should respond quickly.
 export const AI_REQUEST_TIMEOUT_POST_MS = 3 * 60 * 1000 // 3 minutes
 const AI_REQUEST_TIMEOUT_GET_MS = 30 * 1000 // 30 seconds
+const MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 
 /**
  * Where and how to reach Taxomind for one connection version. The credential
@@ -50,8 +52,62 @@ export class TaxomindRequestError extends Error {
  * Redirects are refused: an approved endpoint must not hand the bearer token
  * (or the records) on to another host.
  */
-const noRedirects: typeof fetch = (input, init) =>
-  fetch(input instanceof Request ? new Request(input, { redirect: 'error' }) : input, { ...init, redirect: 'error' })
+const fetchTaxomind: typeof fetch = async (input, init) => {
+  const response = await fetch(input instanceof Request ? new Request(input, { redirect: 'error' }) : input, {
+    ...init,
+    redirect: 'error'
+  })
+  if (!response.body) return response
+  if (!response.ok) {
+    await response.body.cancel().catch(() => undefined)
+    return new Response(null, { status: response.status, statusText: response.statusText })
+  }
+  return limitedResponse(response, MAX_RESPONSE_BYTES)
+}
+
+function limitedResponse(response: Response, maxBytes: number) {
+  if (!response.body) return response
+  let received = 0
+  const body = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength
+        if (received > maxBytes) {
+          throw new TaxomindRequestError('AI service response exceeded its size limit', false)
+        }
+        controller.enqueue(chunk)
+      }
+    })
+  )
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers })
+}
+
+/** Taxomind verifies the token before looking up the job. A unique missing job makes this a read-only probe. */
+export async function probeTaxomindConnection(baseUrl: string, credential: string) {
+  const jobId = randomUUID()
+  try {
+    const response = await fetch(`${baseUrl}/label/${jobId}/status`, {
+      headers: { Authorization: `Bearer ${credential}` },
+      redirect: 'error',
+      signal: AbortSignal.timeout(8_000)
+    })
+    if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel().catch(() => undefined)
+      return 'rejected'
+    }
+    if (response.status === 404) {
+      const body: unknown = await limitedResponse(response, 4096).json()
+      if (body && typeof body === 'object' && 'detail' in body && body.detail === `Job ${jobId} not found`) {
+        return 'accepted'
+      }
+    } else {
+      await response.body?.cancel().catch(() => undefined)
+    }
+  } catch {
+    // Never surface transport errors or response bodies from the probe.
+  }
+  return 'unavailable'
+}
 
 /**
  * Sends one request with the method's timeout and returns the body of a 2xx
@@ -103,7 +159,7 @@ export function taxomindClient({ baseUrl, credential, requestId }: TaxomindConne
       Authorization: `Bearer ${credential}`,
       ...(isWellFormedRequestId(requestId) && { [REQUEST_ID_HEADER]: requestId })
     },
-    fetch: noRedirects
+    fetch: fetchTaxomind
   })
 
   return {

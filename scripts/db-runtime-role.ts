@@ -48,9 +48,7 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
       SELECT current_database() AS db, current_schema() AS schema`
     const { db, schema } = row
     const role = `"${user}"`
-    const exists = await prisma.$queryRaw<unknown[]>`SELECT 1 FROM pg_roles WHERE rolname = ${user}`
     const statements = [
-      exists.length === 0 ? `CREATE ROLE ${role} LOGIN` : null,
       `ALTER ROLE ${role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD ${literal(password)}`,
       `ALTER ROLE ${role} IN DATABASE "${db}" SET statement_timeout = '5min'`,
       `ALTER ROLE ${role} IN DATABASE "${db}" SET idle_in_transaction_session_timeout = '5min'`,
@@ -61,19 +59,26 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
       `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO ${role}`,
       `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "${schema}" TO ${role}`,
       `REVOKE ALL ON TABLE "${schema}"."_prisma_migrations" FROM ${role}`,
+      `REVOKE UPDATE, DELETE ON TABLE "${schema}"."AuditLog" FROM ${role}`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${role}`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" GRANT USAGE, SELECT ON SEQUENCES TO ${role}`,
       // AI job recovery, admission and lease release across workspaces (ids
       // and lease columns only; see the migrations).
       `GRANT EXECUTE ON FUNCTION "${schema}".app_recoverable_ai_jobs(timestamp) TO ${role}`,
       `GRANT EXECUTE ON FUNCTION "${schema}".app_admit_ai_jobs(integer, integer, text, timestamp) TO ${role}`,
+      `GRANT EXECUTE ON FUNCTION "${schema}".app_admit_ai_jobs(integer, integer, integer, text, timestamp) TO ${role}`,
       `GRANT EXECUTE ON FUNCTION "${schema}".app_release_ai_leases(text) TO ${role}`,
       // Audit log retention across workspaces (deletes old entries only).
       `GRANT EXECUTE ON FUNCTION "${schema}".app_prune_audit_log(timestamp) TO ${role}`,
       // Queue text search through the trigram indexes, inside the current workspace only.
       `GRANT EXECUTE ON FUNCTION "${schema}".app_search_sentences(text, integer) TO ${role}`
-    ].filter((sql): sql is string => sql !== null)
-    await prisma.$transaction(statements.map(sql => prisma.$executeRawUnsafe(sql)))
+    ]
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('classiflow.runtime_role.' || ${user}))`
+      const exists = await tx.$queryRaw<unknown[]>`SELECT 1 FROM pg_roles WHERE rolname = ${user}`
+      if (exists.length === 0) await tx.$executeRawUnsafe(`CREATE ROLE ${role} LOGIN`)
+      for (const statement of statements) await tx.$executeRawUnsafe(statement)
+    })
     console.log(`✓ Database role "${user}" has row access to the application tables only`)
   } finally {
     await prisma.$disconnect()

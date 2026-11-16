@@ -105,7 +105,7 @@ export default function PaginationControls({
             Showing {startItem.toLocaleString()} to {endItem.toLocaleString()} of {total.toLocaleString()}
           </>
         ) : (
-          <>No sentences</>
+          <>No records</>
         )}
       </div>
 
