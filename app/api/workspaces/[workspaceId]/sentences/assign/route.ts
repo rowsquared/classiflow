@@ -139,7 +139,7 @@ export const DELETE = workspaceRoute(['admin', 'supervisor'], async (req, { user
   try {
     const validation = unassignSchema.safeParse(await req.json())
     if (!validation.success) {
-      return NextResponse.json({ error: 'No sentences provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No records provided' }, { status: 400 })
     }
     const { sentenceIds, userIds } = validation.data
 

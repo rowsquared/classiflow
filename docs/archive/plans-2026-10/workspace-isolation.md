@@ -1,7 +1,7 @@
 # Isolated classification workspaces
 
 **Archived 22 October 2026:** implemented. What is still open (environment,
-maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+maintainer decisions, Taxomind) is in [open items](../../open-items.md).
 
 **Status:** implemented 21–22 October 2026; staging verification remains in
 the open-items list above. **Original reviewed baseline:** classiflow

@@ -296,7 +296,7 @@ export default function FilterPanel({
 
         {/* Date Range */}
         <fieldset>
-          <legend className={sectionHeading}>Last edited</legend>
+          <legend className={sectionHeading}>Last edited (UTC)</legend>
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-1">
               <button type="button" onClick={() => setDateRange(0)} className={presetButton}>

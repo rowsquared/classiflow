@@ -1,12 +1,12 @@
 import { badgeClass, type BadgeTone } from '@/components/ui/styles'
-import type { DoubleRowSummary } from '@/lib/double-annotation'
+import { OUTCOME_LABELS, type DoubleRowSummary } from '@/lib/double-annotation'
 
 const STATES: Record<DoubleRowSummary['state'], { text: string; tone: BadgeTone }> = {
-  waiting: { text: 'labelled', tone: 'info' },
-  review: { text: 'Needs review', tone: 'warn' },
-  agreed: { text: 'Agreed', tone: 'accent' },
-  resolved: { text: 'Resolved', tone: 'accent' },
-  accepted: { text: 'Single label accepted', tone: 'neutral' }
+  waiting: { text: OUTCOME_LABELS.waiting, tone: 'info' },
+  review: { text: OUTCOME_LABELS.disagreed, tone: 'warn' },
+  agreed: { text: OUTCOME_LABELS.agreed, tone: 'accent' },
+  resolved: { text: OUTCOME_LABELS.reviewed, tone: 'accent' },
+  accepted: { text: OUTCOME_LABELS.accepted_single, tone: 'neutral' }
 }
 
 const PART_STATUS: Record<string, string> = { submitted: 'done', pending: 'to do', skipped: 'skipped' }
@@ -18,7 +18,7 @@ const PART_STATUS: Record<string, string> = { submitted: 'done', pending: 'to do
  */
 export default function DoubleBadge({ summary }: { summary: DoubleRowSummary }) {
   const { text, tone } = STATES[summary.state]
-  const label = summary.state === 'waiting' ? `${summary.done}/2 ${text}` : text
+  const label = summary.state === 'waiting' ? `${text} · ${summary.done}/2 labeled` : text
   const title = summary.people.map(p => `${p.name}: ${PART_STATUS[p.status] ?? p.status}`).join(', ')
   return (
     <div className="flex flex-col gap-1" title={title}>

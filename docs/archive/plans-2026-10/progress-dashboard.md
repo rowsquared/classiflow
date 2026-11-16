@@ -1,7 +1,7 @@
 # Progress dashboard: implementation plan
 
 **Archived 22 October 2026:** implemented. What is still open (environment,
-maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+maintainer decisions, Taxomind) is in [open items](../../open-items.md).
 
 **Status:** D0–D3 implemented 22 October 2026, D4 verified locally (see below); the staging-host benchmark under concurrent load is open.
 **Priority:** follow-up feature after the existing modernization and feature plans.

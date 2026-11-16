@@ -7,6 +7,7 @@ import { AnnotationSource, SentenceStatus, type Prisma } from '@/lib/generated/p
 import { parseEnum } from '@/lib/utils'
 import { PARTICIPATING, ownLabelsWhere, participantWhere, participation } from '@/lib/server/double-annotation'
 import { doubleRowSummaries, type DoubleRowSummary } from '@/lib/server/double-queue'
+import { addDays, parseCalendarDate } from '@/lib/reporting-dates'
 
 // Queue data for the queue page (app/queue), /api/sentences and
 // /api/sentences/stats. Both read the same filter parameters through
@@ -31,24 +32,27 @@ type AISuggestionView = {
  * `taxonomyKey,level,codeA,codeB`, see disagreementFilter).
  *
  * Double annotation: for the people who hold a part in a record (any round,
- * docs/plans/double-annotation-v2.md section 2), status, label, editor, flag
+ * docs/double-annotation.md, "Participation"), status, label, editor, flag
  * and comment filters apply to their own part; AI filters skip such records.
  */
-export async function queueWhere(user: CurrentUser, searchParams: URLSearchParams): Promise<Prisma.SentenceWhereInput> {
-  const parts = await holdsParts(user)
+async function queueWhere(
+  user: CurrentUser,
+  searchParams: URLSearchParams,
+  parts: boolean
+): Promise<Prisma.SentenceWhereInput> {
   const q = searchParams.get('q') || ''
   const statusParam = searchParams.getAll('status').join(',')
   const userId = searchParams.get('userId') || ''
   const assignedToUserId = searchParams.get('assignedToUserId') || ''
   const lastEditorId = searchParams.get('lastEditorId') || ''
-  const lastEditedFrom = searchParams.get('lastEditedFrom') || ''
-  const lastEditedTo = searchParams.get('lastEditedTo') || ''
+  const lastEditedFrom = parseCalendarDate(searchParams.get('lastEditedFrom') ?? '')
+  const lastEditedTo = parseCalendarDate(searchParams.get('lastEditedTo') ?? '')
   const taxonomyKey = searchParams.get('taxonomyKey') || ''
-  const level = searchParams.get('level') || ''
+  const level = filterLevel(searchParams.get('level'))
   const code = searchParams.get('code') || ''
   const source = searchParams.get('source') || '' // 'ai' or 'user'
   const aiTaxonomyKey = searchParams.get('aiTaxonomyKey') || ''
-  const aiLevel = searchParams.get('aiLevel') || ''
+  const aiLevel = filterLevel(searchParams.get('aiLevel'))
   const aiCode = searchParams.get('aiCode') || ''
   const aiConfidenceMin = searchParams.get('aiConfidenceMin') || ''
   const aiConfidenceMax = searchParams.get('aiConfidenceMax') || ''
@@ -99,11 +103,6 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
     }
   }
 
-  const double = searchParams.get('double') || ''
-  if (double && (user.role === 'admin' || user.role === 'supervisor')) {
-    const filter = doubleFilter(double)
-    if (filter) and.push(filter)
-  }
   const disagreement = searchParams.get('disagreement') || ''
   if (disagreement && (user.role === 'admin' || user.role === 'supervisor')) {
     and.push(await disagreementFilter(disagreement))
@@ -127,18 +126,9 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
 
   // Date range filter
   if (lastEditedFrom || lastEditedTo) {
-    const dateFilter: Prisma.DateTimeFilter = {}
-    if (lastEditedFrom) {
-      // Start of the day (00:00:00.000)
-      const fromDate = new Date(lastEditedFrom)
-      fromDate.setHours(0, 0, 0, 0)
-      dateFilter.gte = fromDate
-    }
-    if (lastEditedTo) {
-      // End of the day (23:59:59.999)
-      const toDate = new Date(lastEditedTo)
-      toDate.setHours(23, 59, 59, 999)
-      dateFilter.lte = toDate
+    const dateFilter: Prisma.DateTimeFilter = {
+      gte: lastEditedFrom ?? undefined,
+      lt: lastEditedTo ? addDays(lastEditedTo, 1) : undefined
     }
     ordinary.push({ lastEditedAt: dateFilter })
     ownPart.push(ownLabelsWhere(user, { createdAt: dateFilter }))
@@ -153,7 +143,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       annotationFilter.taxonomy = ownFilter.taxonomy = { key: taxonomyKey }
     }
     if (level) {
-      annotationFilter.level = ownFilter.level = parseInt(level, 10)
+      annotationFilter.level = ownFilter.level = level
     }
     if (code) {
       annotationFilter.nodeCode = ownFilter.nodeCode = code
@@ -174,7 +164,7 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
       aiFilter.taxonomy = { key: aiTaxonomyKey }
     }
     if (aiLevel) {
-      aiFilter.level = parseInt(aiLevel, 10)
+      aiFilter.level = aiLevel
     }
     if (aiCode) {
       aiFilter.nodeCode = aiCode
@@ -217,7 +207,8 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   // Flagged filter
   if (flagged === 'true' || flagged === 'false') {
     const value = flagged === 'true'
-    ordinary.push({ flagged: value })
+    const flag = recordFlagFilter(user)
+    ordinary.push(value ? flag : { NOT: flag })
     ownPart.push({ doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, flagged: value } } })
   }
 
@@ -255,6 +246,34 @@ export async function queueWhere(user: CurrentUser, searchParams: URLSearchParam
   return and.length > 0 ? { AND: and } : {}
 }
 
+function filterLevel(value: string | null): number | undefined {
+  return value && /^[1-5]$/.test(value) ? Number(value) : undefined
+}
+
+export function queueFilterError(params: URLSearchParams): string | undefined {
+  for (const key of ['lastEditedFrom', 'lastEditedTo']) {
+    const value = params.get(key)
+    if (value && !parseCalendarDate(value)) return `${key} must be a calendar date (YYYY-MM-DD)`
+  }
+  for (const key of ['level', 'aiLevel']) {
+    const value = params.get(key)
+    if (value && !filterLevel(value)) return `${key} must be between 1 and 5`
+  }
+}
+
+const participantFlag = { ...PARTICIPATING, flagged: true } satisfies Prisma.DoubleTaskWhereInput
+
+function recordFlagFilter(user: CurrentUser): Prisma.SentenceWhereInput {
+  return user.role === 'labeller'
+    ? { flagged: true }
+    : { OR: [{ flagged: true }, { doubleTasks: { some: participantFlag } }] }
+}
+
+function withDoubleFilter(user: CurrentUser, base: Prisma.SentenceWhereInput, searchParams: URLSearchParams) {
+  const filter = user.role === 'labeller' ? null : doubleFilter(searchParams.get('double') ?? '')
+  return filter ? { AND: [base, filter] } : base
+}
+
 /**
  * Whether `user` holds a live double annotation part in any record of the
  * workspace. Most callers hold none (managers who only review, labellers
@@ -272,11 +291,13 @@ async function holdsParts(user: CurrentUser): Promise<boolean> {
 
 /** A record's status, or for the people who hold a double-annotation part in it, their own part's status. */
 function personalStatusFilter(user: CurrentUser, status: SentenceStatus, parts: boolean): Prisma.SentenceWhereInput[] {
-  if (!parts) return [{ status }]
+  const ordinary =
+    status === 'pending' ? { status: { in: [SentenceStatus.pending, SentenceStatus.escalated] } } : { status }
+  if (!parts) return [ordinary]
   const mine = (taskStatus: Prisma.DoubleTaskWhereInput['status']): Prisma.SentenceWhereInput => ({
     doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, status: taskStatus } }
   })
-  const filters: Prisma.SentenceWhereInput[] = [{ AND: [{ status }, { NOT: mine({ not: 'cancelled' }) }] }]
+  const filters: Prisma.SentenceWhereInput[] = [{ AND: [ordinary, { NOT: mine({ not: 'cancelled' }) }] }]
   if (status === 'pending' || status === 'submitted' || status === 'skipped') filters.push(mine(status))
   return filters
 }
@@ -314,7 +335,12 @@ function doubleFilter(value: string): Prisma.SentenceWhereInput | null {
  * a malformed value matches nothing.
  */
 async function disagreementFilter(value: string): Promise<Prisma.SentenceWhereInput> {
-  const parts = value.split(',').map(decodeURIComponent)
+  let parts: string[]
+  try {
+    parts = value.split(',').map(decodeURIComponent)
+  } catch {
+    return { id: { in: [] } }
+  }
   const level = Number(parts[1])
   if (parts.length !== 4 || !Number.isInteger(level) || level < 1 || level > 5) return { id: { in: [] } }
   const [taxonomyKey, , codeA, codeB] = parts as [string, string, string, string]
@@ -376,7 +402,8 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   const requestedPage = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1)
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 10000)
 
-  const where = await queueWhere(user, searchParams)
+  const parts = await holdsParts(user)
+  const where = withDoubleFilter(user, await queueWhere(user, searchParams, parts), searchParams)
 
   // Build orderBy clause with secondary sort by importOrder for stable ordering
   let orderBy: Prisma.SentenceOrderByWithRelationInput[]
@@ -524,12 +551,21 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   const pageIds = sentences.map(s => s.id)
   const own = await participation(user, pageIds)
   const blind = new Set(own.keys())
-  const [annotationNodes, aiSuggestionsBySentence, summaries, doubleRows] = await Promise.all([
+  const [annotationNodes, aiSuggestionsBySentence, summaries, doubleRows, flaggedParts] = await Promise.all([
     annotationNodesPromise,
     aiSuggestionsPromise,
     commentSummaries(pageIds, { authorId: user.id, sentenceIds: blind }),
-    user.role === 'labeller' ? Promise.resolve(new Map<string, DoubleRowSummary>()) : doubleRowSummaries(pageIds, blind)
+    user.role === 'labeller'
+      ? Promise.resolve(new Map<string, DoubleRowSummary>())
+      : doubleRowSummaries(pageIds, blind),
+    user.role === 'labeller'
+      ? []
+      : db().doubleTask.findMany({
+          where: { ...participantFlag, sentenceId: { in: pageIds } },
+          select: { sentenceId: true }
+        })
   ])
+  const participantFlags = new Set(flaggedParts.map(part => part.sentenceId))
   const ownLabels = [...own.values()].flatMap(t => t.labels)
   const ownTaxonomies = new Map(
     ownLabels.length === 0
@@ -557,6 +593,8 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
   const sentencesWithLabels = sentences.map(({ assignments, ...s }) => {
     const row = {
       ...s,
+      status: s.status === 'escalated' ? SentenceStatus.pending : s.status,
+      flagged: s.flagged || participantFlags.has(s.id),
       commentSummary: summaries.get(s.id) ?? { total: 0, unresolved: 0 },
       assignments: assignments
         .filter(a => user.role !== 'labeller' || a.membership.user.id === user.id)
@@ -613,24 +651,32 @@ export async function listQueue(user: CurrentUser, searchParams: URLSearchParams
 
 /** Counts per status for the records matching the queue's filters. */
 export async function getQueueStats(user: CurrentUser, searchParams: URLSearchParams) {
-  const where = await queueWhere(user, searchParams)
   const parts = await holdsParts(user)
+  const base = await queueWhere(user, searchParams, parts)
+  const where = withDoubleFilter(user, base, searchParams)
   const manager = user.role === 'admin' || user.role === 'supervisor'
   // Managers: double annotation counts for the filter chips, under the same
   // filters except the double filter itself.
-  const withoutDouble = new URLSearchParams(searchParams)
-  withoutDouble.delete('double')
-  const base = manager ? await queueWhere(user, withoutDouble) : where
   const doubleCount = (value: string) =>
     manager ? db().sentence.count({ where: { AND: [base, doubleFilter(value)!] } }) : Promise.resolve(0)
   const any = await doubleCount('any')
   const [waiting, review, gap, done] =
     any > 0 ? await Promise.all(['waiting', 'review', 'gap', 'done'].map(doubleCount)) : [0, 0, 0, 0]
-  const [total, pending, submitted, skipped, flagged, needsReview] = await Promise.all([
-    db().sentence.count({ where }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'pending', parts) }] } }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'submitted', parts) }] } }),
-    db().sentence.count({ where: { AND: [where, { OR: personalStatusFilter(user, 'skipped', parts) }] } }),
+  const flag = recordFlagFilter(user)
+  const statusCounts = parts
+    ? Promise.all(
+        (['pending', 'submitted', 'skipped'] as const).map(async status => ({
+          status,
+          count: await db().sentence.count({
+            where: { AND: [where, { OR: personalStatusFilter(user, status, parts) }] }
+          })
+        }))
+      )
+    : db()
+        .sentence.groupBy({ by: ['status'], where, _count: { _all: true } })
+        .then(rows => rows.map(row => ({ status: row.status, count: row._count._all })))
+  const [counts, flagged, needsReview, visibleTotal] = await Promise.all([
+    statusCounts,
     db().sentence.count({
       where: {
         AND: [
@@ -638,24 +684,28 @@ export async function getQueueStats(user: CurrentUser, searchParams: URLSearchPa
           parts
             ? {
                 OR: [
-                  { AND: [{ NOT: participantWhere(user) }, { flagged: true }] },
+                  { AND: [{ NOT: participantWhere(user) }, flag] },
                   { doubleTasks: { some: { assigneeId: user.id, ...PARTICIPATING, flagged: true } } }
                 ]
               }
-            : { flagged: true }
+            : flag
         ]
       }
     }),
-    manager ? db().sentence.count({ where: { AND: [where, doubleFilter('review')!] } }) : Promise.resolve(0)
+    manager ? db().sentence.count({ where: { AND: [where, doubleFilter('review')!] } }) : Promise.resolve(0),
+    parts ? db().sentence.count({ where }) : undefined
   ])
+  const count = (status: SentenceStatus) => counts.find(row => row.status === status)?.count ?? 0
+  const total = visibleTotal ?? counts.reduce((sum, row) => sum + row.count, 0)
+  const submitted = count('submitted')
 
   return {
     ok: true as const,
     stats: {
       total,
-      pending,
+      pending: count('pending') + count('escalated'),
       submitted,
-      skipped,
+      skipped: count('skipped'),
       flagged,
       // Records in double annotation with a disagreement (managers; 0 for labellers).
       needsReview,

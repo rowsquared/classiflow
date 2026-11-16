@@ -19,7 +19,7 @@ import * as statsRoute from '@/app/api/workspaces/[workspaceId]/sentences/stats/
 import * as listRoute from '@/app/api/workspaces/[workspaceId]/sentences/route'
 import * as overviewRoute from '@/app/api/workspaces/[workspaceId]/progress/overview/route'
 
-// Managing double annotation (docs/plans/double-annotation-v2.md phase D):
+// Managing double annotation (docs/double-annotation.md):
 // automatic second person, sampling, bulk commands, queue counts, progress.
 let alice: User, bob: User, carol: User, sam: User
 

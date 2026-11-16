@@ -1,5 +1,6 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
+import { BlockList, isIP } from 'node:net'
 import { prisma } from '@/lib/prisma'
 import { db, scopeWorkspaceId, withWorkspace } from '@/lib/workspace/db'
 import {
@@ -74,6 +75,22 @@ export class EndpointUrlError extends Error {
   name = 'EndpointUrlError'
 }
 
+const nonPublicIPv4 = new BlockList()
+for (const [address, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['224.0.0.0', 3]
+] as const)
+  nonPublicIPv4.addSubnet(address, prefix)
+const globalIPv6 = new BlockList()
+globalIPv6.addSubnet('2000::', 3, 'ipv6')
+
 /**
  * The canonical form of an endpoint base URL: http(s), no credentials, query
  * or fragment, no trailing slash. Taxomind may sit under a path prefix
@@ -89,6 +106,21 @@ export function normalizeEndpointUrl(raw: string): string {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new EndpointUrlError('Use an http(s) URL')
   if (url.username || url.password) throw new EndpointUrlError('The URL must not contain credentials')
   if (url.search || url.hash) throw new EndpointUrlError('The URL must not contain a query or fragment')
+  if (process.env.NODE_ENV === 'production' && process.env.AI_ALLOW_PRIVATE_ENDPOINTS !== 'true') {
+    const hostname = url.hostname.replace(/^\[|\]$|\.$/g, '')
+    const family = isIP(hostname)
+    const isPrivate =
+      family === 4
+        ? nonPublicIPv4.check(hostname)
+        : family === 6
+          ? !globalIPv6.check(hostname, 'ipv6')
+          : !hostname.includes('.') || hostname.endsWith('.localhost') || hostname.endsWith('.local')
+    if (url.protocol !== 'https:' || isPrivate) {
+      throw new EndpointUrlError(
+        'Use a public HTTPS endpoint, or configure this deployment to allow private AI services'
+      )
+    }
+  }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
 }
 
@@ -506,11 +538,11 @@ export async function connectionClient(
   workspaceId: string,
   connectionVersionId: string,
   requestId?: string | null
-): Promise<{ client: TaxomindClient; namespace: string }> {
+): Promise<{ client: TaxomindClient; namespace: string; endpointId: string }> {
   const row = await withWorkspace(workspaceId, () =>
     db().aIConnectionVersion.findUnique({
       where: { id: connectionVersionId },
-      select: { id: true, namespace: true, credential: true, endpoint: { select: { baseUrl: true } } }
+      select: { id: true, namespace: true, credential: true, endpointId: true, endpoint: { select: { baseUrl: true } } }
     })
   )
   if (!row) throw new Error('The AI connection of this job no longer exists')
@@ -518,6 +550,7 @@ export async function connectionClient(
   const credential = decryptCredential(row.credential, credentialAad(workspaceId, row.id), keyring())
   return {
     client: taxomindClient({ baseUrl: row.endpoint.baseUrl, credential, requestId }),
-    namespace: row.namespace
+    namespace: row.namespace,
+    endpointId: row.endpointId
   }
 }

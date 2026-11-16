@@ -1,6 +1,6 @@
 # Hardening work: handoff
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../plans/open-items.md); the remaining-work table below records the state at handoff, before modernization. Links to source files point at the current code, which may have changed since.
+> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../open-items.md); the remaining-work table below records the state at handoff, before modernization. Links to source files point at the current code, which may have changed since.
 
 **Status:** 21 October 2026. All workstreams are done or mostly done in code; what
 is left needs production data, a decision, or its own upgrade plan (table below).
@@ -20,7 +20,7 @@ not all of them.
 
 - Supervisors see and manage their **whole subtree** of the team tree.
 - One human label set per record and taxonomy; saving **replaces** it.
-  Independent double annotation is a wanted future feature: [ideas](../../ideas.md).
+  Independent double annotation is a wanted future feature: [ideas](https://github.com/rowsquared/classiflow/blob/5df9249458d37652a2c5e8b88daf47d5fab2e979/docs/ideas.md).
 - Session revocation is **immediate**: `requireSession()` re-reads role, reset
   flag and `sessionVersion` from the database on every API call.
 - Work is committed on `staging`, one commit per meaningful step, and pushed

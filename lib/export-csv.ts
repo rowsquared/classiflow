@@ -4,6 +4,7 @@ import { isUnknownNodeCode } from '@/lib/constants'
 import { csvLine, type CsvColumn } from '@/lib/csv'
 import { logError } from '@/lib/logger'
 import { recordStatus, taxonomyStatus, type OutcomeState } from '@/lib/double-annotation'
+import { PARTICIPATING } from '@/lib/server/double-annotation'
 
 /**
  * Streaming CSV export of one workspace's records
@@ -110,6 +111,16 @@ function assertUniqueHeaders(columns: CsvColumn[]) {
 
 export class ExportColumnError extends Error {}
 
+export async function prepareRecordExport(
+  scope: ExportScope,
+  filter: Prisma.SentenceWhereInput,
+  statusColumns?: boolean
+) {
+  const where = { ...filter, workspaceId: scope.workspaceId }
+  const includeStatus = statusColumns ?? (await scoped(scope, () => db().doubleRound.count())) > 0
+  return planColumns(scope, where, includeStatus)
+}
+
 async function planColumns(
   scope: ExportScope,
   where: Prisma.SentenceWhereInput,
@@ -201,6 +212,7 @@ async function readRows(args: Omit<Prisma.SentenceFindManyArgs, 'include' | 'sel
       aiSuggestions: { select: { taxonomyId: true, level: true, nodeCode: true, confidenceScore: true } },
       comments: { select: { body: true, author: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
       lastEditor: { select: { name: true } },
+      _count: { select: { doubleTasks: { where: { ...PARTICIPATING, flagged: true } } } },
       // The latest double-annotation round that was not stopped.
       doubleRounds: {
         where: { status: { not: 'cancelled' } },
@@ -240,7 +252,7 @@ function toRow(s: Awaited<ReturnType<typeof readRows>>[number], plan: ColumnPlan
   }
   row.push(
     s.status,
-    s.flagged ? 'true' : 'false',
+    s.flagged || s._count.doubleTasks > 0 ? 'true' : 'false',
     s.lastEditor?.name || '',
     s.lastEditedAt ? s.lastEditedAt.toISOString() : '',
     s.comments.map(c => `[${c.author.name || 'Unknown'}]: ${c.body}`).join(' | ')
@@ -288,8 +300,7 @@ export async function exportStream(
   }
 ): Promise<ReadableStream<Uint8Array>> {
   const where = { ...filter, workspaceId: scope.workspaceId }
-  const statusColumns = opts.statusColumns ?? (await scoped(scope, () => db().doubleRound.count())) > 0
-  const plan = await planColumns(scope, where, statusColumns)
+  const plan = await prepareRecordExport(scope, filter, opts.statusColumns)
   const encoder = new TextEncoder()
   const iterator = pages(where, args => scoped(scope, () => readRows(args)))
   let records = 0

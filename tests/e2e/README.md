@@ -16,18 +16,17 @@ zone dialog; `progress.spec.ts`); and
 axe-core on the main pages (`accessibility.spec.ts`, helper `a11y.ts`), which
 fails on serious or critical findings. There are no accepted exceptions; if
 one is ever needed, it goes in `KNOWN` in `a11y.ts` with the file that needs
-the fix. `global-setup.ts` migrates the database, then runs `seed.ts`
-with plain Node (Prisma 7's client is ES modules) to empty it and seed an
-admin, a two-level taxonomy and three records. The web server connects as a
+the fix. `global-setup.ts` migrates the database and configures the runtime
+role. Each spec runs `seed.ts` with plain Node (Prisma 7's client is ES modules)
+to empty it and seed an admin, a two-level taxonomy and three records. The web server connects as a
 separate least-privilege role so workspace row security applies to the browser
 journeys. The Content-Security-Policy is
 enforced, and any violation fails a journey (`failOnCspViolations()` in
 `helpers.ts`).
 
-The files share that one database and run one after another in file name
-order; each data journey's header says what it expects from the earlier ones
-and what it leaves behind, and the read-only specs must not depend on those
-changes.
+The files share one database and run with one worker. Each spec starts with a
+fresh seed, so it can run independently. Tests within an explicitly serial
+journey can build on earlier steps of that same journey.
 
 ```bash
 createdb classiflow_e2e_test          # once; the name must end in _test

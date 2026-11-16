@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { api, failOnCspViolations, pagePath, signIn } from './helpers'
+import { api, failOnCspViolations, pagePath, signIn, seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // Runs last. Creates a second taxonomy (COICOP) and deletes it again at the
 // end, so the workspace is left with ISCO only, as the seed made it.

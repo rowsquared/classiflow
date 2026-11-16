@@ -57,13 +57,13 @@ function formatJob(job: JobRow | SentenceJobRow, type: AIJobType) {
 }
 export type AIJobSummary = ReturnType<typeof formatJob>
 
-async function findJobs(where: Record<string, unknown>) {
+async function findJobs(where: Record<string, unknown>, take?: number) {
   const include = { taxonomy: { select: { key: true } }, createdBy } as const
   const orderBy = { startedAt: 'desc' } as const
   const [labeling, learning, sync] = await Promise.all([
-    db().aILabelingJob.findMany({ where, include, orderBy }),
-    db().aILearningJob.findMany({ where, include, orderBy }),
-    db().aITaxonomySyncJob.findMany({ where, include, orderBy })
+    db().aILabelingJob.findMany({ where, include, orderBy, take }),
+    db().aILearningJob.findMany({ where, include, orderBy, take }),
+    db().aITaxonomySyncJob.findMany({ where, include, orderBy, take })
   ])
   return [
     ...labeling.map(j => formatJob(j, 'labeling')),
@@ -108,12 +108,17 @@ export async function listAIJobs(workspaceId: string, { statusParams, page, limi
 /** Queued and running jobs, plus those that finished within `recentMs`. */
 export async function listActiveAIJobs(recentMs: number) {
   const recentCutoff = new Date(Date.now() - recentMs)
-  return findJobs({
-    OR: [
-      { status: { in: ['pending', 'processing'] } },
-      { status: { in: ['completed', 'failed'] }, completedAt: { gte: recentCutoff } }
-    ]
-  })
+  const limit = 20
+  const [running, queued, finished] = await Promise.all([
+    findJobs({ status: 'processing' }, limit + 1),
+    findJobs({ status: 'pending' }, limit + 1),
+    findJobs({ status: { in: ['completed', 'failed'] }, completedAt: { gte: recentCutoff } }, limit)
+  ])
+  const newestFirst = (a: AIJobSummary, b: AIJobSummary) => b.startedAt.localeCompare(a.startedAt)
+  return {
+    jobs: [...running.sort(newestFirst), ...queued.sort(newestFirst), ...finished.sort(newestFirst)].slice(0, limit),
+    moreActive: running.length + queued.length > limit
+  }
 }
 
 /**

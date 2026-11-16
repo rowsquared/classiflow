@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Modal from '@/components/Modal'
 import { workspaceApi } from '@/lib/workspace/urls'
+import { fetchJson } from '@/lib/query/fetch'
 import type { Message, Taxonomy } from './types'
 import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
@@ -26,18 +27,15 @@ export default function DeleteTaxonomyDialog({
     setSubmitting(true)
     onMessage(null)
     try {
-      const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}`), { method: 'DELETE' })
-      const data = await res.json()
-      if (res.ok) {
-        const deletedInfo = data.deleted
-          ? `Deleted ${data.deleted.nodes} nodes, ${data.deleted.annotations} annotations, ${data.deleted.aiSuggestions} AI suggestions, and ${data.deleted.synonyms} synonyms.`
-          : 'Taxonomy and all associated data deleted successfully.'
-        onDeleted(`Successfully deleted taxonomy "${taxonomy.key}". ${deletedInfo}`)
-      } else {
-        onMessage({ type: 'error', text: data.error || 'Failed to delete taxonomy' })
-      }
-    } catch {
-      onMessage({ type: 'error', text: 'Network error' })
+      const data = await fetchJson<{
+        deleted?: { nodes: number; annotations: number; aiSuggestions: number; synonyms: number }
+      }>(workspaceApi(`/taxonomies/${taxonomy.key}`), { method: 'DELETE' })
+      const deletedInfo = data.deleted
+        ? `Deleted ${data.deleted.nodes} nodes, ${data.deleted.annotations} annotations, ${data.deleted.aiSuggestions} AI suggestions, and ${data.deleted.synonyms} synonyms.`
+        : 'Taxonomy and all associated data deleted successfully.'
+      onDeleted(`Successfully deleted taxonomy "${taxonomy.key}". ${deletedInfo}`)
+    } catch (caught) {
+      onMessage({ type: 'error', text: caught instanceof Error ? caught.message : 'Failed to delete taxonomy' })
     } finally {
       setSubmitting(false)
     }

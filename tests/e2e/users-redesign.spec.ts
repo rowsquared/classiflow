@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { ADMIN, WORKSPACE_ADMIN, WORKSPACE_ID } from './fixtures'
 import { expectAccessible } from './a11y'
+import { seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 async function signInPlatform(page: import('@playwright/test').Page) {
   await page.goto('/login')

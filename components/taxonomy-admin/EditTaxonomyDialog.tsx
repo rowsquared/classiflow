@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Modal from '@/components/Modal'
-import { formatImportErrors } from '@/lib/taxonomy-admin'
+import { formatImportErrors, type RowError } from '@/lib/taxonomy-admin'
+import { fetchJson, HttpError } from '@/lib/query/fetch'
 import { workspaceApi } from '@/lib/workspace/urls'
 import FileChooser from './FileChooser'
 import LevelNameInputs from './LevelNameInputs'
@@ -44,23 +45,21 @@ export default function EditTaxonomyDialog({
       if (file) body.append('file', file)
       if (confirmOrphans) body.append('confirmOrphans', 'true')
 
-      const res = await fetch(workspaceApi(`/taxonomies/${taxonomy.key}`), { method: 'PUT', body })
-      const data = await res.json()
-
+      const data = await fetchJson<{ nodesReplaced: number }>(workspaceApi(`/taxonomies/${taxonomy.key}`), {
+        method: 'PUT',
+        body
+      })
+      const nodesMsg = data.nodesReplaced > 0 ? ` and replaced ${data.nodesReplaced} nodes` : ''
+      onSaved(`Successfully updated taxonomy "${taxonomy.key}"${nodesMsg}!`)
+    } catch (caught) {
+      const data = caught instanceof HttpError ? (caught.body as { code?: string; errors?: RowError[] } | null) : null
+      const message = caught instanceof Error ? caught.message : 'Failed to update taxonomy'
       // The new file drops codes that existing labels use: replace only if the admin agrees.
-      if (res.status === 409 && data.code === 'ORPHANED_LABELS') {
-        setOrphanWarning(data.error || 'Some saved codes are missing from the replacement file.')
+      if (caught instanceof HttpError && caught.status === 409 && data?.code === 'ORPHANED_LABELS') {
+        setOrphanWarning(message)
         return
       }
-
-      if (res.ok) {
-        const nodesMsg = data.nodesReplaced > 0 ? ` and replaced ${data.nodesReplaced} nodes` : ''
-        onSaved(`Successfully updated taxonomy "${taxonomy.key}"${nodesMsg}!`)
-      } else {
-        onMessage({ type: 'error', text: formatImportErrors(data.error || 'Failed to update taxonomy', data.errors) })
-      }
-    } catch {
-      onMessage({ type: 'error', text: 'Network error' })
+      onMessage({ type: 'error', text: formatImportErrors(message, data?.errors) })
     } finally {
       setSubmitting(false)
     }

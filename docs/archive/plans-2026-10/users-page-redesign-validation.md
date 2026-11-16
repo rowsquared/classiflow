@@ -43,7 +43,7 @@ coverage; this additional browser variant remains unverified.
 
 No implementation work remains from this redesign. The pre-existing decision
 about workspace admins editing never-signed-in single-workspace accounts remains
-in [open items](../../plans/open-items.md); the new editor keeps global account
+in [open items](../../open-items.md); the new editor keeps global account
 controls platform-only.
 
 ## Reproducing checks

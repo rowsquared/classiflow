@@ -18,7 +18,7 @@ export const GET = workspaceRoute(
         await logError('AI job recovery failed', err)
       }
 
-      return NextResponse.json({ ok: true, jobs: await listActiveAIJobs(RECENT_WINDOW_MS) })
+      return NextResponse.json({ ok: true, ...(await listActiveAIJobs(RECENT_WINDOW_MS)) })
     } catch (error: unknown) {
       await logError('Failed to fetch active AI jobs', error)
       return NextResponse.json({ error: 'Failed to fetch active jobs' }, { status: 500 })

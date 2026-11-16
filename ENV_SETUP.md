@@ -12,6 +12,7 @@ Docker Compose; on a server, set the values in your platform's secret store.
 | Variable | Required | Default | Secret | Purpose |
 | --- | --- | --- | --- | --- |
 | `DATABASE_URL` | yes (app outside Compose; Compose builds it) | none | yes | PostgreSQL URL of the **schema owner**: runs migrations and recovery scripts. Local dev: `postgresql://classiflow:classiflow_password@localhost:5434/classiflow?schema=public` |
+| `MIGRATION_DATABASE_URL` | no | Compose PostgreSQL service URL | yes | Optional Compose override for a dedicated migration/schema owner. Its database and schema must already exist. See [Database roles](DEPLOYMENT.md#database-roles) |
 | `POSTGRES_PASSWORD` | yes, with `docker-compose.yml` | none (Compose refuses to start) | yes | Password of the Compose PostgreSQL service. PostgreSQL keeps the password it was initialised with: changing it later needs `ALTER ROLE` as well |
 | `POSTGRES_USER`, `POSTGRES_DB` | no | `classiflow` | no | Compose PostgreSQL user and database |
 | `DATABASE_POOL_SIZE` | no | `20` | no | Connections per app instance (`pg` pool, `lib/prisma.ts`). See DEPLOYMENT.md "Running more than one instance" |
@@ -94,6 +95,7 @@ AI features stay disabled.
 | `AI_CREDENTIALS_KEYS` | for AI | unset | yes | Keys that encrypt the workspaces' access tokens (AES-256-GCM): comma-separated `<keyId>:<base64 of 32 bytes>`, e.g. `k2026a:$(openssl rand -base64 32)`. The first key encrypts, all listed keys decrypt (rotation: DEPLOYMENT.md "AI credentials"). **Back it up separately from the database**: without it the stored tokens are useless |
 | `AI_SOURCE_SLUG` | yes, with AI | none | no | Deployment namespace for Taxomind, e.g. `classiflow-app-rowsquared`. Each workspace uses `<AI_SOURCE_SLUG>--<workspaceId>`, so workspaces never share a model; staging and production need different values |
 | `AI_LABELING_API_URL` | no | unset | no | Optional: registered once as an *approved* Taxomind service at start-up (base URL including any path prefix such as `/api`). It configures no workspace; each still needs its own connection and token. Platform admins can approve and retire services in the UI instead |
+| `AI_ALLOW_PRIVATE_ENDPOINTS` | no | `false` | no | Set to `true` in a trusted deployment that needs private or HTTP Taxomind endpoints. Production otherwise requires HTTPS and refuses private IP literals, single-label names, and local hostnames when approving a new service |
 | `AI_MAX_ACTIVE_JOBS_PER_WORKSPACE` | no | 3 | no | AI jobs (labelling, learning, taxonomy sync) one workspace may have running at the AI service; more wait as "pending" |
 | `AI_MAX_ACTIVE_JOBS` | no | 10 | no | The same ceiling for the whole deployment; queued jobs are admitted fairly across workspaces |
 | `AI_LABELING_BATCH_SIZE` | no | 1000 | no | Records per labelling job (default, overridable per workspace) |

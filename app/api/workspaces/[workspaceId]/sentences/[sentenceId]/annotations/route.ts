@@ -24,8 +24,7 @@ import {
   reviewTaxonomy,
   saveTaskAnswer,
   setParticipantFlags,
-  skipTask,
-  viewFor
+  skipTask
 } from '@/lib/server/double-annotation'
 
 // Codes are strings: a number would already have lost its leading zeros.
@@ -39,7 +38,7 @@ const annotationSchema = z.object({
       })
     )
     .max(5),
-  status: z.enum(['pending', 'submitted', 'skipped', 'escalated']),
+  status: z.enum(['pending', 'submitted', 'skipped']),
   flagged: z.boolean().optional(),
   comment: z.string().max(10_000).optional(),
   labelingStartedAt: z.string().optional(), // ISO timestamp when labeling started
@@ -140,8 +139,8 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
       })
       if (!current) throw new RequestError('Record not found')
 
-      // A participant (a part in any round of this record) always saves their
-      // own answer, also after the round closed; it never changes the result.
+      // Participants save their own answers. The active round derives its
+      // provisional or agreed result from those answers.
       const part = await participantRound(user, sentenceId)
       if (part) {
         const { round, task } = part
@@ -196,9 +195,8 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
 
       const round = await activeRound(sentenceId)
       if (round) {
-        const view = viewFor(user, round)
         let recordStatus = current.status
-        if (view.mode === 'hidden') {
+        if (user.role === 'labeller') {
           throw new DoubleAnnotationError('You cannot edit labels on this record', 403)
         }
         if (taxonomy) {
@@ -214,7 +212,7 @@ export const POST = workspaceRoute<'sentenceId'>([], async (req, { user, params:
               operationId: operationIdOrNew(operationId)
             })
           ).recordStatus
-        } else if (status === 'skipped' || status === 'escalated') {
+        } else if (status === 'skipped') {
           throw new DoubleAnnotationError('Manage the double annotation round before changing the record status', 409)
         }
 

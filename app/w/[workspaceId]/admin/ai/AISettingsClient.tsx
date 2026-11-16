@@ -42,8 +42,8 @@ export type AISettings = {
 const JOB_SETTING_FIELDS: Array<{ key: JobSettingKey; label: string; help: string; min: number }> = [
   {
     key: 'labelingBatchSize',
-    label: 'Labelling batch size',
-    help: 'Records per AI labelling job; larger selections are split into several jobs.',
+    label: 'Labeling batch size',
+    help: 'Records per AI labeling job; larger selections are split into several jobs.',
     min: 1
   },
   {
@@ -158,7 +158,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
             AI is not available on this deployment. A server administrator has to set{' '}
             {!deployment.keysConfigured && <code>AI_CREDENTIALS_KEYS</code>}
             {!deployment.keysConfigured && !deployment.sourceSlugConfigured && ' and '}
-            {!deployment.sourceSlugConfigured && <code>AI_SOURCE_SLUG</code>} (see ENV_SETUP.md). Labelling without AI
+            {!deployment.sourceSlugConfigured && <code>AI_SOURCE_SLUG</code>} (see ENV_SETUP.md). Labeling without AI
             works as usual.
           </div>
         )}
@@ -209,7 +209,7 @@ export default function AISettingsClient({ initial, archived }: { initial: AISet
           {settings.namespace && (
             <p className="mt-4 text-xs text-gray-600">
               Model namespace: <code className="text-gray-800">{settings.namespace}</code> (only this workspace learns
-              from and is labelled by it)
+              from and is labeled by it)
             </p>
           )}
         </section>

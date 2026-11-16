@@ -21,6 +21,7 @@ import * as endpointsRoute from '@/app/api/ai-endpoints/route'
 import * as endpointRoute from '@/app/api/ai-endpoints/[endpointId]/route'
 import * as settingsRoute from '@/app/api/workspaces/[workspaceId]/ai-settings/route'
 import * as connectionRoute from '@/app/api/workspaces/[workspaceId]/ai-settings/connection/route'
+import * as jobsRoute from '@/app/api/workspaces/[workspaceId]/ai-jobs/route'
 
 // Per-workspace AI connections: approved endpoints (platform), connection
 // versions with write-only encrypted credentials (workspace admins), and the
@@ -322,6 +323,25 @@ async function queue(count: number, minutesAgo: number) {
 }
 
 describe('job admission', () => {
+  it('leaves jobs queued for a cooling endpoint while admitting a healthy endpoint', async () => {
+    const [waiting] = await queue(1, 30)
+    const failing = await prisma.aIConnectionVersion.findFirstOrThrow({ where: { workspaceId: wsId() } })
+    await prisma.aIEndpoint.update({
+      where: { id: failing.endpointId },
+      data: { startBackoffUntil: new Date(Date.now() + 60_000) }
+    })
+    await createWorkspace()
+    await createAIConnection({ baseUrl: 'https://healthy.test' })
+    const [healthy] = await queue(1, 10)
+    const [first] = await app.$queryRaw<Admitted[]>`
+      SELECT kind, id, "workspaceId" FROM app_admit_ai_jobs(3, 4, 1, 'cooldown-test',
+        ${new Date(Date.now() + 60_000).toISOString()}::timestamp)`
+    expect(first?.id).toBe(healthy)
+    expect(await prisma.aILabelingJob.findUniqueOrThrow({ where: { id: waiting } })).toMatchObject({
+      status: 'pending'
+    })
+  })
+
   it('leaves capacity for a different endpoint when workspaces share a busy one', async () => {
     const [first] = await queue(2, 30)
     await createWorkspace()
@@ -390,6 +410,20 @@ describe('job admission', () => {
     expect(admitted.map(j => j.kind)).toEqual(['labeling'])
     expect(await prisma.aILearningJob.count({ where: { status: 'pending' } })).toBe(1)
   })
+})
+
+it('paginates AI job history after applying the workspace and status filters', async () => {
+  const jobs = await queue(4, 30)
+  await prisma.aILabelingJob.update({ where: { id: jobs[3] }, data: { status: 'failed' } })
+  await createWorkspace()
+  await queue(2, 10)
+  selectWorkspace(ws.id)
+  signInAs(admin)
+  const response = await jobsRoute.GET(request('/x?page=2&limit=2&status=pending'), params())
+  expect(response.status).toBe(200)
+  const body = await response.json()
+  expect(body.pagination).toEqual({ total: 3, page: 2, pages: 2, limit: 2 })
+  expect(body.jobs.map((job: { id: string }) => job.id)).toEqual([jobs[0]])
 })
 
 describe('lease release on shutdown', () => {

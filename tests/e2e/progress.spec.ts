@@ -1,13 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ADMIN } from './fixtures'
-import { api, failOnCspViolations, pagePath, signIn } from './helpers'
+import { api, failOnCspViolations, pagePath, signIn, seedBeforeAll } from './helpers'
 import { expectAccessible } from './a11y'
+
+seedBeforeAll({ activity: true })
 
 // The Progress dashboard (docs/archive/plans-2026-10/progress-dashboard.md): the view lives in
 // the URL, sections load and fail independently, filters narrow the scope.
-// Runs after journeys.spec.ts and labelling-bulk.spec.ts, so the admin has
-// labeled records today. Adds a supervisor with one labeller (no records),
-// which later files do not depend on; changes no records.
+// This spec seeds one labeled record and adds a small team for filtering.
 
 failOnCspViolations()
 

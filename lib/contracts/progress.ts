@@ -103,10 +103,9 @@ export type ProgressOverview = ReportMeta & {
     total: number
     complete: number
     remaining: number
-    /** Remaining split by status (pending + skipped + escalated = remaining). */
+    /** Remaining split by status (pending + skipped = remaining). */
     pending: number
     skipped: number
-    escalated: number
     flagged: number
   }
   activity: { labeledRecords: number }

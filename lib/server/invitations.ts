@@ -153,7 +153,7 @@ export async function revokeInvitation(actor: CurrentUser, invitationId: string)
   return true
 }
 
-/** Sends the invitation again with a new link (older links stop working). */
+/** Sends a new link. A confirmed delivery replaces the previous link. */
 export async function resendInvitation(actor: CurrentUser, invitationId: string): Promise<boolean> {
   const invitation = await db().workspaceInvitation.findFirst({
     where: { id: invitationId, workspaceId: actor.workspaceId, status: 'pending' },
@@ -190,6 +190,24 @@ function secretMatches(tokenHash: string | null, secret: string) {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+async function matchesInvitationToken(
+  client: Pick<Prisma.TransactionClient, 'outgoingMail'>,
+  invitation: { id: string; expiresAt: Date; tokenHash: string | null },
+  secret: string
+) {
+  const now = new Date()
+  if (invitation.expiresAt >= now && secretMatches(invitation.tokenHash, secret)) return true
+  const staged = await client.outgoingMail.findMany({
+    where: {
+      invitationId: invitation.id,
+      status: { in: ['sending', 'unknown'] },
+      invitationTokenExpiresAt: { gte: now }
+    },
+    select: { invitationTokenHash: true }
+  })
+  return staged.some(mail => secretMatches(mail.invitationTokenHash, secret))
+}
+
 /** An open, unexpired invitation for this token (control plane read). */
 async function findOpenInvitation(token: unknown) {
   const parsed = parseToken(token)
@@ -207,8 +225,8 @@ async function findOpenInvitation(token: unknown) {
       workspace: { select: { name: true, status: true } }
     }
   })
-  if (!invitation || invitation.status !== 'pending' || invitation.expiresAt.getTime() < Date.now()) return null
-  if (!secretMatches(invitation.tokenHash, parsed.secret)) return null
+  if (!invitation || invitation.status !== 'pending') return null
+  if (!(await matchesInvitationToken(prisma, invitation, parsed.secret))) return null
   return invitation
 }
 
@@ -290,8 +308,7 @@ async function acceptInside(
   if (
     !invitation ||
     invitation.status !== 'pending' ||
-    invitation.expiresAt.getTime() < Date.now() ||
-    !secretMatches(invitation.tokenHash, parsed.secret)
+    !(await matchesInvitationToken(db(), { id: found.id, ...invitation }, parsed.secret))
   ) {
     return GONE
   }

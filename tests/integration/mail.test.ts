@@ -96,6 +96,29 @@ describe('outbox', () => {
     expect((await prisma.outgoingMail.findUniqueOrThrow({ where: { id: broken } })).status).toBe('unknown')
   })
 
+  it('retries a rate-limited delivery only when its backoff has elapsed', async () => {
+    const user = await createUser('labeller')
+    const id = await queueMail(prisma, { purpose: 'password_changed', userId: user.id })
+    webhook.state.status = 429
+    await deliverMail([id])
+    expect(await prisma.outgoingMail.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'pending',
+      attempts: 1
+    })
+    await deliverMail([id])
+    expect(webhook.mails).toHaveLength(1)
+    await prisma.outgoingMail.update({ where: { id }, data: { retryAt: new Date(0), createdAt: new Date(0) } })
+    webhook.state.status = 200
+    await recoverOutbox({ force: true })
+    await settleBackgroundTasks()
+    expect(webhook.mails).toHaveLength(2)
+    expect(await prisma.outgoingMail.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'sent',
+      attempts: 2
+    })
+    await prisma.outgoingMail.delete({ where: { id } })
+  })
+
   it('prunes finished rows past the retention period, never queued or sending ones', async () => {
     const user = await createUser('labeller')
     const old = new Date(Date.now() - 91 * 24 * 60 * 60_000)

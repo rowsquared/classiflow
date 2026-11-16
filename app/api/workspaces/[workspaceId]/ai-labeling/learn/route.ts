@@ -13,6 +13,8 @@ import { lockLearningTaxonomy, selectLearningRecords } from '@/lib/server/ai-lea
 const learnSchema = z.object({
   taxonomyKey: z.string()
 })
+const MAX_RECORDS_PER_RUN = 50_000
+const MAX_JOBS_PER_RUN = 100
 
 export const POST = workspaceRoute(['admin'], async (req, { user }) => {
   const parsed = learnSchema.safeParse(await req.json().catch(() => null))
@@ -42,6 +44,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       lastLearningAt: true,
       legacyLearningCutoff: true,
       lastLearningStatus: true,
+      learningBacklog: true,
       newAnnotationsSinceLastLearning: true
     }
   })
@@ -59,6 +62,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
   const { learningBatchSize: batchSize, learningMinNewAnnotations } = await workspaceJobSettings()
   if (
     taxonomy.lastLearningStatus !== 'failed' &&
+    !taxonomy.learningBacklog &&
     taxonomy.newAnnotationsSinceLastLearning < learningMinNewAnnotations
   ) {
     return NextResponse.json(
@@ -70,7 +74,9 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
   }
 
   const selectionCutoff = new Date()
-  const records = await selectLearningRecords(taxonomy.id, taxonomy.legacyLearningCutoff)
+  const limit = Math.min(MAX_RECORDS_PER_RUN, MAX_JOBS_PER_RUN * batchSize)
+  const candidates = await selectLearningRecords(taxonomy.id, taxonomy.legacyLearningCutoff, limit + 1)
+  const records = candidates.slice(0, limit)
   if (records.length === 0) {
     return NextResponse.json({ error: 'No submitted annotations found for learning' }, { status: 400 })
   }
@@ -127,6 +133,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     data: {
       lastLearningStatus: 'processing',
       lastLearningError: null,
+      learningBacklog: candidates.length > limit,
       lastLearningJobId: jobs[0]?.id || null
     }
   })

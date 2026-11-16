@@ -1,6 +1,6 @@
 # classiflow hardening investigation briefs
 
-> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../plans/open-items.md). Links to moved or removed source files use the reviewed `8c037de` snapshot; other source links point to the current checkout.
+> **Archived 21 October 2026.** Historical record of the hardening round. Current follow-ups are in [open items](../../open-items.md). Links to moved or removed source files use the reviewed `8c037de` snapshot; other source links point to the current checkout.
 
 Companion to the [21 October 2026 review](2026-10-21-review.md). These are proposed
 assignments, not approved implementation designs or a record of completed fixes.
@@ -174,7 +174,7 @@ does not unexpectedly overwrite existing accounts.
 - [x] Compose no longer supplies a fallback admin password.
 - [x] Deleting a user who authored comments or AI jobs returns 409 with an
       explanation instead of a foreign-key 500 (test added). Deactivation
-      instead of deletion is listed in [ideas](../../ideas.md).
+      instead of deletion is listed in [ideas](https://github.com/rowsquared/classiflow/blob/5df9249458d37652a2c5e8b88daf47d5fab2e979/docs/ideas.md).
 - [x] Database fallback password `classiflow_password` in Compose: removed in
       W12 (`POSTGRES_PASSWORD` is required; upgrade path in DEPLOYMENT.md).
 - [ ] Admin MFA/SSO: product decision, not started.
@@ -382,7 +382,7 @@ rejected; another taxonomy's labels survive; simultaneous writes have a defined
 outcome; labels, status, counters, and actor metadata stay consistent on failure.
 
 **Status (21 Oct 2026): done.** Decision: one human label set per taxonomy,
-saving replaces it (double annotation recorded in [ideas](../../ideas.md); README
+saving replaces it (double annotation recorded in [ideas](https://github.com/rowsquared/classiflow/blob/5df9249458d37652a2c5e8b88daf47d5fab2e979/docs/ideas.md); README
 claims corrected).
 
 - [x] `lib/label-path.ts`: one validator for both endpoints: string codes only
@@ -693,7 +693,7 @@ narrow viewport sizes. Validate through actual browser journeys.
 **Priority:** P1 for regression tests protecting security/data boundaries; P2 for
 broad cleanup. **Dependencies:** run alongside each relevant workstream.
 
-**Read:** [test config](../../../vitest.config.ts), [CI](../../../.github/workflows/ci.yml),
+**Read:** [test config](../../../vitest.config.mts), [CI](../../../.github/workflows/ci.yml),
 [Next config](../../../next.config.ts), [lint config](../../../eslint.config.mjs),
 [utilities tests](../../../lib/utils.test.ts), [AI field tests](../../../lib/ai-utils.test.ts),
 and the handlers/components being changed.

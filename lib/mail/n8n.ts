@@ -8,7 +8,7 @@ export type MailMessage = { to: string; subject: string; html: string; text: str
  * server error; the workflow may already have sent it, so it is never
  * reported as failed and never resent automatically.
  */
-export type MailOutcome = { outcome: 'sent' | 'failed' | 'unknown'; detail?: string }
+export type MailOutcome = { outcome: 'sent' | 'failed' | 'unknown'; detail?: string; retryable?: boolean }
 
 /** One line, so a header cannot be injected and clients show it whole. */
 export function foldSubject(subject: string): string {
@@ -52,6 +52,15 @@ export async function sendViaN8n(
     })
   } catch (error) {
     const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+    const cause = error instanceof Error ? error.cause : null
+    if (
+      cause &&
+      typeof cause === 'object' &&
+      'code' in cause &&
+      (cause.code === 'ECONNREFUSED' || cause.code === 'EAI_AGAIN')
+    ) {
+      return { outcome: 'failed', detail: 'Could not connect to the mail service', retryable: true }
+    }
     return {
       outcome: 'unknown',
       detail: timeout ? 'No answer from the mail service in time' : 'Mail service unreachable'
@@ -62,6 +71,7 @@ export async function sendViaN8n(
   if (outcome === 'sent') return { outcome }
   return {
     outcome,
+    ...(response.status === 429 ? { retryable: true } : {}),
     detail:
       outcome === 'failed'
         ? `The mail service refused the message (HTTP ${response.status})`

@@ -1,4 +1,4 @@
-import { addDays, daysBetween, formatCalendarDate, parseCalendarDate, todayIn } from '@/lib/reporting-dates'
+import { addDays, daysBetween, formatCalendarDate, parseCalendarDate, todayUtc } from '@/lib/reporting-dates'
 
 export type CompletionProjection = {
   date: string | null
@@ -14,10 +14,9 @@ export function projectCompletion(input: {
   completedInPeriod: number
   startDate: string
   endDate: string
-  timeZone: string
   now?: Date
 }): CompletionProjection {
-  const today = todayIn(input.timeZone, input.now)
+  const today = todayUtc(input.now)
   const start = parseCalendarDate(input.startDate)!
   const end = parseCalendarDate(input.endDate)!
   const periodEnd = end < today ? end : today

@@ -111,7 +111,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
   const getJobTypeLabel = (type: string) => {
     switch (type) {
       case 'labeling':
-        return 'Labelling'
+        return 'Labeling'
       case 'learning':
         return 'Learning'
       case 'taxonomy_sync':
@@ -384,7 +384,7 @@ export default function AIJobsClient({ initialJobs, initialPagination }: Props) 
                         <span className="text-sm text-gray-600">{getProgress(selectedJob)}%</span>
                       </div>
                       <p className="text-sm text-gray-600">
-                        {selectedJob.processedSentences || 0} / {selectedJob.totalSentences || 0} sentences processed
+                        {selectedJob.processedSentences || 0} / {selectedJob.totalSentences || 0} records processed
                         {(selectedJob.failedSentences || 0) > 0 && (
                           <span className="text-red-600 ml-1">({selectedJob.failedSentences} failed)</span>
                         )}

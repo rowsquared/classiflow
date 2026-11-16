@@ -10,7 +10,7 @@ export async function lockLearningTaxonomy(taxonomyId: string) {
 }
 
 /** Exact label revisions already sent by a successful batch are eligible only after an edit. */
-export function selectLearningRecords(taxonomyId: string, legacyCutoff: Date | null) {
+export function selectLearningRecords(taxonomyId: string, legacyCutoff: Date | null, limit: number) {
   const workspaceId = scopeWorkspaceId()
   return db().$queryRaw<Array<{ sentenceId: string; annotationIds: string[]; annotations: LearningAnnotations }>>`
     WITH candidates AS (
@@ -32,7 +32,8 @@ export function selectLearningRecords(taxonomyId: string, legacyCutoff: Date | n
         AND i."annotationIds" = c."annotationIds" AND i.annotations = c.annotations
         AND j."taxonomyId" = ${taxonomyId} AND j.status = 'completed'
     )
-    ORDER BY c."sentenceId"`
+    ORDER BY c."sentenceId"
+    LIMIT ${limit}`
 }
 
 /** Credit a completed batch exactly once, in its terminal transition under the taxonomy lock. */

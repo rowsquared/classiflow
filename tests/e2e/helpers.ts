@@ -1,10 +1,21 @@
 import { expect, test, type Page } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { ADMIN, WORKSPACE_ID } from './fixtures'
+import { fixtureDatabaseUrl } from './database'
 
-// Shared by the journey files. They run one after another against one seeded
-// database (workers: 1), in file name order: journeys, labelling-bulk,
-// taxonomy-admin. Later files may rely on what earlier ones left behind and
-// must leave the data as the next ones expect (see each file's header).
+/** Give every spec its own baseline in the single disposable browser database. */
+export function seedBeforeAll({ activity = false } = {}) {
+  test.beforeAll(() => {
+    execFileSync(
+      process.execPath,
+      ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', 'tests/e2e/seed.ts', ...(activity ? ['--with-activity'] : [])],
+      {
+        env: { ...process.env, DATABASE_URL: fixtureDatabaseUrl() },
+        stdio: 'inherit'
+      }
+    )
+  })
+}
 
 export const api = (path: string) => `/api/workspaces/${WORKSPACE_ID}${path}`
 export const pagePath = (path: string) => `/w/${WORKSPACE_ID}${path}`

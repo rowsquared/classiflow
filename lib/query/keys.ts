@@ -49,6 +49,16 @@ export const queryKeys = {
   platformAudit: (params: string) => ['platform-audit', params] as const,
   bulkLabelPreview: (workspaceId: string, taxonomy: string | undefined, recordIds: string[]) =>
     ['ws', workspaceId, 'bulk-label-preview', taxonomy, recordIds] as const,
+  doubleAnnotationPreview: (
+    workspaceId: string,
+    request: {
+      sentenceIds: string[]
+      firstUserId: string | null
+      secondUserId: string | null
+      sample?: number
+      seed?: number
+    }
+  ) => ['ws', workspaceId, 'double-annotation-preview', request] as const,
   members: (workspaceId: string) => ['ws', workspaceId, 'members'] as const,
   assignments: (workspaceId: string, sentenceIds: string) => ['ws', workspaceId, 'assignments', sentenceIds] as const,
 

@@ -174,7 +174,7 @@ refused.
 ### Double annotation
 
 Double annotation (`lib/server/double-annotation.ts`, rules in
-[docs/plans/double-annotation-v2.md](plans/double-annotation-v2.md) section 2)
+[double-annotation.md](double-annotation.md), "Participation")
 narrows what some people may see and do, on top of record visibility.
 Participation is sticky: whoever holds a live part in **any** round of a
 record (active, completed or stopped) is a participant for that record,
@@ -262,7 +262,7 @@ admin) with a valid session who does not have to reset their password.
 
 ## Known gaps
 
-Open items are in [open items](plans/open-items.md). Cross-site mutation
+Proposed features are in [feature plans](open-items.md). Cross-site mutation
 checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.

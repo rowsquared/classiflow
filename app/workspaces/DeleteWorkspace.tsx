@@ -42,7 +42,7 @@ export default function DeleteWorkspace({
     ['Email delivery history', ['OutgoingMail']],
     ['Record and member imports', ['SentenceImport', 'MemberImport']],
     ['Audit entries', ['AuditLog']],
-    ['Labelling activity', ['LabelingActivity']],
+    ['Labeling activity', ['LabelingActivity']],
     ['Double-annotation rounds', ['DoubleRound']]
   ]
   const remove = async () => {

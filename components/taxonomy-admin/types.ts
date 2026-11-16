@@ -22,6 +22,7 @@ export type Taxonomy = {
   lastLearningAt?: string | null
   lastLearningJobId?: string | null
   lastLearningStatus?: string | null
+  learningBacklog?: boolean
   lastLearningError?: string | null
   newAnnotationsSinceLastLearning: number
 }

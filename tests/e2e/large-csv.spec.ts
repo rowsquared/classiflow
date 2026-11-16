@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { ADMIN } from './fixtures'
-import { api } from './helpers'
+import { api, seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 test('record import dry run reads the whole 15 MiB CSV through the proxy', async ({ request }) => {
   const login = await request.post('/api/auth/sign-in/username', { data: ADMIN })

@@ -4,10 +4,9 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
-import { buttonClass } from '@/components/ui/styles'
+import { badgeClass, buttonClass, dialogPanelClass, panelClass } from '@/components/ui/styles'
 import Combobox from '@/components/ui/Combobox'
 import Modal from '@/components/Modal'
-import { dialogPanelClass } from '@/components/ui/styles'
 import { formatRelativeTime } from '@/lib/utils'
 import { mailStatusLabel } from '@/components/team/mail-status'
 
@@ -35,8 +34,11 @@ type User = {
   memberships: Array<{ workspace: { id: string; name: string }; role: string; status: string }>
 }
 const control =
-  'w-full border border-gray-500 px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-600'
+  'mt-1 w-full border border-gray-500 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-600'
+const fieldLabel = 'block text-sm text-gray-700'
+const link = 'text-indigo-700 underline hover:text-indigo-900'
 
+/** One card per workspace the person belongs to, then a picker to add another. */
 export default function WorkspaceAccess({
   user,
   onChanged,
@@ -56,20 +58,24 @@ export default function WorkspaceAccess({
     queryFn: ({ signal }) => fetchJson<{ workspaces: Workspace[] }>('/api/workspaces', { signal })
   })
   const workspaces = allowedWorkspaces ?? data?.workspaces ?? []
+  const addable = workspaces.filter(w => w.status === 'active' && !user.memberships.some(m => m.workspace.id === w.id))
+  const adding = workspaceId ? workspaces.find(w => w.id === workspaceId) : undefined
   return (
-    <section aria-label="Workspace access" className="border-y border-gray-200 py-4 space-y-3">
-      <h3 className="font-medium text-gray-900">Workspace access</h3>
+    <div className="space-y-3">
       {user.platformRole === 'admin' && (
-        <p className="text-sm text-gray-700">
-          All workspaces: this person is a platform administrator. Changing memberships does not restrict that access.
+        <p className="border-l-2 border-indigo-600 bg-indigo-50 px-3 py-2 text-sm text-gray-800">
+          Platform administrator: admin in every workspace. The roles below only matter if that is removed.
         </p>
       )}
       {user.banned && (
-        <p className="text-sm text-gray-700">
-          This account is disabled globally. Enable it before granting workspace access.
+        <p className="border-l-2 border-red-600 bg-red-50 px-3 py-2 text-sm text-gray-800">
+          This account is disabled. Enable it (Account tab) before changing workspace access.
         </p>
       )}
       {isError && <p role="alert">Could not load workspaces.</p>}
+      {user.memberships.length === 0 && !adding && (
+        <p className="text-sm text-gray-600">Not a member of any workspace yet.</p>
+      )}
       {user.memberships.map(m => (
         <Membership
           key={m.workspace.id}
@@ -80,29 +86,34 @@ export default function WorkspaceAccess({
           mailEnabled={mailEnabled}
         />
       ))}
-      <Combobox
-        label="Add to workspace"
-        value={workspaceId || null}
-        disabled={!!user.banned}
-        onChange={id => setWorkspaceId(id ?? '')}
-        options={workspaces
-          .filter(w => w.status === 'active' && !user.memberships.some(m => m.workspace.id === w.id))
-          .map(w => ({ value: w.id, label: w.name }))}
-      />
-      {workspaceId && workspaces.find(w => w.id === workspaceId) && (
+      {adding && (
         <Membership
-          key={workspaceId}
+          key={adding.id}
           user={user}
-          workspace={workspaces.find(w => w.id === workspaceId)!}
+          workspace={adding}
           platform={platform}
           mailEnabled={mailEnabled}
+          onCancel={() => setWorkspaceId('')}
           onChanged={async () => {
             await onChanged()
             setWorkspaceId('')
           }}
         />
       )}
-    </section>
+      {addable.length > 0 && !adding && (
+        <div className="pt-1">
+          <Combobox
+            label="Add to workspace"
+            labelClassName={`${fieldLabel} mb-1`}
+            placeholder="Choose a workspace…"
+            value={null}
+            disabled={!!user.banned}
+            onChange={id => setWorkspaceId(id ?? '')}
+            options={addable.map(w => ({ value: w.id, label: w.name }))}
+          />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -110,12 +121,14 @@ function Membership({
   user,
   workspace,
   onChanged,
+  onCancel,
   platform,
   mailEnabled
 }: {
   user: User
   workspace: Workspace
   onChanged: () => Promise<unknown>
+  onCancel?: () => void
   platform: boolean
   mailEnabled: boolean
 }) {
@@ -126,7 +139,12 @@ function Membership({
       fetchJson<{ users: Member[] }>(`/api/workspaces/${workspace.id}/users?includeSuspended=true`, { signal })
   })
   const member = data?.users.find(m => m.id === user.id)
-  if (isPending) return <p role="status">Loading {workspace.name}…</p>
+  if (isPending)
+    return (
+      <p role="status" className={`${panelClass} p-4 text-sm text-gray-600`}>
+        Loading {workspace.name}…
+      </p>
+    )
   if (isError) return <p role="alert">Could not load members of {workspace.name}.</p>
   return (
     <MembershipForm
@@ -137,6 +155,7 @@ function Membership({
       members={data.users}
       platform={platform}
       mailEnabled={mailEnabled}
+      onCancel={onCancel}
       onChanged={async () => {
         await cache.invalidateQueries({ queryKey: queryKeys.workspace(workspace.id) })
         await onChanged()
@@ -151,6 +170,7 @@ function MembershipForm({
   workspace,
   members,
   onChanged,
+  onCancel,
   platform,
   mailEnabled
 }: {
@@ -159,6 +179,7 @@ function MembershipForm({
   workspace: Workspace
   members: Member[]
   onChanged: () => Promise<void>
+  onCancel?: () => void
   platform: boolean
   mailEnabled: boolean
 }) {
@@ -169,13 +190,16 @@ function MembershipForm({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
-  const disabled = busy || workspace.status !== 'active' || !!user.banned
+  const archived = workspace.status !== 'active'
+  const removed = member?.status === 'suspended'
+  const disabled = busy || archived || !!user.banned
+  const invite = !member && !platform
+  const dirty = !member || removed || role !== member.role || supervisorId !== (member.supervisorId ?? '')
   const send = async (remove = false) => {
     setBusy(true)
     setError('')
     setSaved(false)
     try {
-      const invite = !member && !platform
       const url = `/api/workspaces/${workspace.id}/${invite ? 'invitations' : `users${member ? `/${user.id}` : ''}`}`
       await fetchJson(url, {
         method: remove ? 'DELETE' : member ? 'PUT' : 'POST',
@@ -199,117 +223,132 @@ function MembershipForm({
       setBusy(false)
     }
   }
+  const facts = member
+    ? [
+        `${member._count.assignedSentences} assigned ${member._count.assignedSentences === 1 ? 'record' : 'records'}`,
+        member.lastSeenAt ? `last seen ${formatRelativeTime(member.lastSeenAt)}` : 'never opened',
+        `added ${formatRelativeTime(member.createdAt)}${member.addedBy ? ` by ${member.addedBy}` : ''}`,
+        member.lastMail
+          ? `${mailStatusLabel(member.lastMail.status)} ${formatRelativeTime(member.lastMail.createdAt)}`
+          : null
+      ].filter(Boolean)
+    : []
   return (
-    <div className="border border-gray-200 p-3 space-y-2">
-      <p className="font-medium text-gray-900">
-        {workspace.name} {member?.status === 'suspended' ? '(removed)' : ''}
-        {workspace.status !== 'active' ? ' (archived, read-only)' : ''}
-      </p>
-      <label className="block text-sm text-gray-700">
-        Workspace role
-        <select disabled={disabled} className={control} value={role} onChange={e => setRole(e.target.value as Role)}>
-          <option value="labeller">Labeller</option>
-          <option value="supervisor">Supervisor</option>
-          <option value="admin">Workspace admin</option>
-        </select>
-      </label>
-      <Combobox
-        label={`Supervisor in ${workspace.name}`}
-        disabled={disabled}
-        value={supervisorId || null}
-        onChange={id => setSupervisorId(id ?? '')}
-        options={members
-          .filter(m => m.id !== user.id && m.status === 'active' && m.role !== 'labeller')
-          .map(m => ({ value: m.id, label: m.name, hint: m.email }))}
-        placeholder="No supervisor"
-      />
+    <section aria-label={workspace.name} className={`${panelClass} space-y-3 p-4`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 font-medium text-gray-900">
+            {workspace.name}
+            {!member && <span className={badgeClass('accent')}>New</span>}
+            {removed && <span className={badgeClass('danger')}>Removed</span>}
+            {archived && <span className={badgeClass('neutral')}>Archived · read-only</span>}
+          </p>
+          {facts.length > 0 && <p className="mt-0.5 text-xs text-gray-600">{facts.join(' · ')}</p>}
+        </div>
+        {member?.status === 'active' && (
+          <button
+            type="button"
+            aria-label={`Remove from ${workspace.name}`}
+            disabled={busy || archived}
+            className={buttonClass('ghost', 'sm', 'text-red-700 hover:text-red-800')}
+            onClick={() => setConfirmRemove(true)}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={fieldLabel}>
+          Workspace role
+          <select disabled={disabled} className={control} value={role} onChange={e => setRole(e.target.value as Role)}>
+            <option value="labeller">Labeller</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="admin">Workspace admin</option>
+          </select>
+        </label>
+        {role !== 'admin' && (
+          <Combobox
+            label="Supervisor"
+            labelClassName={`${fieldLabel} mb-1`}
+            disabled={disabled}
+            value={supervisorId || null}
+            onChange={id => setSupervisorId(id ?? '')}
+            options={members
+              .filter(m => m.id !== user.id && m.status === 'active' && m.role !== 'labeller')
+              .map(m => ({ value: m.id, label: m.name, hint: m.email }))}
+            placeholder="No supervisor"
+          />
+        )}
+      </div>
+      {invite && !mailEnabled && (
+        <p className="text-sm text-gray-600">
+          Email is not set up, so you cannot invite an existing account. A platform admin can add them directly.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-red-700">
           {error}
         </p>
       )}
-      {saved && (
-        <p role="status" className="text-sm text-gray-700">
-          Workspace access saved.
-        </p>
-      )}
-      <button
-        type="button"
-        disabled={disabled || (!member && !platform && !mailEnabled)}
-        className={buttonClass('secondary')}
-        onClick={() => void send()}
-      >
-        {member?.status === 'suspended'
-          ? 'Restore access'
-          : member
-            ? 'Save workspace access'
-            : platform
-              ? 'Add workspace access'
-              : 'Send invitation'}
-      </button>
-      {member && (
-        <button
-          type="button"
-          className={buttonClass('ghost')}
-          disabled={busy}
-          onClick={() => {
-            setRole(member.role)
-            setSupervisorId(member.supervisorId ?? '')
-            setError('')
-          }}
-        >
-          Cancel changes
-        </button>
-      )}
-      {!member && !platform && !mailEnabled && (
-        <p className="text-sm text-gray-600">
-          Email must be configured to invite an existing account. A platform admin can grant access directly.
-        </p>
-      )}
-      {member && (
-        <details className="text-sm text-gray-700">
-          <summary className="cursor-pointer">History in {workspace.name}</summary>
-          <p>Assigned records: {member._count.assignedSentences}</p>
-          <p>Last seen here: {member.lastSeenAt ? formatRelativeTime(member.lastSeenAt) : 'Never'}</p>
-          <p>
-            Added here: {formatRelativeTime(member.createdAt)}
-            {member.addedBy ? ` by ${member.addedBy}` : ''}
-          </p>
-          <p>Access last changed: {formatRelativeTime(member.updatedAt)}</p>
-          {member.lastMail && (
-            <p>
-              Last workspace email: {mailStatusLabel(member.lastMail.status)} ·{' '}
-              {formatRelativeTime(member.lastMail.createdAt)}
-            </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-700">
+          {member && (
+            <>
+              <a className={link} href={`/w/${workspace.id}/progress?personId=${user.id}`}>
+                Progress
+              </a>
+              {' · '}
+              <a className={link} href={`/w/${workspace.id}/admin/audit?actorId=${user.id}`}>
+                Actions taken
+              </a>
+              {' · '}
+              <a className={link} href={`/w/${workspace.id}/admin/audit?entityType=user&entityId=${user.id}`}>
+                Access changes
+              </a>
+            </>
           )}
-          <a className="text-indigo-700 underline" href={`/w/${workspace.id}/progress?personId=${user.id}`}>
-            Labelling progress
-          </a>
-          {' · '}
-          <a className="text-indigo-700 underline" href={`/w/${workspace.id}/admin/audit?actorId=${user.id}`}>
-            Administrative actions
-          </a>{' '}
-          ·{' '}
-          <a
-            className="text-indigo-700 underline"
-            href={`/w/${workspace.id}/admin/audit?entityType=user&entityId=${user.id}`}
-          >
-            Access history
-          </a>
-        </details>
-      )}
-      {member?.status === 'active' && (
-        <>
+        </p>
+        <div className="flex items-center gap-2">
+          {saved && !dirty && (
+            <span role="status" className="text-sm text-gray-700">
+              Saved.
+            </span>
+          )}
+          {member && !removed && dirty && (
+            <button
+              type="button"
+              className={buttonClass('ghost', 'sm')}
+              disabled={busy}
+              onClick={() => {
+                setRole(member.role)
+                setSupervisorId(member.supervisorId ?? '')
+                setError('')
+              }}
+            >
+              Cancel changes
+            </button>
+          )}
+          {onCancel && (
+            <button type="button" className={buttonClass('ghost', 'sm')} disabled={busy} onClick={onCancel}>
+              Cancel
+            </button>
+          )}
           <button
             type="button"
-            disabled={busy || workspace.status !== 'active'}
-            className={buttonClass('secondary')}
-            onClick={() => setConfirmRemove(true)}
+            disabled={disabled || !dirty || (invite && !mailEnabled)}
+            className={buttonClass('primary', 'sm')}
+            onClick={() => void send()}
           >
-            Remove from {workspace.name}
+            {removed
+              ? 'Restore access'
+              : member
+                ? 'Save workspace access'
+                : platform
+                  ? 'Add workspace access'
+                  : 'Send invitation'}
           </button>
-        </>
-      )}
+        </div>
+      </div>
       {confirmRemove && (
         <Modal
           label="Remove workspace access"
@@ -317,10 +356,11 @@ function MembershipForm({
             if (!busy) setConfirmRemove(false)
           }}
         >
-          <div className={`${dialogPanelClass} max-w-md p-6 space-y-4`}>
+          <div className={`${dialogPanelClass} max-w-md space-y-4 p-6`}>
             <h3 className="text-lg font-medium">Remove workspace access</h3>
             <p>
-              Remove {user.email} from {workspace.name}? Their labels, comments and history are kept.
+              Remove {user.email} from {workspace.name}? Their labels, comments and history are kept, and you can
+              restore access later.
             </p>
             <label className="block text-sm">
               <input type="checkbox" checked={unassignOpen} onChange={e => setUnassignOpen(e.target.checked)} />{' '}
@@ -331,15 +371,17 @@ function MembershipForm({
                 {error}
               </p>
             )}
-            <button className={buttonClass('secondary')} disabled={busy} onClick={() => setConfirmRemove(false)}>
-              Cancel
-            </button>
-            <button className={buttonClass('danger')} disabled={busy} onClick={() => void send(true)}>
-              Remove access
-            </button>
+            <div className="flex justify-end gap-2">
+              <button className={buttonClass('secondary')} disabled={busy} onClick={() => setConfirmRemove(false)}>
+                Cancel
+              </button>
+              <button className={buttonClass('danger')} disabled={busy} onClick={() => void send(true)}>
+                Remove access
+              </button>
+            </div>
           </div>
         </Modal>
       )}
-    </div>
+    </section>
   )
 }

@@ -16,7 +16,7 @@ import { recordLabelingActivity } from '@/lib/labeling-activity'
 
 /**
  * Double annotation workflow (prisma/schema.prisma DoubleRound and friends,
- * rules in lib/double-annotation.ts, plan in docs/plans/double-annotation-v2.md).
+ * rules in lib/double-annotation.ts, plan in docs/double-annotation.md).
  * Every function runs inside the workspace transaction (db()); writers lock
  * the record first (lockSentences in lib/annotation-status.ts), so saves,
  * reviews and manager actions on one record run one after the other.
@@ -56,8 +56,6 @@ const roundInclude = {
 } satisfies Prisma.DoubleRoundInclude
 
 export type Round = Prisma.DoubleRoundGetPayload<{ include: typeof roundInclude }>
-/** @deprecated name kept for callers: any round with its live tasks and outcomes. */
-export type ActiveRound = Round
 type Task = Round['tasks'][number]
 
 export async function activeRound(sentenceId: string): Promise<Round | null> {
@@ -175,21 +173,7 @@ export async function participantRound(
 }
 
 /**
- * How a non-participant meets a record in an active round:
- * - manager: admin or supervisor;
- * - hidden: a labeller with access but no part (not normally reachable:
- *   such access is removed and sentenceVisibilityFilter() keeps the record out of view).
- */
-export type DoubleView = { mode: 'manager'; round: Round } | { mode: 'hidden'; round: Round }
-
-export function viewFor(user: CurrentUser, round: Round): DoubleView {
-  if (user.role === 'admin' || user.role === 'supervisor') return { mode: 'manager', round }
-  return { mode: 'hidden', round }
-}
-
-/**
- * A participant's flag lives on their part; the record's flag goes up for
- * managers when a participant flags it and down when no part is flagged.
+ * A participant's flag lives on their part, independent of the record flag.
  * Returns the records handled this way (the caller sets the record flag of
  * the others as usual).
  */
@@ -205,22 +189,7 @@ export async function setParticipantFlags(
     where: { id: { in: [...parts.values()].map(p => p.task.id) } },
     data: { flagged }
   })
-  const ids = [...parts.keys()]
-  if (flagged) {
-    await tx.sentence.updateMany({ where: { id: { in: ids } }, data: { flagged: true } })
-  } else {
-    const stillFlagged = new Set(
-      (
-        await tx.doubleTask.findMany({
-          where: { sentenceId: { in: ids }, ...PARTICIPATING, flagged: true },
-          select: { sentenceId: true }
-        })
-      ).map(t => t.sentenceId)
-    )
-    const clear = ids.filter(id => !stillFlagged.has(id))
-    if (clear.length > 0) await tx.sentence.updateMany({ where: { id: { in: clear } }, data: { flagged: false } })
-  }
-  return new Set(ids)
+  return new Set(parts.keys())
 }
 
 // ---------------------------------------------------------------------------
@@ -315,8 +284,9 @@ export type TaskSaveResult = {
  * changed answer is a new revision (the previous one is kept, superseded):
  * - before the other answer exists it simply replaces the answer (and the
  *   provisional result, when it is the first answer);
- * - after the comparison, the frozen comparison stays; an agreed taxonomy
- *   whose answer now differs needs review again; managers see the revision;
+ * - after the comparison, its history stays frozen. The first person's
+ *   revised answer is provisional while there is a disagreement; a match
+ *   between the current answers confirms the path;
  * - in a closed round only the person's own answer changes, never the result.
  */
 export async function saveTaskAnswer(opts: {
@@ -384,11 +354,19 @@ export async function saveTaskAnswer(opts: {
         await writeResult(round.sentenceId, taxonomyId, labels, user.id, labelingStartedAt)
       }
     } else {
-      // Changed after the comparison: the comparison stays as it was.
       const reopen = outcome.state === 'agreed' && !sameLabels(otherLabels, labels)
+      const nowAgrees = outcome.state === 'disagreed' && sameLabels(otherLabels, labels)
+      if (nowAgrees || ((outcome.state === 'disagreed' || reopen) && outcome.sourceTaskId === task.id)) {
+        await writeResult(round.sentenceId, taxonomyId, labels, user.id, labelingStartedAt)
+      }
+      if (nowAgrees) await countForLearning(taxonomyId, labels.length)
       await tx.doubleOutcome.update({
         where,
-        data: { revisedAfterCompare: true, ...(reopen ? { state: 'disagreed', resultCodes: [] } : {}) }
+        data: {
+          revisedAfterCompare: true,
+          ...(reopen ? { state: 'disagreed', resultCodes: [] } : {}),
+          ...(nowAgrees ? { state: 'agreed', resultCodes: codesOf(labels) } : {})
+        }
       })
     }
   } else if (outcome.comparedAt || isConfirmed(outcome.state as OutcomeState)) {
@@ -1090,9 +1068,7 @@ async function nodeLabels(rows: Array<{ taxonomyId: string; nodeCode: string }>)
   return new Map(nodes.map(n => [`${n.taxonomyId}:${n.code}`, n.label]))
 }
 
-export async function recordView(user: CurrentUser, view: DoubleView): Promise<DoubleRecordView> {
-  if (view.mode === 'hidden') return { mode: 'hidden' }
-  const { round } = view
+export async function recordView(user: CurrentUser, round: Round): Promise<DoubleRecordView> {
   const taxonomies = await db().taxonomy.findMany({
     where: { id: { in: round.outcomes.map(o => o.taxonomyId) } },
     select: { id: true, key: true },

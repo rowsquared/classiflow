@@ -69,6 +69,7 @@ export function deliverSoon(ids: string[]) {
 }
 
 const CONCURRENCY = 2
+const MAX_ATTEMPTS = 3
 
 async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>) {
   for (let i = 0; i < items.length; i += CONCURRENCY) {
@@ -84,6 +85,7 @@ type ClaimedRow = {
   invitationId: string | null
   recipient: string | null
   requestedById: string | null
+  attempts: number
 }
 
 const claimedSelect = {
@@ -93,17 +95,25 @@ const claimedSelect = {
   workspaceId: true,
   invitationId: true,
   recipient: true,
-  requestedById: true
+  requestedById: true,
+  attempts: true
 } as const
 
 /** Claims and sends the given pending mails (not credentials). */
 export async function deliverMail(ids: string[]): Promise<void> {
-  const claimed = await prisma.outgoingMail.updateManyAndReturn({
-    where: { id: { in: ids }, status: 'pending', purpose: { not: 'credentials' } },
-    data: { status: 'sending', claimedAt: new Date(), attempts: { increment: 1 } },
-    select: claimedSelect
-  })
-  await inBatches(claimed, async row => {
+  await inBatches(ids, async id => {
+    const now = new Date()
+    const [row] = await prisma.outgoingMail.updateManyAndReturn({
+      where: {
+        id,
+        status: 'pending',
+        purpose: { not: 'credentials' },
+        OR: [{ retryAt: null }, { retryAt: { lte: now } }]
+      },
+      data: { status: 'sending', claimedAt: now, retryAt: null, attempts: { increment: 1 } },
+      select: claimedSelect
+    })
+    if (!row) return
     let result: MailOutcome
     try {
       const built = await buildMessage(row)
@@ -116,7 +126,18 @@ export async function deliverMail(ids: string[]): Promise<void> {
       )
       result = { outcome: 'unknown', detail: 'Unexpected error while sending' }
     }
-    await recordOutcome(row, result)
+    if (result.retryable && row.attempts < MAX_ATTEMPTS) {
+      await prisma.outgoingMail.updateMany({
+        where: { id, status: 'sending', attempts: row.attempts },
+        data: {
+          status: 'pending',
+          retryAt: new Date(Date.now() + row.attempts * 60_000),
+          detail: result.detail,
+          invitationTokenHash: null,
+          invitationTokenExpiresAt: null
+        }
+      })
+    } else await recordOutcome(row, result)
   })
 }
 
@@ -142,13 +163,14 @@ async function buildMessage(row: ClaimedRow): Promise<Built> {
       : null
     if (!invitation || invitation.status !== 'pending') return { skip: 'The invitation is no longer open' }
     if (invitation.workspace.status !== 'active') return { skip: 'The workspace is archived' }
-    // A new secret per mail: the latest link replaces older ones.
+    // Stage the new hash on the mail. A confirmed delivery replaces the
+    // previous link; a failed delivery leaves it intact.
     const secret = randomBytes(32).toString('base64url')
-    await prisma.workspaceInvitation.update({
-      where: { id: invitation.id },
+    await prisma.outgoingMail.update({
+      where: { id: row.id },
       data: {
-        tokenHash: createHash('sha256').update(secret).digest('hex'),
-        expiresAt: new Date(Date.now() + config.invitationHours * 3600_000)
+        invitationTokenHash: createHash('sha256').update(secret).digest('hex'),
+        invitationTokenExpiresAt: new Date(Date.now() + config.invitationHours * 3600_000)
       }
     })
     return {
@@ -235,17 +257,36 @@ const OUTCOME_ACTION: Record<MailOutcome['outcome'], AuditAction> = {
 }
 
 async function recordOutcome(row: ClaimedRow, result: MailOutcome) {
-  await prisma.outgoingMail.update({
-    where: { id: row.id },
-    data: {
-      status: result.outcome,
-      detail: result.detail ?? null,
-      sentAt: result.outcome === 'sent' ? new Date() : null
+  const recorded = await prisma.$transaction(async tx => {
+    if (row.invitationId && result.outcome === 'sent') {
+      await tx.$queryRaw`SELECT id FROM "WorkspaceInvitation" WHERE id = ${row.invitationId} FOR UPDATE`
     }
+    const [mail] = await tx.outgoingMail.updateManyAndReturn({
+      where: { id: row.id, status: 'sending', attempts: row.attempts },
+      data: {
+        status: result.outcome,
+        detail: result.detail ?? null,
+        sentAt: result.outcome === 'sent' ? new Date() : null,
+        ...(result.outcome === 'failed' ? { invitationTokenHash: null, invitationTokenExpiresAt: null } : {})
+      },
+      select: { claimedAt: true, invitationTokenHash: true, invitationTokenExpiresAt: true }
+    })
+    if (!mail) return false
+    if (row.invitationId && result.outcome === 'sent' && mail.invitationTokenHash && mail.invitationTokenExpiresAt) {
+      await tx.workspaceInvitation.updateMany({
+        where: { id: row.invitationId, status: 'pending' },
+        data: { tokenHash: mail.invitationTokenHash, expiresAt: mail.invitationTokenExpiresAt }
+      })
+      await tx.outgoingMail.updateMany({
+        where: { invitationId: row.invitationId, claimedAt: { lte: mail.claimedAt! } },
+        data: { invitationTokenHash: null, invitationTokenExpiresAt: null }
+      })
+    }
+    return true
   })
   // Mail an admin asked for is audited (ids and outcome only); self-service
   // requests (forgotten passwords) are not.
-  if (row.requestedById) {
+  if (recorded && row.requestedById) {
     await audit({
       workspaceId: row.workspaceId,
       actorId: row.requestedById,
@@ -344,7 +385,8 @@ export async function pruneOutbox(now = Date.now()): Promise<number> {
   const result = await prisma.outgoingMail.deleteMany({
     where: {
       status: { in: ['sent', 'failed', 'unknown'] },
-      createdAt: { lt: new Date(now - days * 24 * 60 * 60_000) }
+      createdAt: { lt: new Date(now - days * 24 * 60 * 60_000) },
+      OR: [{ invitationTokenExpiresAt: null }, { invitationTokenExpiresAt: { lt: new Date(now) } }]
     }
   })
   return result.count
@@ -379,7 +421,12 @@ export async function recoverOutbox({ force = false } = {}): Promise<void> {
   }
   if (!mailEnabled()) return
   const pending = await prisma.outgoingMail.findMany({
-    where: { status: 'pending', purpose: { not: 'credentials' }, createdAt: { lt: new Date(now - 60_000) } },
+    where: {
+      status: 'pending',
+      purpose: { not: 'credentials' },
+      createdAt: { lt: new Date(now - 60_000) },
+      OR: [{ retryAt: null }, { retryAt: { lte: new Date(now) } }]
+    },
     select: { id: true },
     orderBy: { createdAt: 'asc' },
     take: 50

@@ -37,6 +37,27 @@ beforeEach(async () => {
   signInAs(admin)
 })
 
+it('reports colliding export columns before starting the download', async () => {
+  expect((await createTaxonomy('field')).status).toBe(200)
+  const taxonomy = await prisma.taxonomy.findFirstOrThrow({ where: { workspaceId: wsId(), key: 'field' } })
+  const [record] = await createSentences(1)
+  await prisma.sentence.update({ where: { id: record.id }, data: { fieldMapping: { '1': '1' } } })
+  await prisma.sentenceAnnotation.create({
+    data: {
+      workspaceId: wsId(),
+      sentenceId: record.id,
+      taxonomyId: taxonomy.id,
+      level: 1,
+      nodeCode: '02',
+      source: 'user',
+      createdById: admin.id
+    }
+  })
+  const response = await exportRoute.GET(request('/x?prepare=true'), params())
+  expect(response.status).toBe(409)
+  expect(await response.json()).toEqual({ error: 'Two export columns would be called "field_1"' })
+})
+
 function multipart(url: string, method: string, fields: Record<string, string>, csv?: BlobPart, fileName = 'data.csv') {
   const form = new FormData()
   Object.entries(fields).forEach(([k, v]) => form.append(k, v))

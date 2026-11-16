@@ -64,7 +64,7 @@ export async function sentenceVisibilityFilter(user: CurrentUser): Promise<Prism
   const scope = sentenceScopeFilter(user, await getVisibleMembershipIds(user))
   if (user.role !== 'labeller') return scope
   // Double annotation: a labeller never sees a record of an active round they
-  // have no part in (docs/plans/double-annotation-v2.md section 2, rule 4).
+  // have no part in (docs/double-annotation.md, "Participation" rule 4).
   return {
     AND: [
       scope,

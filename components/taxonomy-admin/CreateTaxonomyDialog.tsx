@@ -7,6 +7,7 @@ import { readUpload } from '@/lib/upload'
 import { formatImportErrors, maxLevelOf, type RowError } from '@/lib/taxonomy-admin'
 import type { CsvRow } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
+import { fetchJson, HttpError } from '@/lib/query/fetch'
 import FileChooser from './FileChooser'
 import LevelNameInputs from './LevelNameInputs'
 import { CircleCheck, TriangleAlert, X } from 'lucide-react'
@@ -76,11 +77,13 @@ export default function CreateTaxonomyDialog({
     try {
       const body = new FormData()
       body.append('file', file)
-      const res = await fetch(workspaceApi('/taxonomies/validate'), { method: 'POST', body })
-      setValidationResult(await res.json())
+      setValidationResult(
+        await fetchJson<ValidationResult>(workspaceApi('/taxonomies/validate'), { method: 'POST', body })
+      )
     } catch (caught) {
-      const message = (caught as Error).message || 'An unexpected error occurred during validation'
-      setValidationResult({ ok: false, error: message, errors: [{ row: 0, message }] })
+      const message = caught instanceof Error ? caught.message : 'An unexpected error occurred during validation'
+      const data = caught instanceof HttpError ? (caught.body as ValidationResult | null) : null
+      setValidationResult({ ok: false, error: message, errors: data?.errors ?? [{ row: 0, message }] })
     } finally {
       setValidating(false)
     }
@@ -101,15 +104,11 @@ export default function CreateTaxonomyDialog({
       if (Object.keys(levelNames).length > 0) body.append('levelNames', JSON.stringify(levelNames))
       body.append('file', file)
 
-      const res = await fetch(workspaceApi('/taxonomies'), { method: 'POST', body })
-      const data = await res.json()
-      if (res.ok) {
-        onCreated(`Successfully created taxonomy "${key}" with ${data.importedNodes} nodes!`)
-      } else {
-        setError(formatImportErrors(data.error || 'Failed to create taxonomy', data.errors))
-      }
-    } catch {
-      setError('Network error')
+      const data = await fetchJson<{ importedNodes: number }>(workspaceApi('/taxonomies'), { method: 'POST', body })
+      onCreated(`Successfully created taxonomy "${key}" with ${data.importedNodes} nodes!`)
+    } catch (caught) {
+      const data = caught instanceof HttpError ? (caught.body as ValidationResult | null) : null
+      setError(formatImportErrors(caught instanceof Error ? caught.message : 'Failed to create taxonomy', data?.errors))
     } finally {
       setSubmitting(false)
     }

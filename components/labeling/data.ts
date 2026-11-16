@@ -27,6 +27,8 @@ export type LabelingRecord = {
   supportMapping?: Record<string, string> | null
   status: string
   flagged: boolean
+  recordFlagged?: boolean
+  participantFlagged?: boolean
   lastEditedAt: string | null
   annotations: RecordAnnotation[]
   comments?: unknown[]

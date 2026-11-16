@@ -267,7 +267,7 @@ export default function SentenceAdminClient({ initialImports }: { initialImports
               <p className="text-sm text-gray-700">
                 Deleting <strong>{selectedImport.fileName}</strong> permanently removes its{' '}
                 {deletion.data.records.toLocaleString()} records, including{' '}
-                {deletion.data.labelledRecords.toLocaleString()} labelled records and their labelling history.
+                {deletion.data.labelledRecords.toLocaleString()} labeled records and their labeling history.
               </p>
             )}
             {deleteImport.error && (

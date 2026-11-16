@@ -10,7 +10,7 @@ import { participantWhere } from '@/lib/server/double-annotation'
 
 /**
  * Double annotation analysis exports (GET /export?format=pairs|agreement,
- * docs/plans/double-annotation-v2.md section 4.2): admins for the whole
+ * docs/double-annotation.md, "Export"): admins for the whole
  * workspace, supervisors for their team (analysisScope). Both stream in
  * pages of records that have a matching round.
  *

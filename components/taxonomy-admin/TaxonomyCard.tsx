@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { formatDate, formatRelativeTime } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
+import { fetchJson } from '@/lib/query/fetch'
 import type { Message, Taxonomy } from './types'
 import { buttonClass, panelClass } from '@/components/ui/styles'
 
@@ -42,60 +43,37 @@ export default function TaxonomyCard({
   onMessage,
   onJobStarted
 }: Props) {
-  const [syncing, setSyncing] = useState(false)
-  const [learning, setLearning] = useState(false)
   const synced = taxonomy.lastAISyncStatus === 'completed'
-
-  async function startJob(
-    path: string,
-    init: RequestInit,
-    setBusy: (busy: boolean) => void,
-    success: (data: Record<string, unknown>) => string,
-    failure: string,
-    networkError: string
-  ) {
-    setBusy(true)
-    onMessage(null)
-    try {
-      const res = await fetch(workspaceApi(path), init)
-      const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        onMessage({ type: 'success', text: success(data) })
-        onJobStarted()
-      } else {
-        onMessage({ type: 'error', text: data.error || failure })
-      }
-    } catch {
-      onMessage({ type: 'error', text: networkError })
-    } finally {
-      setBusy(false)
+  const startJob = useMutation({
+    mutationFn: ({ path, init }: { path: string; init: RequestInit }) =>
+      fetchJson<{ totalJobs?: number; totalSentences?: number }>(workspaceApi(path), init),
+    onMutate: () => onMessage(null),
+    onError: error => onMessage({ type: 'error', text: error.message }),
+    onSuccess: (data, { path }) => {
+      onMessage({
+        type: 'success',
+        text:
+          path === '/ai-labeling/learn'
+            ? `Queued ${data.totalJobs} learning jobs for ${data.totalSentences} records.`
+            : `AI sync queued for "${taxonomy.key}".`
+      })
+      onJobStarted()
     }
-  }
+  })
+  const learning = startJob.isPending && startJob.variables?.path === '/ai-labeling/learn'
+  const syncing = startJob.isPending && !learning
 
-  const handleSyncAI = () =>
-    startJob(
-      `/taxonomies/${taxonomy.key}/sync-ai`,
-      { method: 'POST' },
-      setSyncing,
-      () => `AI sync queued for "${taxonomy.key}"; its status updates here`,
-      'Failed to start AI sync',
-      'Network error while starting AI sync'
-    )
+  const handleSyncAI = () => startJob.mutate({ path: `/taxonomies/${taxonomy.key}/sync-ai`, init: { method: 'POST' } })
 
   const handleLearning = () =>
-    startJob(
-      '/ai-labeling/learn',
-      {
+    startJob.mutate({
+      path: '/ai-labeling/learn',
+      init: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taxonomyKey: taxonomy.key })
-      },
-      setLearning,
-      data =>
-        `Created ${data.totalJobs} learning job(s) for "${taxonomy.key}" (${data.totalSentences} sentences). Track progress in the AI jobs badge.`,
-      'Failed to start learning job',
-      'Network error while starting learning job'
-    )
+      }
+    })
 
   return (
     <div className={`${panelClass} overflow-hidden`} data-testid="taxonomy-card">
@@ -130,7 +108,7 @@ export default function TaxonomyCard({
       <div className="p-6">
         <div className="flex gap-4 flex-wrap">
           <div className="flex flex-col">
-            <button onClick={handleSyncAI} disabled={syncing} className={buttonClass('primary')}>
+            <button onClick={handleSyncAI} disabled={startJob.isPending} className={buttonClass('primary')}>
               {syncing ? 'Syncing…' : 'Sync taxonomy with AI'}
             </button>
             <div className="mt-2 text-center">
@@ -144,10 +122,21 @@ export default function TaxonomyCard({
           <div className="flex flex-col">
             <button
               onClick={handleLearning}
-              disabled={!synced || learning || taxonomy.newAnnotationsSinceLastLearning < learningThreshold}
+              disabled={
+                !synced ||
+                startJob.isPending ||
+                taxonomy.lastLearningStatus === 'processing' ||
+                (!taxonomy.learningBacklog &&
+                  taxonomy.lastLearningStatus !== 'failed' &&
+                  taxonomy.newAnnotationsSinceLastLearning < learningThreshold)
+              }
               className={buttonClass('primary')}
             >
-              {learning ? 'Sending…' : 'Train AI with submitted labels'}
+              {learning
+                ? 'Sending…'
+                : taxonomy.learningBacklog
+                  ? 'Continue training'
+                  : 'Train AI with submitted labels'}
             </button>
             <div className="mt-2 text-center">
               <StatusBadge status={taxonomy.lastLearningStatus} />

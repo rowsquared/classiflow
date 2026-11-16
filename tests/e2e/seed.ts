@@ -5,8 +5,9 @@
 import { connect } from '../../scripts/lib/db.ts'
 import { setPassword } from '../../lib/passwords.ts'
 import { ADMIN, RECORDS, WORKSPACE_ID, WORKSPACE_ADMIN } from './fixtures.ts'
+import { fixtureDatabaseUrl } from './database.ts'
 
-const prisma = connect()
+const prisma = connect(fixtureDatabaseUrl())
 try {
   const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`
@@ -92,17 +93,42 @@ try {
     data: { workspaceId: ws, fileName: 'e2e.csv', totalRows: RECORDS.length }
   })
   for (const [i, text] of RECORDS.entries()) {
-    await prisma.sentence.create({
+    const labeled = process.argv.includes('--with-activity') && i === RECORDS.length - 1
+    const record = await prisma.sentence.create({
       data: {
         workspaceId: ws,
         recordKey: String(i + 1),
         importId: imp.id,
         importOrder: i,
         field1: text,
+        status: labeled ? 'submitted' : 'pending',
+        ...(labeled ? { lastEditedAt: new Date(), lastEditorId: admin.id } : {}),
         fieldMapping: { '1': 'job_title' },
         assignments: { create: [{ membershipId: admin.memberships[0]!.id }] }
       }
     })
+    if (labeled) {
+      await prisma.sentenceAnnotation.create({
+        data: {
+          workspaceId: ws,
+          sentenceId: record.id,
+          taxonomyId: taxonomy.id,
+          nodeCode: '02',
+          level: 1,
+          source: 'user',
+          createdById: admin.id
+        }
+      })
+      await prisma.labelingActivity.create({
+        data: {
+          workspaceId: ws,
+          sentenceId: record.id,
+          taxonomyId: taxonomy.id,
+          actorId: admin.id,
+          operationId: 'progress-fixture'
+        }
+      })
+    }
   }
 } finally {
   await prisma.$disconnect()

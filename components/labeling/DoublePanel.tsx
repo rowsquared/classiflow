@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useQuery } from '@tanstack/react-query'
 import Combobox from '@/components/ui/Combobox'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -31,6 +32,8 @@ export const OUTCOME_TONES: Record<OutcomeState, BadgeTone> = {
   accepted_single: 'neutral'
 }
 
+const menuItemClass = 'cursor-pointer px-3 py-2 text-sm text-gray-700 outline-none data-[highlighted]:bg-gray-100'
+
 const PART_STATUS: Record<string, string> = { submitted: 'done', pending: 'to do', skipped: 'skipped' }
 const formatDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -44,7 +47,7 @@ export function reviewMode(view: ManagerView, outcome: Outcome | undefined): 'de
 }
 
 /**
- * Double annotation on the labelling screen, for supervisors and admins who
+ * Double annotation on the labeling screen, for supervisors and admins who
  * do not label the record themselves (participants never get this panel).
  * - Both answers aligned level by level, from the first difference marked.
  * - A disagreement is decided explicitly: answer A (key 1), answer B (2) or
@@ -107,52 +110,62 @@ export default function DoublePanel({
           </span>
         )}
       </div>
-      {!active && (
-        <p className="text-sm text-gray-700">
-          {view.status === 'completed' ? 'Confirmed' : 'Stopped'}
-          {view.closedAt ? ` on ${formatDate(view.closedAt)}` : ''}
-          {view.closeReason ? `: ${view.closeReason}` : '.'}
-        </p>
-      )}
-      {view.former.length > 0 && (
-        <p className="text-sm text-gray-700">
-          Handed over: {view.former.map(f => `${f.name} (${f.position === 1 ? 'A' : 'B'})`).join(', ')}
-        </p>
-      )}
-      {view.tasks.some(t => t.releasedAt) && (
-        <p className="text-sm text-gray-700">
-          Given back as ordinary work:{' '}
-          {view.tasks
-            .filter(t => t.releasedAt)
-            .map(t => `${t.assignee?.name ?? 'Former member'} on ${formatDate(t.releasedAt!)}`)
-            .join(', ')}
-        </p>
-      )}
-
       {outcome && outcome.answers.length > 0 && <Comparison view={view} outcome={outcome} anonymous={anonymous} />}
 
-      {outcome?.revisedAfterCompare && (
-        <p className="text-sm text-gray-700">
-          A labeller changed their answer after the two answers were compared. The answers above are the current ones;
-          the comparison counts the original ones.
-        </p>
-      )}
-      {outcome && (outcome.state === 'reviewed' || outcome.state === 'accepted_single') && outcome.reviewedBy && (
-        <p className="text-sm text-gray-700">
-          {outcome.state === 'reviewed' ? 'Decided' : 'Single label accepted'} by {outcome.reviewedBy}
-          {outcome.reviewedAt ? ` on ${formatDate(outcome.reviewedAt)}` : ''}
-          {outcome.note ? `: “${outcome.note}”` : '.'}
-          {outcome.resultCodes.length > 0 && (
-            <>
-              {' '}
-              Result <span className="font-mono">{outcome.resultCodes.join(' › ')}</span>.
-            </>
+      {(!active ||
+        (!anonymous && (view.former.length > 0 || view.tasks.some(t => t.releasedAt))) ||
+        outcome?.revisedAfterCompare ||
+        outcome?.reviewedBy) && (
+        <details className="space-y-2">
+          <summary className="w-fit cursor-pointer text-sm text-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-600">
+            History
+          </summary>
+          {!active && (
+            <p className="text-sm text-gray-700">
+              {view.status === 'completed' ? 'Confirmed' : 'Stopped'}
+              {view.closedAt ? ` on ${formatDate(view.closedAt)}` : ''}
+              {view.closeReason ? `: ${view.closeReason}` : '.'}
+            </p>
           )}
-        </p>
+          {!anonymous && view.former.length > 0 && (
+            <p className="text-sm text-gray-700">
+              Handed over: {view.former.map(f => `${f.name} (${f.position === 1 ? 'A' : 'B'})`).join(', ')}
+            </p>
+          )}
+          {!anonymous && view.tasks.some(t => t.releasedAt) && (
+            <p className="text-sm text-gray-700">
+              Given back as ordinary work:{' '}
+              {view.tasks
+                .filter(t => t.releasedAt)
+                .map(t => `${t.assignee?.name ?? 'Former member'} on ${formatDate(t.releasedAt!)}`)
+                .join(', ')}
+            </p>
+          )}
+
+          {outcome?.revisedAfterCompare && (
+            <p className="text-sm text-gray-700">
+              A labeller changed their answer after the two answers were compared. The answers above are the current
+              ones; the comparison counts the original ones.
+            </p>
+          )}
+          {outcome && (outcome.state === 'reviewed' || outcome.state === 'accepted_single') && outcome.reviewedBy && (
+            <p className="text-sm text-gray-700">
+              {outcome.state === 'reviewed' ? 'Decided' : 'Single label accepted'} by {outcome.reviewedBy}
+              {outcome.reviewedAt ? ` on ${formatDate(outcome.reviewedAt)}` : ''}
+              {outcome.note ? `: “${outcome.note}”` : '.'}
+              {outcome.resultCodes.length > 0 && (
+                <>
+                  {' '}
+                  Result <span className="font-mono">{outcome.resultCodes.join(' › ')}</span>.
+                </>
+              )}
+            </p>
+          )}
+        </details>
       )}
       {!view.canReview && (
         <p className="text-sm text-gray-700">
-          You cannot decide this record: you labelled it, or one of its labellers is outside your team.
+          You cannot decide this record: you labeled it, or one of its labellers is outside your team.
         </p>
       )}
 
@@ -261,36 +274,34 @@ export default function DoublePanel({
               </button>
             </>
           ) : (
-            <>
-              {canAccept && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setPending('accept_single')}
-                  className={buttonClass('secondary', 'sm')}
-                >
-                  Accept single label…
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" disabled={busy} className={buttonClass('secondary', 'sm')}>
+                  More actions
                 </button>
-              )}
-              {handOver.length > 0 && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setPending('reassign')}
-                  className={buttonClass('secondary', 'sm')}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="start"
+                  sideOffset={4}
+                  className="z-50 border border-gray-200 bg-white p-1 shadow-lg"
                 >
-                  Hand over a part…
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setPending('stop')}
-                className={buttonClass('ghost', 'sm')}
-              >
-                Stop double annotation…
-              </button>
-            </>
+                  {canAccept && (
+                    <DropdownMenu.Item className={menuItemClass} onSelect={() => setPending('accept_single')}>
+                      Accept single label…
+                    </DropdownMenu.Item>
+                  )}
+                  {handOver.length > 0 && (
+                    <DropdownMenu.Item className={menuItemClass} onSelect={() => setPending('reassign')}>
+                      Hand over a part…
+                    </DropdownMenu.Item>
+                  )}
+                  <DropdownMenu.Item className={menuItemClass} onSelect={() => setPending('stop')}>
+                    Stop double annotation…
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           )}
         </div>
       )}
@@ -336,7 +347,7 @@ function Comparison({ view, outcome, anonymous }: { view: ManagerView; outcome: 
             return (
               <tr
                 key={level}
-                className={marked ? 'bg-[#F7F3B3] text-[#4d470b]' : 'border-b border-gray-100 last:border-0'}
+                className={marked ? 'bg-amber-100 text-amber-900' : 'border-b border-gray-100 last:border-0'}
               >
                 <td className="py-1 px-2">
                   {level}

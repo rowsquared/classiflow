@@ -194,7 +194,7 @@ Read `prisma/schema.prisma` before changing data behavior.
   Both save endpoints validate leaf/unknown paths and share the completion
   rules. Bulk flags, comments and skips are transactional for the whole
   selection; inspect both save paths when changing completion behavior.
-  `escalated` also exists in the schema; flags are a separate boolean.
+  Legacy `escalated` records are shown as pending in the app. Flags are separate.
 - `SentenceAssignment` joins records and users. Roles are `admin`, `supervisor`,
   and `labeller`; users can have a supervisor and subordinate labellers. Queue,
   detail, stats, and progress queries apply role/team scoping in their handlers.
@@ -206,20 +206,19 @@ Read `prisma/schema.prisma` before changing data behavior.
   path that saves human labels; never from AI suggestions or flag/comment saves.
 - **Double annotation** (`lib/double-annotation.ts` rules,
   `lib/server/double-annotation.ts` workflow, `lib/server/double-queue.ts`
-  queue badges; plan and v1 contract in `docs/plans/double-annotation.md`
-  section 0): a `DoubleRound` per record (one active) with two `DoubleTask`s
+  queue badges; how it works in `docs/double-annotation.md`): a `DoubleRound` per record (one active) with two `DoubleTask`s
   (two different people), their immutable `DoubleTaskLabel` answers and a
   `DoubleOutcome` per required taxonomy. `SentenceAnnotation` stays the
   current, exportable result (the first answer while waiting or disagreeing);
   `Sentence.status` is `submitted` only when every required taxonomy is
-  agreed, reviewed or accepted. Participation is sticky (v2 phase A,
-  `docs/plans/double-annotation-v2.md` section 2): whoever holds a part in any
+  agreed, reviewed or accepted. Participation is sticky (`docs/double-annotation.md`, "Participation"): whoever holds a part in any
   round of a record sees only their own work on it for good, unless a manager
   gives the part back as ordinary work (`release`, closed rounds only;
   participation predicate `PARTICIPATING`) (own answer
   revision, comments, flag, status, edit time; no AI), with the same response
-  shape as ordinary records, and their saves only add revisions of their own
-  answer (`DoubleTaskLabel.revision`/`supersededAt`), never change the result.
+  shape as ordinary records. During an active round, revised answers can change
+  the provisional label or bring the two answers into agreement. Revisions after
+  the round closes only update the person's own answer (`DoubleTaskLabel.revision`/`supersededAt`).
   A manager's save decides a disagreement, or on a completed round becomes
   their new decision; `DoubleOutcome.resultCodes` holds the confirmed path and
   the export reports drifted labels as `single`. Labellers without a part do
@@ -420,8 +419,7 @@ files for deployment details; these are separate from the local dev stack.
 - Inspect `git status` before editing. Multiple agents may share this checkout;
   preserve unrelated changes and keep edits scoped to the requested task.
 - Commit only the files you changed (`git add <paths>`, never `git add -A`).
-- Work lands on `staging`, which is meant to deploy to staging on push (currently
-  nothing deploys from it; see the handoff). Never push or merge
+- Work lands on `staging`, which deploys to staging on push. Never push or merge
   into `main`: production is released only with `node scripts/promote-main.mjs`
   after CI is green on `staging` (a ruleset enforces this). See "Deploy
   triggers" in `COOLIFY_DEPLOYMENT.md`.
@@ -456,8 +454,9 @@ files for deployment details; these are separate from the local dev stack.
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.
 
-What is still open (staging, maintainer decisions, Taxomind) is in
-[open items](docs/plans/open-items.md). The October 2026 plans (modernization,
+Larger proposed features are in [feature plans](docs/open-items.md). The
+release checklist lives in [COOLIFY_DEPLOYMENT.md](COOLIFY_DEPLOYMENT.md#releases).
+The October 2026 plans (modernization,
 workspace isolation, user management, progress dashboard, Users/workspaces redesign) are implemented and
 archived in `docs/archive/plans-2026-10/`, the hardening review, briefs and
 handoff in `docs/archive/hardening-2026-10/`; read them only for the reasoning

@@ -1,7 +1,7 @@
 import { sameLabels, type LabelInput } from '@/lib/label-path'
 
 /**
- * Double annotation rules (docs/plans/double-annotation.md), pure and shared by
+ * Double annotation rules (docs/double-annotation.md), pure and shared by
  * the server (lib/server/double-annotation.ts), the queue and the export.
  *
  * Two people label a record independently. Per required taxonomy:
@@ -139,10 +139,10 @@ export type DoubleRowSummary = {
 /** Labels for queue badges and the record screen (sentence case, no colour needed to read them). */
 export const OUTCOME_LABELS: Record<OutcomeState, string> = {
   waiting: 'Waiting for labels',
-  agreed: 'Agreed',
+  agreed: 'Confirmed by agreement',
   disagreed: 'Needs review',
-  reviewed: 'Resolved',
-  accepted_single: 'Single label accepted'
+  reviewed: 'Confirmed by review',
+  accepted_single: 'Confirmed with one label'
 }
 
 /**
@@ -190,11 +190,6 @@ type PathView = Array<{ level: number; nodeCode: string; nodeLabel: string | nul
 /** Ordinary edit permissions, without disclosing the annotation workflow. */
 export type RecordLabelingAccess = { editableTaxonomies: string[] | null }
 
-/** Managers and ordinary records: no restriction; a record without a part in an active round: none. */
-export function recordLabelingAccess(view: DoubleRecordView | null): RecordLabelingAccess {
-  return { editableTaxonomies: view?.mode === 'hidden' ? [] : null }
-}
-
 /**
  * A participant may change their answer for every taxonomy the round
  * requires: no restriction (as on ordinary records) when that is every active
@@ -205,39 +200,37 @@ export function participantLabelingAccess(required: string[], active: string[]):
 }
 
 /** The record screen's view of an active round (record GET `double`; lib/server/double-annotation.ts recordView). */
-export type DoubleRecordView =
-  | { mode: 'hidden' }
-  | {
-      mode: 'manager'
-      roundId: string
-      /** active, or closed: completed (confirmed) or cancelled (stopped); closed rounds are history. */
-      status: 'active' | 'completed' | 'cancelled'
-      closeReason: string | null
-      closedAt: string | null
-      canReview: boolean
-      /** People who held a part before it was handed over. */
-      former: Array<{ position: number; name: string }>
-      tasks: Array<{
-        position: number
-        status: string
-        fromBaseline: boolean
-        /** Given back as ordinary work (the person no longer participates). */
-        releasedAt: string | null
-        assignee: { id: string; name: string } | null
-      }>
-      outcomes: Array<{
-        taxonomyKey: string
-        state: OutcomeState
-        matched: boolean | null
-        /** A labeller changed their answer after the comparison. */
-        revisedAfterCompare: boolean
-        sourcePosition: number | null
-        reviewedBy: string | null
-        reviewedAt: string | null
-        comparedAt: string | null
-        note: string | null
-        /** The confirmed path, by level (empty while not confirmed). */
-        resultCodes: string[]
-        answers: Array<{ position: number; labels: PathView }>
-      }>
-    }
+export type DoubleRecordView = {
+  mode: 'manager'
+  roundId: string
+  /** active, or closed: completed (confirmed) or cancelled (stopped); closed rounds are history. */
+  status: 'active' | 'completed' | 'cancelled'
+  closeReason: string | null
+  closedAt: string | null
+  canReview: boolean
+  /** People who held a part before it was handed over. */
+  former: Array<{ position: number; name: string }>
+  tasks: Array<{
+    position: number
+    status: string
+    fromBaseline: boolean
+    /** Given back as ordinary work (the person no longer participates). */
+    releasedAt: string | null
+    assignee: { id: string; name: string } | null
+  }>
+  outcomes: Array<{
+    taxonomyKey: string
+    state: OutcomeState
+    matched: boolean | null
+    /** A labeller changed their answer after the comparison. */
+    revisedAfterCompare: boolean
+    sourcePosition: number | null
+    reviewedBy: string | null
+    reviewedAt: string | null
+    comparedAt: string | null
+    note: string | null
+    /** The confirmed path, by level (empty while not confirmed). */
+    resultCodes: string[]
+    answers: Array<{ position: number; labels: PathView }>
+  }>
+}

@@ -68,7 +68,7 @@ in as its members; ENV_SETUP.md "Demo data").
 The progress reports, the queue search and the double annotation queue views
 have a repeatable benchmark on seeded data (results in
 docs/archive/plans-2026-10/progress-dashboard.md and
-docs/plans/double-annotation-v2.md, phase E):
+docs/archive/double-annotation/plan-v2.md, phase E):
 
 ```bash
 createdb classiflow_bench_test     # once; _bench or _test, the seed empties every table
@@ -87,6 +87,11 @@ BENCH_MIXED=1 DATABASE_POOL_SIZE=20 npm run bench:progress -- -t 'mixed workload
 ```
 
 The mixed benchmark changes labels only on the seeded test records.
+
+On 16 November 2026, eight measured runs on 50,000 records and 6,250 rounds
+put the two-year overview at 635 ms p95 for supervisors and 343 ms for admins
+in isolation. The mixed run with ten viewers and four concurrent saves per
+iteration measured 463 ms p95 for reads and 536 ms for saves with a pool of 20.
 
 Local comparison on 50,000 records (five measured iterations, PostgreSQL 18).
 With a pool of 10, read and save p95 were 1,005 ms and 1,059 ms. With a pool of

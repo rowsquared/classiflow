@@ -3,9 +3,9 @@
 **Status:** phases A-E implemented (7 November 2026, see section 6); what is
 left is in the handover below. **Date:** 7 November 2026.
 **Baseline:** `b87c3d6` on `staging` (v1 as described in
-[double-annotation.md](double-annotation.md) section 0).
+[double-annotation.md](plan-v1.md) section 0).
 
-**Mockups:** [docs/mockups/double-annotation-v2/index.html](../mockups/double-annotation-v2/index.html)
+**Mockups:** [mockup-v2/index.html](mockup-v2/index.html)
 (static page, open it in a browser; illustrative data).
 
 ## 0. How this was produced

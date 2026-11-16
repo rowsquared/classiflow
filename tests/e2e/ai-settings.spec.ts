@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { ADMIN, WORKSPACE_ID } from './fixtures'
+import { seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // A platform admin approves an AI service; the workspace admin connects the
 // workspace to it with a token that is never shown again, and turns AI on.

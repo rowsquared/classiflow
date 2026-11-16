@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
 import { workspaceApi } from '@/lib/workspace/urls'
+import { fetchJson } from '@/lib/query/fetch'
 import { mailStatusLabel } from '@/components/team/mail-status'
 import { panelClass } from '@/components/ui/styles'
 
@@ -41,12 +42,10 @@ export default function PendingInvitations({
     setBusy(invitation.id)
     try {
       const path = `/invitations/${invitation.id}`
-      const res = await fetch(workspaceId ? `/api/workspaces/${workspaceId}${path}` : workspaceApi(path), { method })
-      if (!res.ok) {
-        onError((await res.json().catch(() => ({}))).error || 'The change was refused')
-        return
-      }
-      onChanged(method === 'POST' ? `Invitation to ${invitation.email} sent again` : 'Invitation withdrawn')
+      await fetchJson(workspaceId ? `/api/workspaces/${workspaceId}${path}` : workspaceApi(path), { method })
+      onChanged(method === 'POST' ? `Invitation to ${invitation.email} queued` : 'Invitation withdrawn')
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'The change was refused')
     } finally {
       setBusy(null)
     }

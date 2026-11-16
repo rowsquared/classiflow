@@ -6,7 +6,6 @@ const base = {
   completedInPeriod: 14,
   startDate: '2026-10-16',
   endDate: '2026-10-22',
-  timeZone: 'UTC',
   now: new Date('2026-10-22T12:00:00.000Z')
 }
 

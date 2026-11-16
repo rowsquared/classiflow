@@ -1,13 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { api, failOnCspViolations, rows, signIn } from './helpers'
+import { api, failOnCspViolations, rows, signIn, seedBeforeAll } from './helpers'
 
-// Runs after journeys.spec.ts, which leaves "software developer" and
-// "hospital nurse" pending (ISCO is the only taxonomy). Both end up submitted
-// here; taxonomy-admin.spec.ts does not depend on them.
+seedBeforeAll()
+
 failOnCspViolations()
 
-test('bulk labelling: select records in the queue, label them at once, export shows the label', async ({ page }) => {
+test('bulk labeling: select records in the queue, label them at once, export shows the label', async ({ page }) => {
   await signIn(page)
   await expect(page).toHaveURL(/\/queue$/)
 
@@ -20,7 +19,7 @@ test('bulk labelling: select records in the queue, label them at once, export sh
 
   await page.getByRole('button', { name: 'Bulk label' }).click()
   const panel = page.getByRole('dialog', { name: 'Bulk label' })
-  await expect(panel.getByText('Labelling 2 records')).toBeVisible()
+  await expect(panel.getByText('Labeling 2 records')).toBeVisible()
   // "02 Technicians" is a leaf at level 1, so it completes the path.
   await panel.getByRole('button', { name: /^02\b/ }).click()
   const bulkRequest = page.waitForResponse(

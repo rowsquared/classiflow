@@ -1,7 +1,7 @@
 # User management: implementation plan
 
 **Archived 22 October 2026:** implemented. What is still open (environment,
-maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+maintainer decisions, Taxomind) is in [open items](../../open-items.md).
 
 **Status:** implemented 21–22 October 2026. The implementation status below
 takes precedence over the original proposal and design revisions retained
@@ -203,7 +203,7 @@ undo any of its decisions.
 | Activity | `User.lastLogin`, written in `lib/auth.config.ts` `authorize()` | JWT sessions last 30 days, so `lastLogin` means "last typed a password", not "last used the app". Its `prisma.user.update` also bumps `updatedAt` |
 | Email | None. No transport, no templates, no env vars | Credentials are handed over by hand; no forgotten-password flow; a locked-out user needs an admin |
 | Creating users | One at a time; admin types a temporary password; `mustResetPassword` forced | No bulk path, no invitations, no generated password, no "show once / copy" |
-| Leaving users | Delete only; 409 if the user wrote comments or started AI jobs | No reversible revocation. [ideas.md](../../ideas.md) already asks for deactivation |
+| Leaving users | Delete only; 409 if the user wrote comments or started AI jobs | No reversible revocation. [ideas.md](https://github.com/rowsquared/classiflow/blob/5df9249458d37652a2c5e8b88daf47d5fab2e979/docs/ideas.md) already asks for deactivation |
 | Identity | `username` and `email` unique, case-sensitive; login matches either exactly | `Jane@x.org` and `jane@x.org` can both exist; login is case-sensitive on email |
 | Passwords | `min(8).max(256)` in three zod schemas | No shared policy; bcrypt silently ignores bytes past 72; nothing stops `password = username` |
 | Last admin | `isLastAdmin()` check, then a separate write | Two admins demoting each other at once can both pass (survey-hub H03) |
@@ -326,7 +326,7 @@ component + client component pattern and `serverFetchJSON`.
 Everything the single form and the CSV import must agree on, in one place:
 a new `lib/account-rules.ts` (extend `lib/user-rules.ts` if it stays small).
 
-- **Deactivation** (moves the [ideas.md](../../ideas.md) item into this plan):
+- **Deactivation** (moves the [ideas.md](https://github.com/rowsquared/classiflow/blob/5df9249458d37652a2c5e8b88daf47d5fab2e979/docs/ideas.md) item into this plan):
   - `User.deactivatedAt DateTime?` (+ `deactivatedById String?` optional).
   - `authorize()` refuses a deactivated user with the same generic failure as
     a wrong password; `checkSession()` returns 401 for them. Deactivating bumps

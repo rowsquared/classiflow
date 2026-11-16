@@ -1,7 +1,7 @@
 # Modernization plan (October 2026)
 
 **Archived 22 October 2026:** implemented. What is still open (environment,
-maintainer decisions, Taxomind) is in [open items](../../plans/open-items.md).
+maintainer decisions, Taxomind) is in [open items](../../open-items.md).
 
 **Status:** phases 1 and 2 implemented 21–22 October 2026; deployment and
 remaining follow-ups are in the open-items list above. **Original baseline:**
@@ -111,7 +111,7 @@ Still open from this plan:
 - The rest of M08 (above), the open points under M09, and the "Carried over
   from hardening" list.
 - Dependency maintenance: the Prisma/`pg` transaction-concurrency caution
-  is tracked in [open items](../../plans/open-items.md#5-dependency-maintenance).
+  is covered by the [deployment guide](../../../DEPLOYMENT.md).
   The October review observed concurrent relation subqueries on one
   transaction connection; our own workspace queries were already queued.
 - Setting up staging and production from the docs (phase 3) is the

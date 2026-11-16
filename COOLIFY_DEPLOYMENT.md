@@ -393,6 +393,8 @@ and formatting (`npm run typecheck`, `npm run lint`, `npm test`,
 `npm run format:check`). The build also type-checks; Next.js 16 does not run
 lint during the build. The `integration` and `e2e` jobs run the database
 integration tests and browser journeys, respectively; both also gate deployment.
+Trivy blocks the image check on fixable critical vulnerabilities and reports
+fixable high-severity vulnerabilities for review.
 
 Two secrets in GitHub's `production` environment drive the deploy. Restrict
 this environment to the `main` branch. When migrating from repository secrets,
@@ -407,6 +409,22 @@ the worst outcome:
 | `COOLIFY_API_TOKEN` | A Coolify API token with deploy permission. |
 
 ### Releases
+
+Before promoting a candidate:
+
+1. Verify the exact commit on staging and wait for `smoke`, `checks`,
+   `integration`, and `e2e` to pass there.
+2. Verify production auto-deploy is off, the GitHub `production` environment
+   is restricted to `main`, and the two Coolify secrets are in that
+   environment. Set `PROD_HEALTH_URL` and enable "Include Source Commit in
+   Build" so CI can verify the running commit.
+3. For an upgrade, verify a recent off-host database backup and a successful
+   [restore drill](DEPLOYMENT.md#backups). Schedule a maintenance window when
+   migration or restart time matters.
+4. For any database that held double-annotation v1 rounds, include the
+   read-only [drift report](scripts/sql/double-annotation-drift.sql) in the
+   upgrade. Run it after applying v2 and have a reviewer decide any records
+   it returns.
 
 Coolify reconciles the Compose services during a deploy. When Compose
 replaces the app container, new requests can fail during startup and

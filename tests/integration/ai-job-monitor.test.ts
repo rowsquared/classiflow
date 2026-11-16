@@ -400,7 +400,9 @@ describe('AI job monitor against a stub service', () => {
     await settle(job.id, status => status === 'processing')
     await inWorkspace(() => db().aILabelingJob.update({ where: { id: job.id }, data: { status: 'cancelled' } }))
     cancelled = true
-    await new Promise(r => setTimeout(r, 200))
+    await expect
+      .poll(async () => (await prisma.aILabelingJob.findUniqueOrThrow({ where: { id: job.id } })).leaseOwner)
+      .toBeNull()
 
     expect((await prisma.aILabelingJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('cancelled')
     expect(await prisma.sentenceAISuggestion.count()).toBe(0)
@@ -538,7 +540,6 @@ describe('AI job monitor against a stub service', () => {
     })
 
     await monitor.ensureJobsMonitored()
-    await new Promise(r => setTimeout(r, 200))
 
     expect(started).toHaveLength(0)
     const after = await prisma.aILabelingJob.findUniqueOrThrow({ where: { id: job.id } })

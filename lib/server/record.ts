@@ -6,8 +6,8 @@ import type { CurrentUser } from '@/lib/api-auth'
 import { denyUnlessSentencesVisible } from '@/lib/access'
 import { isUnknownNodeCode } from '@/lib/constants'
 import { logError } from '@/lib/logger'
-import { activeRound, newestRound, participation, recordView, viewFor } from '@/lib/server/double-annotation'
-import { participantLabelingAccess, recordLabelingAccess } from '@/lib/double-annotation'
+import { activeRound, newestRound, PARTICIPATING, participation, recordView } from '@/lib/server/double-annotation'
+import { participantLabelingAccess } from '@/lib/double-annotation'
 
 export async function getRecord(user: CurrentUser, sentenceId: string) {
   try {
@@ -61,6 +61,8 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
         // The person's own part, not the record's (which would reveal the other answer).
         status: own.task.status === 'cancelled' ? 'pending' : own.task.status,
         flagged: own.task.flagged,
+        recordFlagged: own.task.flagged,
+        participantFlagged: false,
         lastEditedAt,
         lastEditorId: lastEditedAt ? user.id : null,
         commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
@@ -92,9 +94,11 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
         )
       })
     }
-    // Managers: the latest round, active or closed (history).
-    const round = user.role === 'labeller' ? await activeRound(sentenceId) : await newestRound(sentenceId)
-    const double = round ? await recordView(user, viewFor(user, round)) : null
+    if (user.role === 'labeller' && (await activeRound(sentenceId))) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+    }
+    const round = user.role === 'labeller' ? null : await newestRound(sentenceId)
+    const double = round ? await recordView(user, round) : null
 
     // Fetch labels for annotations (including handling unknown/-99)
     // Optimize: fetch all nodes in one query instead of N queries
@@ -136,10 +140,13 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
       orderBy: [{ taxonomyId: 'asc' }, { level: 'asc' }]
     })
 
-    const [annotationNodes, aiSuggestions, summaries] = await Promise.all([
+    const [annotationNodes, aiSuggestions, summaries, flaggedPart] = await Promise.all([
       annotationNodesPromise,
       aiSuggestionsPromise,
-      commentSummaries([sentenceId])
+      commentSummaries([sentenceId]),
+      user.role === 'labeller'
+        ? null
+        : db().doubleTask.findFirst({ where: { sentenceId, ...PARTICIPATING, flagged: true }, select: { id: true } })
     ])
 
     const nodeLookup = new Map<string, { label: string; definition: string | null; isLeaf: boolean | null }>()
@@ -253,13 +260,17 @@ export async function getRecord(user: CurrentUser, sentenceId: string) {
     // Replace annotations with enriched version
     const enrichedSentence = {
       ...sentence,
+      status: sentence.status === 'escalated' ? 'pending' : sentence.status,
+      flagged: sentence.flagged || Boolean(flaggedPart),
+      recordFlagged: sentence.flagged,
+      participantFlagged: Boolean(flaggedPart),
       commentSummary: summaries.get(sentenceId) ?? { total: 0, unresolved: 0 },
       assignments: sentence.assignments
         .filter(a => user.role !== 'labeller' || a.membership.userId === user.id)
         .map(a => ({ userId: a.membership.userId })),
       annotations: finalAnnotations,
-      double: user.role === 'labeller' ? null : double,
-      labeling: recordLabelingAccess(double)
+      double,
+      labeling: { editableTaxonomies: null }
     }
 
     return NextResponse.json(enrichedSentence)

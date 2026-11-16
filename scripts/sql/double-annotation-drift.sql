@@ -1,4 +1,4 @@
--- Double annotation drift check (docs/plans/double-annotation-v2.md phase A).
+-- Double annotation drift check (docs/archive/double-annotation/plan-v2.md phase A).
 -- Lists taxonomies of completed rounds whose record labels were written after
 -- the confirmation (by an ordinary save, before v2 made participants' saves
 -- their own revisions) or differ from DoubleOutcome.resultCodes. Run it after

@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures'
 import { expectAccessible } from './a11y'
+import { seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // axe-core on the main pages, read-only (the data journeys in
 // journeys.spec.ts change records). Fails on serious/critical findings.

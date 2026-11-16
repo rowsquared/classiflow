@@ -6,7 +6,6 @@ import {
   firstDifferingLevel,
   recordStatus,
   participantLabelingAccess,
-  recordLabelingAccess,
   summarizeOutcomes,
   taxonomyStatus
 } from './double-annotation'
@@ -17,8 +16,6 @@ describe('double annotation rules', () => {
   it('exposes edit permissions without task or comparison metadata', () => {
     expect(participantLabelingAccess(['A', 'B'], ['A', 'B'])).toEqual({ editableTaxonomies: null })
     expect(participantLabelingAccess(['A'], ['A', 'B'])).toEqual({ editableTaxonomies: ['A'] })
-    expect(recordLabelingAccess({ mode: 'hidden' })).toEqual({ editableTaxonomies: [] })
-    expect(recordLabelingAccess(null)).toEqual({ editableTaxonomies: null })
   })
   it('compares complete paths with string codes', () => {
     expect(compareAnswers(path('01', '011'), path('01', '011'))).toEqual({ state: 'agreed', matched: true })

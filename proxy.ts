@@ -7,15 +7,16 @@ import { REQUEST_ID_HEADER } from '@/lib/request-id'
 
 // Enforced. Scripts need this request's nonce (Next adds it to its own
 // scripts; app/layout.tsx passes it to the sidebar init script), and
-// 'strict-dynamic' lets them load the chunks they import. Styles stay
-// 'unsafe-inline' for React style attributes. The browser journeys
+// 'strict-dynamic' lets them load the chunks they import. React style
+// attributes are allowed. Inline style elements require the nonce in production. The browser journeys
 // (tests/e2e) fail on any violation.
 function contentSecurityPolicy(nonce: string) {
   const dev = process.env.NODE_ENV === 'development'
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ''}`,
-    "style-src 'self' 'unsafe-inline'",
+    dev ? "style-src 'self' 'unsafe-inline'" : `style-src 'self' 'nonce-${nonce}'`,
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "connect-src 'self'",

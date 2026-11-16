@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { expect, test, type Route } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
 import { ADMIN, RECORDS, WORKSPACE_ID } from './fixtures'
-import { api, failOnCspViolations, pagePath, rows, signIn } from './helpers'
+import { api, failOnCspViolations, pagePath, rows, signIn, seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // The tests share one seeded database and run in this order: the labelling
 // journey changes a record, which the export journey then reads.
@@ -66,28 +68,35 @@ test.describe('queue', () => {
 
   test('a slow, superseded search cannot overwrite the newer result', async ({ page }) => {
     // The first search is answered late, after the second one.
-    let delayed = false
+    const firstStarted = Promise.withResolvers<void>()
+    const releaseFirst = Promise.withResolvers<void>()
+    const firstFinished = Promise.withResolvers<void>()
     await page.route(
       url => isQueueRequest(url.toString()),
       async (route: Route) => {
-        if (!delayed && new URL(route.request().url()).searchParams.get('q') === 'nurse') {
-          delayed = true
-          await new Promise(r => setTimeout(r, 1500))
+        const first = new URL(route.request().url()).searchParams.get('q') === 'nurse'
+        if (first) {
+          firstStarted.resolve()
+          await releaseFirst.promise
         }
         await route.continue().catch(() => {
           /* aborted by the page: expected */
         })
+        if (first) firstFinished.resolve()
       }
     )
     const search = page.getByRole('textbox', { name: 'Search records' })
 
     await search.fill('nurse')
-    await page.waitForTimeout(500) // debounce fires; the nurse request is in flight
-    await search.fill('teacher')
-
-    await expect(rows(page)).toHaveCount(1)
-    await expect(rows(page).first()).toContainText('primary school teacher')
-    await page.waitForTimeout(1800) // the late nurse response would land now
+    try {
+      await firstStarted.promise
+      await search.fill('teacher')
+      await expect(rows(page)).toHaveCount(1)
+      await expect(rows(page).first()).toContainText('primary school teacher')
+    } finally {
+      releaseFirst.resolve()
+    }
+    await firstFinished.promise
     await expect(rows(page)).toHaveCount(1)
     await expect(rows(page).first()).toContainText('primary school teacher')
   })

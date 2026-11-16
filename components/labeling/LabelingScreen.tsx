@@ -105,7 +105,35 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
     ([key, labels]) =>
       labelsSignature(labels) !== labelsSignature(labelsFromAnnotations(sentence?.annotations ?? [], key))
   )
-  useUnsavedChanges(unsavedTaxonomies.length > 0)
+  const hasDrafts = unsavedTaxonomies.length > 0
+  useUnsavedChanges(hasDrafts)
+  useEffect(() => {
+    const navigation = window.navigation
+    if (!hasDrafts || !navigation) return
+    let confirmedKey: string | undefined
+    const onTraverse = (event: NavigateEvent) => {
+      const { key, sameDocument, url } = event.destination
+      if (event.navigationType !== 'traverse' || !event.cancelable || !sameDocument || !key) return
+      if (key === confirmedKey || new URL(url).pathname === window.location.pathname) return
+      event.preventDefault()
+      setConfirmation({
+        title: 'Leave this record?',
+        text: 'There are unsaved label selections on this record.',
+        action: 'Discard selections',
+        run: () => {
+          confirmedKey = key
+          void navigation
+            .traverseTo(key)
+            .finished?.finally(() => {
+              confirmedKey = undefined
+            })
+            .catch(() => undefined)
+        }
+      })
+    }
+    navigation.addEventListener('navigate', onTraverse)
+    return () => navigation.removeEventListener('navigate', onTraverse)
+  }, [hasDrafts])
   const setSelectedLabels = (labels: SelectedLabel[]) => {
     if (!activeTaxonomy) return
     const key = activeTaxonomy.key
@@ -259,8 +287,9 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const handleFlag = async () => {
     if (!sentence || saving) return
     try {
-      await annotationMutation.mutateAsync({ status: 'pending', annotations: [], flagged: !sentence.flagged })
-      updateRecord({ flagged: !sentence.flagged })
+      const flagged = !(sentence.recordFlagged ?? sentence.flagged)
+      await annotationMutation.mutateAsync({ status: 'pending', annotations: [], flagged })
+      updateRecord({ flagged: flagged || Boolean(sentence.participantFlagged), recordFlagged: flagged })
       invalidateQueue()
     } catch {
       showError('Failed to update flag. Please try again.')
@@ -286,7 +315,6 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
   const locked =
     (sentence?.labeling?.editableTaxonomies != null &&
       (!activeTaxonomy || !sentence.labeling.editableTaxonomies.includes(activeTaxonomy.key))) ||
-    double?.mode === 'hidden' ||
     Boolean(managerView && managerView.status !== 'cancelled' && activeOutcome && !editingDouble)
   const pathComplete = canSubmitLabels(selectedLabels, activeTaxonomy?.maxDepth)
   const canSubmit =
@@ -644,9 +672,12 @@ export default function LabelingScreen({ sentenceId, listKey }: { sentenceId: st
             </div>
           )}
 
+          {sentence.participantFlagged && (
+            <p className="border-t border-gray-200 px-4 py-2 text-sm text-gray-700">Flagged by a participant</p>
+          )}
           <ActionBar
             saving={saving}
-            flagged={sentence.flagged}
+            flagged={sentence.recordFlagged ?? sentence.flagged}
             skipped={sentence.status === 'skipped'}
             canSubmit={canSubmit}
             submitted={isActiveTaxonomyCompleted || sentence.status === 'submitted'}

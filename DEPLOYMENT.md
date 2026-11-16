@@ -97,6 +97,13 @@ CI smoke job and the integration tests run this way.
 For connections as the runtime role, PostgreSQL limits a statement and an idle
 transaction to five minutes. These limits apply within the app database.
 
+To separate migrations from the PostgreSQL superuser in Compose, set
+`MIGRATION_DATABASE_URL` to a dedicated login that owns the application
+database, its schema, and its application objects. It must be able to
+create and manage the runtime role, including permission to grant role
+membership if that role already exists. Provision those permissions with the
+database administrator. Keep the runtime connection on `APP_DB_USER`.
+
 ## AI credentials
 
 Each workspace's Taxomind access token is stored encrypted (AES-256-GCM) with
@@ -122,7 +129,11 @@ usable token, and the keys alone hold no data:
 - A connection version that was replaced keeps its token only while jobs that
   started with it are running; the next settings change erases it.
 - Taxomind services must be approved by a platform admin (AI services page)
-  before a workspace can use them. Requests to them do not follow redirects.
+  before a workspace can use them. New approvals in production require public
+  HTTPS URLs unless `AI_ALLOW_PRIVATE_ENDPOINTS` is enabled. This checks URL
+  syntax and IP literals at approval time. Use network egress rules when
+  hostnames must resolve only to approved destinations. Requests do not follow
+  redirects.
 
 ## Reverse proxy
 
@@ -139,7 +150,7 @@ workflow must accept classiflow's secret. Set `APP_BASE_URL` (or
 [email settings](ENV_SETUP.md#email-optional) for details.
 
 - **Outbox:** every mail is a row in `OutgoingMail` (purpose, status, timestamps;
-  never the body, a link, a token or a password). It is sent right after the
+  a workspace invitation may also hold a staged token hash and expiry). It is sent right after the
   request that queued it; a timer in each instance (once a minute) sends rows a
   restart left behind and marks rows stuck while sending as **unknown** (they
   may have arrived; they are never resent automatically). Several instances are
@@ -147,9 +158,14 @@ workflow must accept classiflow's secret. Set `APP_BASE_URL` (or
 - **Outcomes** on the Users page: sent, failed (the workflow refused it; resending
   is safe), unknown (timeout or server error). Emailed temporary passwords are
   never retried or stored; after a failure send a password link instead.
+- **Retries:** a definite transient refusal such as HTTP 429 or a refused
+  connection is retried up to twice after backoff. A confirmed workspace
+  invitation resend replaces the previous link. If delivery fails or is
+  uncertain, the previous link remains valid until it expires.
 - **Retention:** `OutgoingMail` rows are only needed for recent status. Each
   instance deletes sent, failed and unknown rows older than
-  `MAIL_RETENTION_DAYS` (default 90; `0` keeps them) once an hour. The mail
+  `MAIL_RETENTION_DAYS` (default 90; `0` keeps them) once an hour. Rows with
+  still-valid invitation hashes are kept until the link expires. The mail
   events stay in the audit log.
 - **Check it:** sign in, open Users, create a test member with "Email a link to
   set a password", and look for "email sent" in the user editor.

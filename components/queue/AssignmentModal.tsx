@@ -98,12 +98,12 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
         return
       }
 
-      const promises: Promise<Response>[] = []
+      const promises: Promise<unknown>[] = []
 
       // Add new assignments
       if (toAdd.length > 0) {
         promises.push(
-          fetch(api('/sentences/assign'), {
+          fetchJson(api('/sentences/assign'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toAdd })
@@ -114,7 +114,7 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
       // Remove assignments
       if (toRemove.length > 0) {
         promises.push(
-          fetch(api('/sentences/assign'), {
+          fetchJson(api('/sentences/assign'), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sentenceIds, userIds: toRemove })
@@ -122,22 +122,14 @@ export default function AssignmentModal({ sentenceIds, onClose, onSuccess }: Ass
         )
       }
 
-      const results = await Promise.all(promises)
-
-      for (const res of results) {
-        if (!res.ok) {
-          const data = await res.json()
-          setError(data.error || 'Failed to update assignments')
-          setSubmitting(false)
-          return
-        }
-      }
+      const results = await Promise.allSettled(promises)
+      const failure = results.find(result => result.status === 'rejected')
+      if (failure) throw failure.reason
 
       onSuccess()
       onClose()
     } catch (err) {
-      console.error('Assignment error:', err)
-      setError('An error occurred')
+      setError(err instanceof Error ? err.message : 'Failed to update assignments')
       setSubmitting(false)
     }
   }

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import Combobox from '@/components/ui/Combobox'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
 import { fetchJson, HttpError } from '@/lib/query/fetch'
+import { queryKeys } from '@/lib/query/keys'
 import { buttonClass } from '@/components/ui/styles'
 
 type Person = { id: string; name: string | null; email: string; role: string }
@@ -38,7 +39,6 @@ export default function DoubleAnnotationPanel({
   onDone: (started: number) => void
 }) {
   const { workspaceId, api } = useWorkspacePaths()
-  const [mode, setMode] = useState<'second' | 'both'>('second')
   const [firstUserId, setFirstUserId] = useState<string | null>(null)
   const [secondUserId, setSecondUserId] = useState<string | null>(AUTO)
   const [sampling, setSampling] = useState(false)
@@ -48,26 +48,15 @@ export default function DoubleAnnotationPanel({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const first = mode === 'both' ? firstUserId : null
   const body = {
     sentenceIds,
-    firstUserId: first,
+    firstUserId,
     secondUserId,
     ...(sampling ? { sample: percent, seed } : {})
   }
-  const ready = secondUserId !== null && first !== secondUserId && (mode === 'second' || first !== null)
+  const ready = secondUserId !== null && firstUserId !== secondUserId
   const preview = useQuery({
-    queryKey: [
-      'ws',
-      workspaceId,
-      'double-annotation-preview',
-      sentenceIds.join(','),
-      first,
-      secondUserId,
-      sampling,
-      percent,
-      seed
-    ],
+    queryKey: queryKeys.doubleAnnotationPreview(workspaceId, body),
     queryFn: ({ signal }) =>
       fetchJson<Preview>(api('/sentences/double-annotation'), {
         method: 'POST',
@@ -86,7 +75,7 @@ export default function DoubleAnnotationPanel({
   const people = users.map(u => ({ value: u.id, label: u.name || u.email, hint: u.role }))
   const secondOptions = [
     { value: AUTO, label: 'Automatic: balanced across my team', hint: 'fewest open parts first' },
-    ...people.filter(o => o.value !== first)
+    ...people.filter(o => o.value !== firstUserId)
   ]
 
   const start = async () => {
@@ -114,52 +103,17 @@ export default function DoubleAnnotationPanel({
         automatically; differences come to you for review. Until then the first answer is used in exports.
       </p>
 
-      <fieldset className="grid gap-2 sm:grid-cols-2" disabled={submitting}>
-        <legend className="sr-only">Who labels</legend>
-        {(
-          [
-            [
-              'second',
-              'Add a second label',
-              'Labelled records keep their labels as the first answer; one more person labels.'
-            ],
-            ['both', 'Both label from scratch', 'Two people label each record. Needed for records nobody labelled yet.']
-          ] as const
-        ).map(([value, title, detail]) => (
-          <label
-            key={value}
-            className={`flex items-start gap-2 p-3 border text-sm cursor-pointer ${
-              mode === value ? 'border-indigo-600 bg-indigo-50' : 'border-gray-500'
-            }`}
-          >
-            <input
-              type="radio"
-              name="double-start-mode"
-              checked={mode === value}
-              onChange={() => setMode(value)}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="text-gray-900">{title}</span>
-              <span className="block text-gray-600">{detail}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-
       <div className="grid gap-3 sm:grid-cols-2">
-        {mode === 'both' && (
-          <Combobox
-            label="First person"
-            options={people.filter(o => o.value !== secondUserId)}
-            value={firstUserId}
-            onChange={value => setFirstUserId(value)}
-            placeholder="Choose a person"
-            disabled={submitting}
-          />
-        )}
         <Combobox
-          label={mode === 'both' ? 'Second person' : 'Person who adds the label'}
+          label="First person (for records without a first answer)"
+          options={people.filter(o => o.value !== secondUserId)}
+          value={firstUserId}
+          onChange={setFirstUserId}
+          placeholder="Keep existing labels only"
+          disabled={submitting}
+        />
+        <Combobox
+          label="Second person"
           options={secondOptions}
           value={secondUserId}
           onChange={value => setSecondUserId(value)}
@@ -210,19 +164,18 @@ export default function DoubleAnnotationPanel({
             {sampling && <p className="text-gray-700">{data.sampled.toLocaleString()} records drawn at random</p>}
             <ul className="space-y-1 text-gray-800">
               {counts.labelled > 0 && (
-                <li>{counts.labelled} already labelled: their labels count as the first answer</li>
+                <li>{counts.labelled} already labeled: their labels count as the first answer</li>
               )}
               {counts.fresh > 0 && (
                 <li>
-                  {counts.fresh} labelled by both people
+                  {counts.fresh} labeled by both people
                   {data.mixed > 0 ? ` (${data.mixed} of them have partial labels or labels by several people)` : ''}
                 </li>
               )}
               {counts.already > 0 && <li>{counts.already} already in double annotation: left unchanged</li>}
               {counts.needs_first > 0 && (
                 <li className="text-red-700">
-                  {counts.needs_first} cannot start: choose “Both label from scratch” with two people, or another second
-                  person
+                  {counts.needs_first} cannot start. Choose a first person or another second person.
                 </li>
               )}
               {data.losingAccess > 0 && (

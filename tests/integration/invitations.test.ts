@@ -35,6 +35,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await settleBackgroundTasks()
   webhook.mails.length = 0
+  webhook.state.status = 200
 })
 
 async function invite(email: string, role = 'labeller', as: User = admin) {
@@ -107,6 +108,20 @@ describe('workspace invitations', () => {
     await invitationRoute.DELETE(request('/x', { method: 'DELETE' }), params({ invitationId: created.invitation.id }))
     signInAs(person)
     expect((await accept(second)).status).toBe(404)
+  })
+
+  it('keeps a delivered link valid when a resend is refused', async () => {
+    const person = await createUser('labeller', { workspaceId: otherWorkspace })
+    const { invitation } = await (await invite(person.email)).json()
+    const first = tokenFrom(webhook.mails.at(-1))
+    webhook.state.status = 401
+    await invitationRoute.POST(request('/x', { method: 'POST' }), params({ invitationId: invitation.id }))
+    await settleBackgroundTasks()
+    const refused = tokenFrom(webhook.mails.at(-1))
+
+    signInAs(person)
+    expect((await accept(refused)).status).toBe(404)
+    expect((await accept(first)).status).toBe(200)
   })
 
   it('is refused when the inviter is no longer an admin', async () => {

@@ -1,10 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 import { WORKSPACE_ID } from './fixtures'
-import { signIn } from './helpers'
+import { signIn, seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // The queue's view lives in the URL (lib/queue-url.ts): reloading or sharing a
 // link shows the same records, and back/forward step through the views.
-// Read-only; runs after the data journeys, which submit records.
+// Read-only queue navigation and preferences.
 
 const rows = (page: Page) => page.locator('tbody tr')
 

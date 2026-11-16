@@ -143,7 +143,7 @@ export default function BulkLabelPanel({ sentenceIds, onClose, onSuccess, onComp
             <div>
               <h2 className="text-lg font-medium text-gray-900">Bulk label</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Labelling {sentenceIds.length} {sentenceIds.length === 1 ? 'record' : 'records'}
+                Labeling {sentenceIds.length} {sentenceIds.length === 1 ? 'record' : 'records'}
               </p>
             </div>
             <button

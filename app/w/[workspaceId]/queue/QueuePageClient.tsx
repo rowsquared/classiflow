@@ -314,7 +314,7 @@ export default function QueuePageClient({
       // Fire all taxonomy jobs concurrently — server splits into batches
       const results = await Promise.allSettled(
         syncedTaxonomies.map(async taxonomy => {
-          const res = await fetch(api('/ai-labeling/jobs'), {
+          const data = await fetchJson<{ totalJobs?: number }>(api('/ai-labeling/jobs'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -322,10 +322,6 @@ export default function QueuePageClient({
               sentenceIds: sentenceIdArray
             })
           })
-          const data = await res.json()
-          if (!res.ok) {
-            throw new Error(data.error || `Failed to start AI job for ${taxonomy.key}`)
-          }
           return { taxonomy: taxonomy.key, totalJobs: data.totalJobs || 1 }
         })
       )

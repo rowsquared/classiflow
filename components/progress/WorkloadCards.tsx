@@ -38,8 +38,7 @@ export default function WorkloadCards({ overview }: { overview: ProgressOverview
   const share = percent(workload.complete, workload.total)
   const breakdown = [
     `${formatNumber(workload.pending)} pending`,
-    workload.skipped ? `${formatNumber(workload.skipped)} skipped` : null,
-    workload.escalated ? `${formatNumber(workload.escalated)} escalated` : null
+    workload.skipped ? `${formatNumber(workload.skipped)} skipped` : null
   ]
     .filter(Boolean)
     .join(', ')

@@ -1,7 +1,7 @@
 # Double annotation mockup
 
 Interactive sample of the proposed workflow in the
-[implementation plan](../../plans/double-annotation.md). This is a design
+[implementation plan](../plan-v1.md). This is a design
 preview, not an implemented application feature.
 
 Open [index.html](index.html) directly in a browser. No Next.js server,

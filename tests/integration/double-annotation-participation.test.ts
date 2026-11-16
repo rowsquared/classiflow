@@ -25,7 +25,7 @@ import * as exportRoute from '@/app/api/workspaces/[workspaceId]/export/route'
 import * as summaryRoute from '@/app/api/workspaces/[workspaceId]/export/summary/route'
 import * as commandsRoute from '@/app/api/workspaces/[workspaceId]/sentences/double-annotation/commands/route'
 
-// Sticky participation (docs/plans/double-annotation-v2.md section 2): whoever
+// Sticky participation (docs/double-annotation.md, "Participation"): whoever
 // holds a part in a round sees only their own work on that record, for good,
 // and can change it like any record without changing the result.
 let alice: User, bob: User, sam: User, ann: User
@@ -435,9 +435,15 @@ describe('double annotation participation', () => {
 
     signInAs(sam)
     expect((await record(r.id)).flagged).toBe(true)
+    expect((await list('flagged=true')).map(row => row.id)).toEqual([r.id])
+    expect((await exportRow(r))[0]?.flagged).toBe('true')
+    expect((await prisma.sentence.findUniqueOrThrow({ where: { id: r.id } })).flagged).toBe(false)
+    expect((await flag(r.id, true)).status).toBe(200)
     signInAs(alice)
     await flag(r.id, false)
-    expect((await prisma.sentence.findUniqueOrThrow({ where: { id: r.id } })).flagged).toBe(false)
+    expect((await record(r.id)).flagged).toBe(false)
+    signInAs(sam)
+    expect(await record(r.id)).toMatchObject({ flagged: true, recordFlagged: true, participantFlagged: false })
   })
 
   it('revisions: the provisional result follows the first answer; a changed agreement needs review', async () => {
@@ -458,6 +464,14 @@ describe('double annotation participation', () => {
     const reopened = await prisma.doubleOutcome.findFirstOrThrow({ where: { sentenceId: r.id, taxonomyId: taxA.id } })
     // The comparison stays as it was; the taxonomy needs a decision now.
     expect(reopened).toMatchObject({ state: 'disagreed', matched: true, revisedAfterCompare: true, resultCodes: [] })
+    expect(await effective(r.id, taxA.id)).toEqual(['02'])
+
+    signInAs(bob)
+    await save(r.id, path('A', '02'))
+    expect(
+      await prisma.doubleOutcome.findFirstOrThrow({ where: { sentenceId: r.id, taxonomyId: taxA.id } })
+    ).toMatchObject({ state: 'agreed', matched: true, revisedAfterCompare: true, resultCodes: ['02'] })
+    expect(await effective(r.id, taxA.id)).toEqual(['02'])
   })
 
   it('stopping keeps people who answered on their own answer; others lose access', async () => {

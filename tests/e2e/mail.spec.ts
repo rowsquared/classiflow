@@ -1,6 +1,9 @@
 import { createServer, type Server } from 'node:http'
 import { expect, test } from '@playwright/test'
 import { ADMIN, WORKSPACE_ID } from './fixtures'
+import { seedBeforeAll } from './helpers'
+
+seedBeforeAll()
 
 // The app runs with mail on (playwright.config.ts) and posts to this stand-in
 // for the n8n workflow, which keeps the messages for the journeys.

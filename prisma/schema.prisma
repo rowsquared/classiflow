@@ -254,6 +254,7 @@ model Taxonomy {
   lastLearningJobId               String?
   lastLearningStatus              String?
   lastLearningError               String?
+  learningBacklog                 Boolean   @default(false)
   newAnnotationsSinceLastLearning Int       @default(0)
 
   workspace      Workspace              @relation(fields: [workspaceId], references: [id])
@@ -609,6 +610,7 @@ model AIEndpoint {
   createdById   String?
   createdAt     DateTime  @default(now())
   retiredAt     DateTime?
+  startBackoffUntil DateTime?
   // Open to every workspace, or only to those with an AIEndpointGrant.
   allWorkspaces Boolean   @default(true)
 
@@ -896,20 +898,23 @@ enum MailStatus {
 }
 
 model OutgoingMail {
-  id            String      @id @default(cuid())
-  purpose       MailPurpose
-  status        MailStatus  @default(pending)
-  userId        String?
-  workspaceId   String?
-  invitationId  String?
+  id                       String      @id @default(cuid())
+  purpose                  MailPurpose
+  status                   MailStatus  @default(pending)
+  userId                   String?
+  workspaceId              String?
+  invitationId             String?
   // Only for notices to an address the account no longer has (email_changed).
-  recipient     String?
-  requestedById String?
-  attempts      Int         @default(0)
-  detail        String? // Safe text only
-  createdAt     DateTime    @default(now())
-  claimedAt     DateTime?
-  sentAt        DateTime?
+  recipient                String?
+  requestedById            String?
+  attempts                 Int         @default(0)
+  detail                   String? // Safe text only
+  createdAt                DateTime    @default(now())
+  claimedAt                DateTime?
+  sentAt                   DateTime?
+  retryAt                  DateTime?
+  invitationTokenHash      String?
+  invitationTokenExpiresAt DateTime?
 
   user        User?                @relation("MailRecipient", fields: [userId], references: [id], onDelete: SetNull)
   requestedBy User?                @relation("MailRequester", fields: [requestedById], references: [id], onDelete: SetNull)

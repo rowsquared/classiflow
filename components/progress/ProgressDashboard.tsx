@@ -32,7 +32,7 @@ import ActivityChart from './ActivityChart'
 import PeopleTable from './PeopleTable'
 import ProgressFilters from './ProgressFilters'
 import { memberName, personInTeam, useSelectedMember } from './MemberPicker'
-import { formatDay, formatRange, formatTime, localDate } from './format'
+import { formatDay, formatRange, formatTime, utcDate } from './format'
 import { buttonClass } from '@/components/ui/styles'
 
 export type InitialReports = {
@@ -145,7 +145,7 @@ export default function ProgressDashboard({
   const meta = overviewQuery.data ?? activityQuery.data ?? peopleQuery.data ?? null
   const updatedAt = Math.max(overviewQuery.dataUpdatedAt, activityQuery.dataUpdatedAt, peopleQuery.dataUpdatedAt)
   const fetching = overviewQuery.isFetching || activityQuery.isFetching || peopleQuery.isFetching
-  const coverage = meta ? localDate(meta.activityCoverageStart, meta.timeZone) : null
+  const coverage = meta ? utcDate(meta.activityCoverageStart) : null
   const granularity = effectiveGranularity(url)
   const [activityView, setActivityView] = useState<'chart' | 'table'>('chart')
   const scopeLabel = [
@@ -212,7 +212,11 @@ export default function ProgressDashboard({
         <Section
           id="overview"
           title="Workload now and activity"
-          description="Current workload and human labeling in the selected period."
+          description={
+            viewer.role === 'supervisor'
+              ? 'Historical activity includes only records currently assigned within your team.'
+              : 'Current workload and human labeling in the selected period.'
+          }
           loading={!overviewQuery.data}
           updating={overviewQuery.isPlaceholderData}
           error={errorText(overviewQuery.error, 'the overview')}

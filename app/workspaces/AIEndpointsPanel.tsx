@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Modal from '@/components/Modal'
+import { fetchJson } from '@/lib/query/fetch'
 import { buttonClass, dialogPanelClass } from '@/components/ui/styles'
 
 export type ApprovedEndpoint = {
@@ -44,8 +45,7 @@ export default function AIEndpointsPanel({
   const workspaceName = new Map(workspaces.map(w => [w.id, w.name]))
 
   const reload = async () => {
-    const res = await fetch('/api/ai-endpoints')
-    if (res.ok) setEndpoints((await res.json()).endpoints)
+    setEndpoints((await fetchJson<{ endpoints: ApprovedEndpoint[] }>('/api/ai-endpoints')).endpoints)
   }
 
   const approve = async (e: React.FormEvent) => {
@@ -53,19 +53,16 @@ export default function AIEndpointsPanel({
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch('/api/ai-endpoints', {
+      await fetchJson('/api/ai-endpoints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, baseUrl })
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(data.error || 'The service could not be approved')
-        return
-      }
       setName('')
       setBaseUrl('')
       await reload()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The service could not be approved')
     } finally {
       setBusy(false)
     }
@@ -75,11 +72,10 @@ export default function AIEndpointsPanel({
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(`/api/ai-endpoints/${endpoint.id}`, { method: 'DELETE' })
-      if (!res.ok) setError((await res.json().catch(() => ({}))).error || 'The service could not be retired')
+      await fetchJson(`/api/ai-endpoints/${endpoint.id}`, { method: 'DELETE' })
       await reload()
-    } catch {
-      setError('The service could not be retired')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The service could not be retired')
     } finally {
       setBusy(false)
       setRetiring(null)
@@ -91,17 +87,15 @@ export default function AIEndpointsPanel({
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(`/api/ai-endpoints/${editing.id}`, {
+      await fetchJson(`/api/ai-endpoints/${editing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ allWorkspaces: editing.all, workspaceIds: editing.all ? [] : [...editing.ids] })
       })
-      if (!res.ok) {
-        setError((await res.json().catch(() => ({}))).error || 'The access could not be changed')
-        return
-      }
       setEditing(null)
       await reload()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The access could not be changed')
     } finally {
       setBusy(false)
     }

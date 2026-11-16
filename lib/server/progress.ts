@@ -18,7 +18,13 @@ import type {
   ReportFilter,
   ReportMeta
 } from '@/lib/contracts/progress'
-import { bucketsFor, normalizeRange, type Granularity, type ReportingRange } from '@/lib/reporting-dates'
+import {
+  bucketsFor,
+  normalizeRange,
+  REPORTING_TIME_ZONE,
+  type Granularity,
+  type ReportingRange
+} from '@/lib/reporting-dates'
 
 // ---------------------------------------------------------------------------
 // Progress reports: overview, timeline and people (docs/archive/plans-2026-10/progress-dashboard.md).
@@ -103,8 +109,7 @@ async function reportContext(user: CurrentUser, filter: ReportFilter): Promise<R
     where: { id: user.workspaceId },
     select: { activityTrackedSince: true }
   })
-  const timeZone = 'UTC'
-  const { range, error } = normalizeRange(filter, timeZone)
+  const { range, error } = normalizeRange(filter)
   if (error !== undefined) return { error }
   const scope = await resolveReportScope(user, filter)
   return {
@@ -114,7 +119,7 @@ async function reportContext(user: CurrentUser, filter: ReportFilter): Promise<R
       meta: {
         startDate: range.startDate,
         endDate: range.endDate,
-        timeZone,
+        timeZone: REPORTING_TIME_ZONE,
         personId: filter.personId ?? null,
         teamId: filter.teamId ?? null,
         generatedAt: new Date().toISOString(),
@@ -163,6 +168,7 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
   const { data: context, error } = await reportContext(user, filter)
   if (error !== undefined) return { error }
   const status = workloadStatus(user, Prisma.sql`s`)
+  const manager = user.role !== 'labeller'
   const [row] = await db().$queryRaw<
     Array<
       Omit<ProgressOverview['workload'], 'remaining'> & {
@@ -171,19 +177,29 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
       }
     >
   >`
+    WITH flags AS (
+      SELECT t."sentenceId", bool_or(t.flagged) AS "anyFlag",
+        (array_agg(t.flagged ORDER BY t."createdAt" DESC) FILTER (WHERE t."assigneeId" = ${user.id}))[1] AS "ownFlag"
+      FROM "DoubleTask" t
+      WHERE t."workspaceId" = ${user.workspaceId} AND t.status <> 'cancelled' AND t."releasedAt" IS NULL
+        AND (t."assigneeId" = ${user.id} OR (${manager} AND t.flagged))
+      GROUP BY t."sentenceId"
+    ), period AS (
+      SELECT DISTINCT e."sentenceId" FROM "LabelingActivity" e
+      WHERE ${activityWhere(user.workspaceId, context)}
+    )
     SELECT count(*)::int AS total,
            count(*) FILTER (WHERE ${status} = 'submitted')::int AS complete,
-           count(*) FILTER (WHERE ${status} = 'pending')::int AS pending,
+           count(*) FILTER (WHERE ${status} IN ('pending', 'escalated'))::int AS pending,
            count(*) FILTER (WHERE ${status} = 'skipped')::int AS skipped,
-           count(*) FILTER (WHERE ${status} = 'escalated')::int AS escalated,
-           count(*) FILTER (WHERE s.flagged)::int AS flagged,
-           (SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
-             WHERE ${activityWhere(user.workspaceId, context)}) AS "labeledRecords"
-           ,(SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
-               JOIN "Sentence" done ON done."workspaceId" = e."workspaceId" AND done.id = e."sentenceId"
-              WHERE ${activityWhere(user.workspaceId, context)} AND ${workloadStatus(user, Prisma.sql`done`)} = 'submitted'
+           count(*) FILTER (WHERE COALESCE(f."ownFlag", s.flagged OR f."anyFlag"))::int AS flagged,
+           (SELECT count(*)::int FROM period) AS "labeledRecords",
+           (SELECT count(*)::int FROM period
+               JOIN "Sentence" done ON done."workspaceId" = ${user.workspaceId} AND done.id = period."sentenceId"
+              WHERE ${workloadStatus(user, Prisma.sql`done`)} = 'submitted'
                 ${assignedTo(context.scope.workload, Prisma.sql`done.id`)}) AS "completedInPeriod"
       FROM "Sentence" s
+      LEFT JOIN flags f ON f."sentenceId" = s.id
      WHERE s."workspaceId" = ${user.workspaceId} ${assignedTo(context.scope.workload, Prisma.sql`s.id`)}`
   const { labeledRecords, completedInPeriod, ...counts } = row!
   const double = user.role === 'labeller' ? null : await doubleProgress(user.workspaceId, context)
@@ -197,8 +213,7 @@ export async function getProgressOverview(user: CurrentUser, filter: ReportFilte
         remaining: counts.total - counts.complete,
         completedInPeriod,
         startDate: context.range.startDate,
-        endDate: context.range.endDate,
-        timeZone: context.range.timeZone
+        endDate: context.range.endDate
       })
     }
   }
@@ -215,25 +230,27 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
       }
     >
   >`
+    WITH rounds AS (
+      SELECT r.id, r."sentenceId", r.status, r."createdAt"
+      FROM "DoubleRound" r WHERE r."workspaceId" = ${workspaceId} ${inScope}
+    )
     SELECT
       (SELECT json_build_object(
          'over3', count(*) FILTER (WHERE r."createdAt" < now() - interval '3 days'),
          'over7', count(*) FILTER (WHERE r."createdAt" < now() - interval '7 days'),
          'over14', count(*) FILTER (WHERE r."createdAt" < now() - interval '14 days'))
-         FROM "DoubleTask" t JOIN "DoubleRound" r ON r.id = t."roundId"
-        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' AND t.status IN ('pending', 'skipped')
-          ${inScope}) AS waiting,
-      (SELECT count(*)::int FROM "DoubleRound" r
-        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}) AS "inProgress",
-      (SELECT count(*)::int FROM "DoubleRound" r
-        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}
+         FROM "DoubleTask" t JOIN rounds r ON r.id = t."roundId"
+        WHERE r.status = 'active' AND t.status IN ('pending', 'skipped')) AS waiting,
+      (SELECT count(*)::int FROM rounds r WHERE r.status = 'active') AS "inProgress",
+      (SELECT count(*)::int FROM rounds r
+        WHERE r.status = 'active'
           AND EXISTS (SELECT 1 FROM "DoubleOutcome" o WHERE o."roundId" = r.id AND o.state = 'disagreed')) AS "needsReview",
-      (SELECT count(*)::int FROM "DoubleRound" r
-        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'active' ${inScope}
+      (SELECT count(*)::int FROM rounds r
+        WHERE r.status = 'active'
           AND EXISTS (SELECT 1 FROM "DoubleTask" t WHERE t."roundId" = r.id
                        AND (t.status = 'skipped' OR (t.status = 'pending' AND t."assigneeId" IS NULL)))) AS "needsPerson",
-      (SELECT count(DISTINCT r."sentenceId")::int FROM "DoubleRound" r
-        WHERE r."workspaceId" = ${workspaceId} AND r.status = 'completed' ${inScope}
+      (SELECT count(DISTINCT r."sentenceId")::int FROM rounds r
+        WHERE r.status = 'completed'
           AND NOT EXISTS (SELECT 1 FROM "DoubleRound" open WHERE open."sentenceId" = r."sentenceId" AND open.status = 'active')) AS confirmed,
       (SELECT count(DISTINCT e."sentenceId")::int FROM "LabelingActivity" e
         WHERE e."workspaceId" = ${workspaceId} AND e.kind = 'review'
@@ -244,11 +261,10 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
                 count(*) FILTER (WHERE o.matched)::int AS agreed,
                 count(*)::int AS compared
            FROM "DoubleOutcome" o
-           JOIN "DoubleRound" r ON r.id = o."roundId"
+           JOIN rounds r ON r.id = o."roundId"
            JOIN "Taxonomy" tx ON tx.id = o."taxonomyId"
           WHERE o."workspaceId" = ${workspaceId} AND o.matched IS NOT NULL AND r.status <> 'cancelled'
             AND o."comparedAt" >= ${context.range.from} AND o."comparedAt" < ${context.range.to}
-            ${inScope}
           GROUP BY tx.key) a) AS agreement`
 
   // The compared pairs of the period with both answers as they were compared.
@@ -265,8 +281,6 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
       bUserId: string | null
       aName: string | null
       bName: string | null
-      aLabels: Record<string, string> | null
-      bLabels: Record<string, string> | null
     }>
   >`
     SELECT tx.key AS "taxonomyKey", tx."levelNames" AS "levelNames", o.matched, o.state::text AS state,
@@ -277,13 +291,7 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
                AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS a,
            (SELECT json_agg(l."nodeCode" ORDER BY l.level) FROM "DoubleTaskLabel" l
              WHERE l."taskId" = tb.id AND l."taxonomyId" = o."taxonomyId" AND l."createdAt" <= o."comparedAt"
-               AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS b,
-           (SELECT json_object_agg(n.code, n.label) FROM "DoubleTaskLabel" l
-              JOIN "TaxonomyNode" n ON n."taxonomyId" = l."taxonomyId" AND n.code = l."nodeCode"
-             WHERE l."taskId" = ta.id AND l."taxonomyId" = o."taxonomyId" AND l."supersededAt" IS NULL) AS "aLabels",
-           (SELECT json_object_agg(n.code, n.label) FROM "DoubleTaskLabel" l
-              JOIN "TaxonomyNode" n ON n."taxonomyId" = l."taxonomyId" AND n.code = l."nodeCode"
-             WHERE l."taskId" = tb.id AND l."taxonomyId" = o."taxonomyId" AND l."supersededAt" IS NULL) AS "bLabels"
+               AND (l."supersededAt" IS NULL OR l."supersededAt" > o."comparedAt")) AS b
       FROM "DoubleOutcome" o
       JOIN "DoubleRound" r ON r.id = o."roundId"
       JOIN "Taxonomy" tx ON tx.id = o."taxonomyId"
@@ -294,7 +302,19 @@ async function doubleProgress(workspaceId: string, context: ReportContext): Prom
      WHERE o."workspaceId" = ${workspaceId} AND o.matched IS NOT NULL AND r.status <> 'cancelled'
        AND o."comparedAt" >= ${context.range.from} AND o."comparedAt" < ${context.range.to}
        ${inScope}`
-  return { ...row!, agreement: row!.agreement ?? [], ...summarizePairs(pairs) }
+  const summary = summarizePairs(pairs)
+  if (summary.confusions.length > 0) {
+    const nodes = await db().taxonomyNode.findMany({
+      where: { OR: summary.confusions.map(c => ({ taxonomy: { key: c.taxonomyKey }, code: { in: [c.a, c.b] } })) },
+      select: { taxonomy: { select: { key: true } }, code: true, label: true }
+    })
+    const labels = new Map(nodes.map(n => [JSON.stringify([n.taxonomy.key, n.code]), n.label]))
+    for (const confusion of summary.confusions) {
+      confusion.aLabel = labels.get(JSON.stringify([confusion.taxonomyKey, confusion.a])) ?? null
+      confusion.bLabel = labels.get(JSON.stringify([confusion.taxonomyKey, confusion.b])) ?? null
+    }
+  }
+  return { ...row!, agreement: row!.agreement ?? [], ...summary }
 }
 
 /** Agreement by level, per labeller and the most frequent disagreements, from the compared pairs. */
@@ -311,8 +331,6 @@ function summarizePairs(
     bUserId: string | null
     aName: string | null
     bName: string | null
-    aLabels: Record<string, string> | null
-    bLabels: Record<string, string> | null
   }>
 ): Pick<DoubleProgress, 'agreementByLevel' | 'labellers' | 'confusions'> {
   const byTaxonomy = new Map<
@@ -369,18 +387,15 @@ function summarizePairs(
         b.map((nodeCode, i) => ({ level: i + 1, nodeCode }))
       )
       if (level !== null) {
-        const [x, y] = [
-          { code: a[level - 1] ?? '', label: p.aLabels?.[a[level - 1] ?? ''] ?? null },
-          { code: b[level - 1] ?? '', label: p.bLabels?.[b[level - 1] ?? ''] ?? null }
-        ].sort((m, n) => m.code.localeCompare(n.code))
-        const key = `${p.taxonomyKey}\u0001${level}\u0001${x!.code}\u0001${y!.code}`
+        const [x, y] = [a[level - 1] ?? '', b[level - 1] ?? ''].sort((m, n) => m.localeCompare(n))
+        const key = `${p.taxonomyKey}\u0001${level}\u0001${x}\u0001${y}`
         const c = confusions.get(key) ?? {
           taxonomyKey: p.taxonomyKey,
           level,
-          a: x!.code,
-          b: y!.code,
-          aLabel: x!.label,
-          bLabel: y!.label,
+          a: x!,
+          b: y!,
+          aLabel: null,
+          bLabel: null,
           count: 0
         }
         c.count++
@@ -419,7 +434,7 @@ export async function getProgressActivity(
   if (bucketError !== undefined) return { error: bucketError }
   const rows = await db().$queryRaw<Array<{ key: string; labeledRecords: number }>>`
     SELECT to_char(date_trunc(${filter.granularity}::text,
-             (e."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE ${context.range.timeZone}::text), 'YYYY-MM-DD') AS key,
+             e."createdAt"), 'YYYY-MM-DD') AS key,
            count(DISTINCT e."sentenceId")::int AS "labeledRecords"
       FROM "LabelingActivity" e
      WHERE ${activityWhere(user.workspaceId, context)}

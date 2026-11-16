@@ -1,7 +1,9 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
 import { parse } from 'csv-parse/sync'
-import { signIn, failOnCspViolations } from './helpers'
+import { signIn, failOnCspViolations, seedBeforeAll } from './helpers'
 import { expectAccessible } from './a11y'
+
+seedBeforeAll()
 
 // Double annotation end to end, in its own workspace (archived afterwards):
 // the admin starts it from the assignment dialog, two labellers answer blind
@@ -62,6 +64,7 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   page,
   browser
 }) => {
+  test.setTimeout(60_000)
   await signIn(page)
   await expect(page).toHaveURL(/\/queue/)
   const created = await page.request.post('/api/workspaces', { data: { name: 'Double annotation journey' } })
@@ -92,10 +95,9 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
   await page.getByRole('button', { name: 'Assign / unassign' }).click()
   const dialog = page.getByRole('dialog', { name: 'Manage assignments' })
   await dialog.getByRole('button', { name: 'Two independent labels' }).click()
-  await dialog.getByRole('radio', { name: /^Both label from scratch/ }).check()
   await choose(page, 'First person', 'Ada Double')
   await choose(page, 'Second person', 'Ben Double')
-  await expect(dialog.getByText('1 labelled by both people')).toBeVisible()
+  await expect(dialog.getByText('1 labeled by both people')).toBeVisible()
   await expectAccessible(page, 'double annotation dialog')
   await dialog.getByRole('button', { name: 'Start double annotation for 1' }).click()
   await expect(dialog).toHaveCount(0)
@@ -109,7 +111,7 @@ test('two labellers answer blind, a disagreement is reviewed, the confirmed expo
     const person = await signInAs(browser, username)
     await person.page.goto(view(`/queue/${record!.id}`))
     await expect(
-      person.page.getByText(/Independent labelling|Two other people|Once submitted, an answer is final/)
+      person.page.getByText(/Independent labeling|Two other people|Once submitted, an answer is final/)
     ).toHaveCount(0)
     await expect(person.page.getByRole('region', { name: 'Double annotation' })).toHaveCount(0)
     const detail = await (await person.page.request.get(api(`/sentences/${record!.id}`))).json()

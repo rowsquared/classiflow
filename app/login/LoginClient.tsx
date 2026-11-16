@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { buttonClass } from '@/components/ui/styles'
+import './login.css'
 
 type Props = {
   /** Shows "Forgot password?" (only with mail). */
@@ -55,58 +56,6 @@ export default function LoginClient({ mailEnabled, next }: Props) {
         {/* Hierarchical Tree Visualization */}
         <div className="relative w-full max-w-2xl mb-8">
           <svg viewBox="0 0 600 380" className="w-full h-auto">
-            <defs>
-              {/* Animated path highlight - all elements in a path highlight together.
-                  Opacity and colour only, and only when the reader has not asked for less motion. */}
-              <style>{`
-                .brain-icon, .chip-icon {
-                  margin-bottom: 32px;
-                }
-                .brain-icon-svg, .chip-icon-svg {
-                  stroke: rgba(255, 255, 255, 0.85);
-                }
-                @media (prefers-reduced-motion: no-preference) {
-                @keyframes pathPulse {
-                  0%, 100% { opacity: 0.35; }
-                  50% { opacity: 0.8; }
-                }
-                .path-line-1, .path-node-1 {
-                  animation: pathPulse 12s ease-in-out infinite;
-                  animation-delay: 0s;
-                }
-                .path-line-2, .path-node-2 {
-                  animation: pathPulse 12s ease-in-out infinite;
-                  animation-delay: 4s;
-                }
-                .path-line-3, .path-node-3 {
-                  animation: pathPulse 12s ease-in-out infinite;
-                  animation-delay: 8s;
-                }
-                /* Icon colour in step with the paths */
-                @keyframes iconColorPulse1 {
-                  0%, 100% { stroke: rgba(255, 255, 255, 0.7); }
-                  0%, 33% { stroke: rgba(255, 255, 255, 0.95); }
-                  34%, 100% { stroke: rgba(255, 255, 255, 0.7); }
-                }
-                @keyframes iconColorPulse2 {
-                  0%, 33% { stroke: rgba(255, 255, 255, 0.7); }
-                  34%, 66% { stroke: rgba(255, 255, 255, 0.95); }
-                  67%, 100% { stroke: rgba(255, 255, 255, 0.7); }
-                }
-                @keyframes iconColorPulse3 {
-                  0%, 66% { stroke: rgba(255, 255, 255, 0.7); }
-                  67%, 100% { stroke: rgba(255, 255, 255, 0.95); }
-                }
-                .brain-icon-svg {
-                  animation: iconColorPulse1 12s ease-in-out infinite;
-                }
-                .chip-icon-svg {
-                  animation: iconColorPulse3 12s ease-in-out infinite;
-                }
-                }
-              `}</style>
-            </defs>
-
             {/* Root Level - Brain/AI Split using Lucide icons */}
             <g transform="translate(300, 80)">
               {/* Left side - Brain icon (white, larger, further from tree) */}

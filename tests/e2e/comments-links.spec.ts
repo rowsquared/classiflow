@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { api, failOnCspViolations, pagePath, rows, signIn } from './helpers'
+import { api, failOnCspViolations, pagePath, rows, signIn, seedBeforeAll } from './helpers'
 import { ADMIN, RECORDS } from './fixtures'
 import { expectAccessible } from './a11y'
+
+seedBeforeAll()
 
 failOnCspViolations()
 test.beforeEach(async ({ page }) => {

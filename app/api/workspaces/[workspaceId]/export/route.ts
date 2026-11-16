@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { reloadWorkspaceUser, workspaceRoute } from '@/lib/api-auth'
 import { Prisma, SentenceStatus } from '@/lib/generated/prisma/client'
-import { ExportColumnError, detailsStream, exportStream } from '@/lib/export-csv'
+import { ExportColumnError, detailsStream, exportStream, prepareRecordExport } from '@/lib/export-csv'
 import { agreementStream, analysisScope, pairsStream, type AnalysisFilter } from '@/lib/export-double'
 import { withWorkspace } from '@/lib/workspace/db'
 import { audit } from '@/lib/audit'
@@ -49,6 +49,7 @@ export const GET = workspaceRoute(
         return NextResponse.json({ error: 'Only admins can export records' }, { status: 403 })
       }
       const statusColumnsParam = searchParams.get('statusColumns')
+      const statusColumns = statusColumnsParam === null ? undefined : statusColumnsParam === 'true'
       const day = (value: string | null, end: boolean) => {
         if (!value) return null
         const date = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`)
@@ -60,7 +61,8 @@ export const GET = workspaceRoute(
       if (
         !['all', 'active', 'completed', 'cancelled'].includes(rounds) ||
         comparedFrom === undefined ||
-        comparedTo === undefined
+        comparedTo === undefined ||
+        (comparedFrom && comparedTo && comparedFrom > comparedTo)
       ) {
         return NextResponse.json({ error: 'Invalid analysis filter' }, { status: 400 })
       }
@@ -79,7 +81,7 @@ export const GET = workspaceRoute(
         if (!(Object.values(SentenceStatus) as string[]).includes(statusFilter)) {
           return NextResponse.json({ error: `Unknown status "${statusFilter}"` }, { status: 400 })
         }
-        where.status = statusFilter as SentenceStatus
+        where.status = statusFilter === 'pending' ? { in: ['pending', 'escalated'] } : (statusFilter as SentenceStatus)
       }
 
       if (dateRange !== 'all') {
@@ -120,6 +122,10 @@ export const GET = workspaceRoute(
           const role = (await reloadWorkspaceUser(actor.id, actor.workspaceId))?.role
           return role === 'admin' || (role === 'supervisor' && actor.role === 'supervisor' && format !== 'records')
         }
+      }
+      if (searchParams.get('prepare') === 'true') {
+        if (format === 'records') await prepareRecordExport(scope, filter, statusColumns)
+        return NextResponse.json({ ok: true })
       }
       const entityId = format === 'records' ? 'records' : `double-annotation-${format}`
       const streamOpts = {
@@ -166,7 +172,7 @@ export const GET = workspaceRoute(
               ? await agreementStream(scope, filter, analysis, streamOpts)
               : await exportStream(scope, filter, {
                   ...streamOpts,
-                  statusColumns: statusColumnsParam === null ? undefined : statusColumnsParam === 'true'
+                  statusColumns
                 })
       const fileName = {
         records: 'export',

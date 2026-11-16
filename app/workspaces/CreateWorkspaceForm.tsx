@@ -43,17 +43,14 @@ function CreateWorkspace() {
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch('/api/workspaces', {
+      const data = await fetchJson<{ workspace: { id: string } }>('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description: description || null, ...(admin ? { adminUserId: admin.id } : {}) })
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(data.error || 'Could not create the workspace')
-        return
-      }
       router.push(`/w/${data.workspace.id}/admin/taxonomy`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not create the workspace')
     } finally {
       setSaving(false)
     }

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/lib/generated/prisma/client'
 import { setPassword } from '@/lib/passwords'
+import { allowRequest } from '@/lib/rate-limit'
 import { createUser, createWorkspace, params, plainParams, prisma, request, resetDatabase, signInAs } from './helpers'
 
 import * as membersRoute from '@/app/api/workspaces/[workspaceId]/users/route'
@@ -17,6 +18,16 @@ vi.hoisted(() => {
 })
 
 let admin: User, platformAdmin: User
+
+it('limits concurrent requests atomically and resets a stale window', async () => {
+  const limit = { windowSeconds: 60, max: 2 }
+  const outcomes = await Promise.all(Array.from({ length: 5 }, () => allowRequest('concurrent-window', limit)))
+  expect(outcomes.filter(Boolean)).toHaveLength(2)
+  await prisma.appRateLimit.update({ where: { key: 'classiflow:concurrent-window' }, data: { lastRequest: 0n } })
+  expect(await allowRequest('concurrent-window', limit)).toBe(true)
+  expect(await allowRequest('concurrent-window', limit)).toBe(true)
+  expect(await allowRequest('concurrent-window', limit)).toBe(false)
+})
 
 beforeAll(async () => {
   await resetDatabase()

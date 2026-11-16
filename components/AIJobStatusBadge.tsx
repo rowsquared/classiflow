@@ -43,16 +43,15 @@ export default function AIJobStatusBadge() {
 
   // Active and recently finished jobs, every 3 s while the tab is visible
   // (refetchInterval pauses in hidden tabs; returning to the tab refetches).
-  const { data: jobs = [] } = useQuery({
+  const { data } = useQuery({
     queryKey: queryKeys.aiJobsActive(workspaceId),
-    queryFn: async ({ signal }) => {
-      const data = await fetchJson<{ ok?: boolean; jobs?: AIJob[] }>(workspaceApi('/ai-jobs/active'), { signal })
-      return data.ok && data.jobs ? data.jobs : []
-    },
+    queryFn: ({ signal }) =>
+      fetchJson<{ ok: boolean; jobs: AIJob[]; moreActive: boolean }>(workspaceApi('/ai-jobs/active'), { signal }),
     enabled: isAdmin,
     staleTime: 0,
     refetchInterval: 3000
   })
+  const jobs = data?.jobs ?? []
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -146,7 +145,10 @@ export default function AIJobStatusBadge() {
         ) : (
           <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
         )}
-        <span className="font-medium">{shownCount}</span>
+        <span className="font-medium">
+          {shownCount}
+          {data?.moreActive && '+'}
+        </span>
         <span className="text-sm">AI job{shownCount !== 1 ? 's' : ''}</span>
       </button>
 

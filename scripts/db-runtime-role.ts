@@ -44,12 +44,12 @@ const literal = (value: string) => `'${value.replace(/'/g, "''")}'`
 export async function ensureRole({ ownerUrl, user, password }: Config) {
   const prisma = connect(ownerUrl)
   try {
-    const [row] = await prisma.$queryRaw<[{ db: string; schema: string }]>`
-      SELECT current_database() AS db, current_schema() AS schema`
-    const { db, schema } = row
+    const [row] = await prisma.$queryRaw<[{ db: string; schema: string; superuser: boolean }]>`
+      SELECT current_database() AS db, current_schema() AS schema,
+        (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser`
+    const { db, schema, superuser } = row
     const role = `"${user}"`
     const statements = [
-      `ALTER ROLE ${role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD ${literal(password)}`,
       `ALTER ROLE ${role} IN DATABASE "${db}" SET statement_timeout = '5min'`,
       `ALTER ROLE ${role} IN DATABASE "${db}" SET idle_in_transaction_session_timeout = '5min'`,
       `GRANT CONNECT ON DATABASE "${db}" TO ${role}`,
@@ -75,8 +75,15 @@ export async function ensureRole({ ownerUrl, user, password }: Config) {
     ]
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('classiflow.runtime_role.' || ${user}))`
-      const exists = await tx.$queryRaw<unknown[]>`SELECT 1 FROM pg_roles WHERE rolname = ${user}`
-      if (exists.length === 0) await tx.$executeRawUnsafe(`CREATE ROLE ${role} LOGIN`)
+      const [existing] = await tx.$queryRaw<{ elevated: boolean }[]>`
+        SELECT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls) AS elevated
+        FROM pg_roles WHERE rolname = ${user}`
+      if (!existing) await tx.$executeRawUnsafe(`CREATE ROLE ${role} LOGIN`)
+      if (existing?.elevated && !superuser) {
+        throw new Error('The runtime role has elevated privileges. Remove them with the database administrator.')
+      }
+      const resetPrivileges = superuser ? ' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS' : ''
+      await tx.$executeRawUnsafe(`ALTER ROLE ${role} WITH LOGIN${resetPrivileges} PASSWORD ${literal(password)}`)
       for (const statement of statements) await tx.$executeRawUnsafe(statement)
     })
     console.log(`✓ Database role "${user}" has row access to the application tables only`)

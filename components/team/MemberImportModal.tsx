@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
-import { fetchJson } from '@/lib/query/fetch'
+import { fetchJson, HttpError } from '@/lib/query/fetch'
 import { queryKeys } from '@/lib/query/keys'
 import Modal from '@/components/Modal'
 import { csvLine } from '@/lib/csv'
@@ -30,6 +30,13 @@ type PreviewRow = {
   note: string | null
 }
 type RowError = { line: number; field: string; message: string }
+type UploadResult = {
+  importId?: string
+  rows?: PreviewRow[] | ResultRow[]
+  errors?: RowError[]
+  fileErrors?: string[]
+  replayed?: boolean
+}
 type ResultRow = {
   line: number
   username: string
@@ -91,27 +98,31 @@ export default function MemberImportModal({
       form.set('file', file)
       if (!dryRun) form.set('importKey', importKey)
       if (!dryRun && confirmRestore) form.set('confirmRestore', 'true')
-      const res = await fetch(api(`/users/import?dryRun=${dryRun}`), { method: 'POST', body: form })
-      const data = await res.json().catch(() => ({}))
-      if (data.fileErrors) {
+      const data = await fetchJson<UploadResult>(api(`/users/import?dryRun=${dryRun}`), { method: 'POST', body: form })
+      setFileErrors([])
+      if (dryRun) {
+        setPreview({ rows: (data.rows ?? []) as PreviewRow[], errors: data.errors ?? [] })
+        // A new key per preview: committing this preview twice creates nothing twice.
+        setImportKey(crypto.randomUUID())
+      } else if (data.importId) {
+        setResult({ importId: data.importId, rows: (data.rows ?? []) as ResultRow[], replayed: data.replayed })
+      }
+    } catch (caught) {
+      const data = caught instanceof HttpError ? (caught.body as UploadResult | null) : null
+      if (data?.fileErrors) {
         setFileErrors(data.fileErrors)
         setPreview(null)
         return
       }
       setFileErrors([])
-      if (data.rows && data.errors) setPreview({ rows: data.rows, errors: data.errors })
-      if (!res.ok) {
-        setError(data.error || (data.errors?.length ? 'Some rows have problems; nothing was changed' : 'Import failed'))
-        return
-      }
-      if (dryRun) {
-        // A new key per preview: committing this preview twice creates nothing twice.
-        setImportKey(crypto.randomUUID())
-      } else {
-        setResult({ importId: data.importId, rows: data.rows, replayed: data.replayed })
-      }
-    } catch {
-      setError('Could not reach the server. Please try again.')
+      if (data?.rows && data.errors) setPreview({ rows: data.rows as PreviewRow[], errors: data.errors })
+      setError(
+        caught instanceof HttpError
+          ? data?.errors?.length && !('error' in data)
+            ? 'Some rows have problems; nothing was changed'
+            : caught.message
+          : 'Could not reach the server. Please try again.'
+      )
     } finally {
       setBusy(false)
     }

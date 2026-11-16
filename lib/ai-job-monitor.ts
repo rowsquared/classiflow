@@ -91,6 +91,7 @@ const LEASE_MS = 2 * AI_JOB_POLL_INTERVAL_MS + 60_000
 // Status requests that fail are retried with exponential backoff up to this.
 const MAX_POLL_BACKOFF_MS = 5 * 60_000
 const START_ATTEMPTS = 6
+const ENDPOINT_START_BACKOFF_MS = 60_000
 const START_LEASE_MS = Math.max(LEASE_MS, AI_REQUEST_TIMEOUT_POST_MS + 60_000)
 const POLL_LEASE_MS = Math.max(LEASE_MS, 210_000) // Status request, result transaction and pool wait.
 const RESULT_IMPORT_ATTEMPTS = 3
@@ -464,7 +465,11 @@ async function startSync(job: JobRecord, client: TaxomindClient, namespace: stri
   })
 }
 
-async function startExternal(kind: JobKind, job: JobRecord, client: TaxomindClient, namespace: string) {
+async function startExternal(
+  kind: JobKind,
+  job: JobRecord,
+  { client, namespace, endpointId }: Awaited<ReturnType<typeof connectionClient>>
+) {
   const start = kind === 'learning' ? startLearning : kind === 'sync' ? startSync : startLabeling
   for (let attempt = 1; ; attempt++) {
     if (!(await claimLease(job.workspaceId, job.id, kind, START_LEASE_MS))) return null
@@ -472,7 +477,15 @@ async function startExternal(kind: JobKind, job: JobRecord, client: TaxomindClie
     try {
       externalJobId = await start(job, client, namespace)
     } catch (error) {
-      if (!(error instanceof TaxomindRequestError) || !error.retryable || attempt >= START_ATTEMPTS) throw error
+      if (!(error instanceof TaxomindRequestError) || !error.retryable) throw error
+      if (attempt >= START_ATTEMPTS) {
+        const until = new Date(Date.now() + ENDPOINT_START_BACKOFF_MS)
+        await prisma.aIEndpoint.updateMany({
+          where: { id: endpointId, OR: [{ startBackoffUntil: null }, { startBackoffUntil: { lt: until } }] },
+          data: { startBackoffUntil: until }
+        })
+        throw error
+      }
       // Holding the admission slot while retrying prevents a brief outage from draining the queue.
       const delay = Math.min(60_000, Math.min(5_000, AI_JOB_POLL_INTERVAL_MS) * 2 ** (attempt - 1))
       logger.warn({ kind, jobId: job.id, attempt, delay, err: error }, 'AI job start will be retried')
@@ -514,12 +527,12 @@ function runMonitor(jobId: string, kind: JobKind, workspaceId: string) {
       const job = await loadJobRecord(workspaceId, jobId, kind)
       if (!job || job.status !== 'processing') return
 
-      const { client, namespace } = await connectionClient(workspaceId, job.connectionVersionId, job.requestId)
+      const connection = await connectionClient(workspaceId, job.connectionVersionId, job.requestId)
       const external = job.externalJobId
         ? { externalJobId: job.externalJobId, startedAt: job.startedAt }
-        : await startExternal(kind, job, client, namespace)
+        : await startExternal(kind, job, connection)
 
-      if (external) await pollUntilComplete({ ...job, ...external }, external.externalJobId, client, kind)
+      if (external) await pollUntilComplete({ ...job, ...external }, external.externalJobId, connection.client, kind)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       logger.error({ kind, jobId, err: error }, 'AI job failed')

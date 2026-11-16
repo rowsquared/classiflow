@@ -1,4 +1,4 @@
-import { formatCalendarDate, parseCalendarDate, todayIn } from '@/lib/reporting-dates'
+import { formatCalendarDate, parseCalendarDate } from '@/lib/reporting-dates'
 
 const number = new Intl.NumberFormat('en-GB')
 const dayFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
@@ -23,9 +23,9 @@ export function formatRange(startDate: string, endDate: string): string {
   return startDate === endDate ? formatDay(startDate) : `${formatDay(startDate)} – ${formatDay(endDate)}`
 }
 
-/** The calendar date of an instant in the reporting time zone. */
-export function localDate(instant: string, timeZone: string): string {
-  return formatCalendarDate(todayIn(timeZone, new Date(instant)))
+/** The UTC calendar date of an instant. */
+export function utcDate(instant: string): string {
+  return formatCalendarDate(new Date(instant))
 }
 
 /** "14:32" in the viewer's own clock. */

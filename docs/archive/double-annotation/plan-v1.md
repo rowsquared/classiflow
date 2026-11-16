@@ -2,7 +2,7 @@
 
 **Status:** v1 implemented and merged into `staging` (22 October 2026); what
 is left is the open part of the section 0 checklist, also listed in
-[open items](open-items.md) section 6. Section 0 is the simplified v1 contract and the
+[open items](../../open-items.md) section 6. Section 0 is the simplified v1 contract and the
 handover checklist; where it differs from sections 1-15, section 0 wins.
 
 **Date:** 22 October 2026.
@@ -11,8 +11,8 @@ handover checklist; where it differs from sections 1-15, section 0 wins.
 Recheck affected contracts before implementation: other October changes were
 in progress when this plan was drafted.
 
-**Interactive mockup:** open the [standalone preview](../mockups/double-annotation/index.html).
-Its [editable source and usage notes](../mockups/double-annotation/README.md)
+**Interactive mockup:** open the [standalone preview](mockup-v1/index.html).
+Its [editable source and usage notes](mockup-v1/README.md)
 are stored alongside it. All interactions use illustrative data.
 
 ## 0. v1 implementation (handover)
@@ -157,22 +157,22 @@ later extension without exposing these controls in v1.
 
 Primary entry points:
 
-- [Schema](../../prisma/schema.prisma),
-  [workspace database scope](../../lib/workspace/db.ts),
-  [record access](../../lib/access.ts), [security contract](../security.md).
-- [Single save](../../app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route.ts),
-  [bulk save](../../app/api/workspaces/[workspaceId]/sentences/bulk-label/route.ts),
-  [assignments](../../app/api/workspaces/[workspaceId]/sentences/assign/route.ts),
-  [completion rules](../../lib/annotation-status.ts),
-  [path validation](../../lib/label-path.ts).
-- [Queue queries](../../lib/server/sentences.ts),
-  [queue URL state](../../lib/queue-url.ts),
-  [queue components](../../components/queue),
-  [labelling components](../../components/labeling),
-  [progress queries](../../lib/server/progress.ts).
-- [Export](../../lib/export-csv.ts),
-  [learning creation](../../app/api/workspaces/[workspaceId]/ai-labeling/learn/route.ts),
-  [job dispatch](../../lib/ai-job-monitor.ts).
+- [Schema](../../../prisma/schema.prisma),
+  [workspace database scope](../../../lib/workspace/db.ts),
+  [record access](../../../lib/access.ts), [security contract](../../security.md).
+- [Single save](../../../app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route.ts),
+  [bulk save](../../../app/api/workspaces/[workspaceId]/sentences/bulk-label/route.ts),
+  [assignments](../../../app/api/workspaces/[workspaceId]/sentences/assign/route.ts),
+  [completion rules](../../../lib/annotation-status.ts),
+  [path validation](../../../lib/label-path.ts).
+- [Queue queries](../../../lib/server/sentences.ts),
+  [queue URL state](../../../lib/queue-url.ts),
+  [queue components](../../../components/queue),
+  [labelling components](../../../components/labeling),
+  [progress queries](../../../lib/server/progress.ts).
+- [Export](../../../lib/export-csv.ts),
+  [learning creation](../../../app/api/workspaces/[workspaceId]/ai-labeling/learn/route.ts),
+  [job dispatch](../../../lib/ai-job-monitor.ts).
 
 Inspect actual single and bulk save implementations together; do not rely on
 older documentation about differences in their completion rules.

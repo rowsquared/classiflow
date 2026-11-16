@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn, failOnCspViolations } from './helpers'
+import { signIn, failOnCspViolations, seedBeforeAll } from './helpers'
 import { expectAccessible } from './a11y'
+
+seedBeforeAll()
 
 // Independent workspaces: these edge cases neither depend on nor change the journeys' records.
 failOnCspViolations()
@@ -74,6 +76,22 @@ test('single labeling keeps drafts across tabs and visits unfinished taxonomies 
   await page.getByRole('button', { name: /^Submit/ }).click()
   await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/queue$`))
   expect((await (await page.request.get(api(`/sentences/${record!.id}`))).json()).status).toBe('submitted')
+})
+
+test('same-tab Back asks before leaving a record with unsaved labels', async ({ page }) => {
+  await taxonomy(page, 'A')
+  const [record] = await records(page)
+  await page.goto(view('/queue?tab=all'))
+  await page.getByRole('row').filter({ hasText: 'Review record 1' }).click()
+  await expect(page).toHaveURL(new RegExp(`/queue/${record!.id}\\?`))
+  await page.getByRole('button', { name: /^02\b/ }).click()
+  await page.evaluate(() => history.back())
+  const dialog = page.getByRole('dialog', { name: 'Leave this record?' })
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByRole('button', { name: 'Remove label 02' })).toBeVisible()
+  await page.evaluate(() => history.back())
+  await dialog.getByRole('button', { name: 'Discard selections' }).click()
+  await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/queue\\?tab=all`))
 })
 
 test('an expired session can be recovered without losing the selected label', async ({ page }) => {

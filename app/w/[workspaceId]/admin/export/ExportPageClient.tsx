@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
 import { buttonClass, panelClass } from '@/components/ui/styles'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -33,8 +33,8 @@ const ANALYSIS: Array<{ value: AnalysisFormat; title: string; detail: string }> 
 /**
  * Downloads (GET /export, lib/export-csv.ts and lib/export-double.ts): admins
  * get the records export and the double annotation analysis, supervisors the
- * analysis of their team's records. Downloads are plain links, so the browser
- * saves the streamed file directly.
+ * analysis of their team's records. Validate before the browser saves the
+ * streamed file directly.
  */
 export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor' }) {
   const { workspaceId, api } = useWorkspacePaths()
@@ -44,6 +44,15 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
   })
   const taxonomies = useActiveTaxonomies()
   const usesDouble = (summary.data?.rounds ?? 0) > 0
+  const download = useMutation({
+    mutationFn: async (url: string) => {
+      await fetchJson(`${url}&prepare=true`)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = ''
+      link.click()
+    }
+  })
 
   // Records
   const [statusFilter, setStatusFilter] = useState('all')
@@ -81,6 +90,16 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
     <>
       <PageHeader title="Export data" />
       <div className="px-8 py-8 space-y-6 max-w-6xl">
+        {download.isPending && (
+          <p role="status" className="text-sm text-gray-700">
+            Preparing download…
+          </p>
+        )}
+        {download.isError && (
+          <p role="alert" className="text-sm text-red-700">
+            {download.error.message}
+          </p>
+        )}
         {role === 'admin' && (
           <section aria-labelledby="export-records" className={`${panelClass} p-6`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
@@ -127,7 +146,15 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
                   <option value="skipped">Skipped only</option>
                 </select>
               </div>
-              <a href={recordsUrl()} download className={buttonClass('primary', 'md', 'justify-center')}>
+              <a
+                href={recordsUrl()}
+                download
+                className={buttonClass('primary', 'md', 'justify-center')}
+                onClick={event => {
+                  event.preventDefault()
+                  if (!download.isPending) download.mutate(recordsUrl())
+                }}
+              >
                 Download records CSV
               </a>
             </div>
@@ -275,7 +302,7 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
               )}
               {role === 'supervisor' && (
                 <p className="mt-3 text-xs text-gray-600">
-                  Records of your team. Records you labelled yourself are left out.
+                  Records of your team. Records you labeled yourself are left out.
                 </p>
               )}
               <p className="mt-3 text-xs text-gray-600">
@@ -283,7 +310,15 @@ export default function ExportPageClient({ role }: { role: 'admin' | 'supervisor
                 Agreement compares the first two answers as they were when compared; later changes are marked.
               </p>
               <div className="mt-4">
-                <a href={analysisUrl()} download className={buttonClass('secondary')}>
+                <a
+                  href={analysisUrl()}
+                  download
+                  className={buttonClass('secondary')}
+                  onClick={event => {
+                    event.preventDefault()
+                    if (!download.isPending) download.mutate(analysisUrl())
+                  }}
+                >
                   {format === 'analysis'
                     ? 'Download all three (ZIP)'
                     : `Download ${ANALYSIS.find(a => a.value === format)!.title.toLowerCase()} CSV`}

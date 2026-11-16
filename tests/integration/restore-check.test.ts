@@ -1,6 +1,7 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { testDatabaseUrl } from './global-setup'
+import { runtimeDatabaseUrl, testDatabaseUrl } from './global-setup'
 import { prisma, resetDatabase } from './helpers'
 
 // scripts/restore-check.ts as the restore drill runs it against a restored database.
@@ -46,6 +47,24 @@ beforeAll(async () => {
 })
 
 describe('restore check', () => {
+  it('creates one admin when two instances bootstrap concurrently', async () => {
+    const run = promisify(execFile)
+    const [first, second] = await Promise.all(
+      ['first', 'second'].map(name =>
+        run(process.execPath, ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', 'scripts/init-admin.ts'], {
+          env: {
+            ...process.env,
+            DATABASE_URL: runtimeDatabaseUrl(),
+            DEFAULT_ADMIN_USERNAME: `bootstrap-${name}`,
+            DEFAULT_ADMIN_EMAIL: `bootstrap-${name}@example.test`,
+            DEFAULT_ADMIN_PASSWORD: 'a-forest-of-quiet-elm-trees'
+          }
+        })
+      )
+    )
+    expect([first!.stdout, second!.stdout].filter(output => output.includes('already exists'))).toHaveLength(1)
+    expect(await prisma.user.count({ where: { role: 'admin' } })).toBe(1)
+  })
   it('passes on a healthy database and reports every workspace', () => {
     const { ok, output } = runCheck()
     expect(output).toContain('Restore check passed')

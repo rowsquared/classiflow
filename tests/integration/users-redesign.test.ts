@@ -19,6 +19,7 @@ import * as exportRoute from '@/app/api/user-directory/export/route'
 import * as lifecycle from '@/app/api/workspaces/[workspaceId]/route'
 import * as preview from '@/app/api/workspaces/[workspaceId]/deletion-preview/route'
 import * as users from '@/app/api/users/[userId]/route'
+import * as lookup from '@/app/api/users/lookup/route'
 import { WORKSPACE_DELETE_TABLES, setWorkspaceStatus } from '@/lib/server/workspaces'
 
 vi.hoisted(() => {
@@ -27,6 +28,21 @@ vi.hoisted(() => {
 
 beforeEach(resetDatabase)
 const ctx = (workspaceId: string) => plainParams({ workspaceId })
+
+it('looks up an exact normalized email only for platform admins', async () => {
+  await createWorkspace()
+  const account = await createUser('labeller')
+  const admin = await createUser('admin')
+  const find = (email: string) => lookup.GET(request(`/x?email=${encodeURIComponent(email)}`))
+  signInAs(admin)
+  expect((await find(account.email)).status).toBe(403)
+  signInAs(await createUser('admin', { platformAdmin: true }))
+  expect((await find('invalid-address')).status).toBe(400)
+  expect(await (await find('absent@example.test')).json()).toEqual({ user: null })
+  expect(await (await find(` ${account.email.toUpperCase()} `)).json()).toEqual({
+    user: { id: account.id, email: account.email, name: account.name, banned: account.banned }
+  })
+})
 
 it('sorts the active team count rather than counting removed reports', async () => {
   const ws = await createWorkspace()

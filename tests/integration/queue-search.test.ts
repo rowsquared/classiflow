@@ -80,4 +80,23 @@ describe('queue text search', () => {
     expect(rows).toEqual([])
     expect(otherWorkspace).not.toBe(wsId())
   })
+
+  it('rejects malformed filters and uses UTC midnight for the inclusive date range', async () => {
+    signInAs(admin)
+    for (const query of ['lastEditedFrom=2026-02-30', 'level=NaN', 'aiLevel=6']) {
+      expect((await queueRoute.GET(request(`/x?${query}`), params())).status).toBe(400)
+      expect((await statsRoute.GET(request(`/x?${query}`), params())).status).toBe(400)
+    }
+    await prisma.sentence.updateMany({
+      where: { field1: 'nurse' },
+      data: { lastEditedAt: new Date('2026-11-16T23:59:59.999Z') }
+    })
+    await prisma.sentence.updateMany({
+      where: { field1: 'engine driver' },
+      data: { lastEditedAt: new Date('2026-11-17T00:00:00.000Z') }
+    })
+    const response = await queueRoute.GET(request('/x?lastEditedFrom=2026-11-16&lastEditedTo=2026-11-16'), params())
+    expect(response.status).toBe(200)
+    expect((await response.json()).sentences.map((row: { field1: string }) => row.field1)).toEqual(['nurse'])
+  })
 })
