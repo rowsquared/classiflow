@@ -59,14 +59,22 @@ test('the workspace switcher is keyboard operable and names the role', async ({ 
 test('leaving the queue restores the last view while explicit links and reset take precedence', async ({ page }) => {
   await signIn(page)
   const queuePath = `/w/${WORKSPACE_ID}/queue`
+  const progressPath = `/w/${WORKSPACE_ID}/progress`
   await page.goto(`${queuePath}?tab=all&q=nurse&flagged=false&limit=20`)
   await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('nurse')
   const sidebar = page.getByRole('complementary', { name: 'Main' })
   await sidebar.getByRole('link', { name: 'Progress', exact: true }).click()
+  await expect(page).toHaveURL(url => url.pathname === progressPath)
   await sidebar.getByRole('link', { name: 'Queue', exact: true }).click()
-  await expect(page).toHaveURL(/[?&]flagged=false/)
-  expect(new URL(page.url()).searchParams.get('tab')).toBe('all')
-  expect(new URL(page.url()).searchParams.get('limit')).toBe('20')
+  await expect(page).toHaveURL(
+    url =>
+      url.pathname === queuePath &&
+      url.searchParams.get('tab') === 'all' &&
+      url.searchParams.get('q') === 'nurse' &&
+      url.searchParams.get('flagged') === 'false' &&
+      url.searchParams.get('limit') === '20'
+  )
+  await expect(page.getByRole('button', { name: /^All \(/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('nurse')
 
   // A shared URL replaces the remembered filter rather than merging with it.
@@ -82,8 +90,10 @@ test('leaving the queue restores the last view while explicit links and reset ta
   await page.getByRole('button', { name: 'Reset', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('')
   await sidebar.getByRole('link', { name: 'Progress', exact: true }).click()
+  await expect(page).toHaveURL(url => url.pathname === progressPath)
   await sidebar.getByRole('link', { name: 'Queue', exact: true }).click()
+  await expect(page).toHaveURL(
+    url => url.pathname === queuePath && !url.searchParams.has('q') && !url.searchParams.has('flagged')
+  )
   await expect(page.getByRole('textbox', { name: 'Search records' })).toHaveValue('')
-  expect(new URL(page.url()).searchParams.has('q')).toBe(false)
-  expect(new URL(page.url()).searchParams.has('flagged')).toBe(false)
 })

@@ -1,10 +1,17 @@
 # Pre-production review (15 November 2026)
 
-Historical snapshot of the November release review. Findings and checkmarks
-reflect the review date and its follow-up below. See the current
-[release procedure](../../../COOLIFY_DEPLOYMENT.md#releases),
-[feature plans](../../open-items.md), and
-[double-annotation guide](../../double-annotation.md).
+Historical snapshot of the November release review. The checkboxes reflect
+the review and its initial follow-up. See [open work](../../open-items.md) for
+current status and the [Coolify guide](../../../COOLIFY_DEPLOYMENT.md#releases)
+for the release procedure.
+
+The later 16 November commit `5333a3d` addressed the same-tab Back warning (F2),
+legacy escalated status handling (Q1), progress date helper simplification
+(P5), export preparation errors (AD4), participant flags and revised answers
+(DA3, DA6, DA7), the start form (DS3), active job and learning request bounds
+(A12), and retries for definite transient mail failures (A17). It added queue
+date and level validation (Q3). Queue dates still use UTC. The hosted n8n
+verification recorded below is complete.
 
 ## Follow-up on 16 November 2026
 

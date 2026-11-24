@@ -2,6 +2,11 @@
 
 Status: implemented and verified (23 October 2026).
 See [completion and validation](users-page-redesign-validation.md). The "Why" section describes the previous UI.
+
+The November review removed the API exception discussed below. Name, email
+and password changes now require a platform admin. See the
+[access matrix](../../security.md#access-matrix).
+
 Replaces the earlier user/workspace management draft, whose implemented parts
 are on `staging`; the rules from it that still matter are under "Rules to
 keep" below.
@@ -12,8 +17,8 @@ Implementation decisions accepted during review:
 - Separate account, password-setup and membership-access filters, including removed access.
   Pending workspace invitations remain separate from account/member rows.
 - Role and supervisor save together with Save/Cancel controls. Workspace admins'
-  profile and global sign-in controls are read-only in the new editor; the existing
-  API exception remains pending the decision in `open-items.md`.
+  profile and global sign-in controls are read-only in the new editor. At the
+  time, the API still had an exception for never-signed-in accounts.
 - Platform admins alone can look up an existing account by email. Workspace admins
   invite without an account lookup; without mail they can create a new account but
   need a platform admin to attach an existing one. Grants report separate outcomes
@@ -228,9 +233,8 @@ shown only when the viewer may use them.
 
 - **Remove** opens today's removal confirm (unassign open records or keep
   them); last-admin and self-removal guards stay.
-- A workspace admin sees only their workspaces' rows, no Platform section,
-  and Profile read-only (except the existing never-signed-in exception,
-  which `open-items.md` already lists for a decision).
+- A workspace admin sees only their workspaces' rows, with no Platform
+  section and read-only Profile controls.
 - **Delete user** is enabled only when the account has no annotations,
   comments, labelling activity or audit entries as actor; otherwise the
   button is disabled with "Disable the account instead: it has saved work".
@@ -408,10 +412,8 @@ Carried over from the earlier draft; the new screens must not change them.
 - **Offboarding.** Removal keeps labels, comments and history and offers to
   unassign unsubmitted records; self-removal and last-admin guards stay.
   Disabling uses the existing ban and session revocation.
-- **Open decision** (in `open-items.md`): retiring the exception that lets a
-  workspace admin edit the global profile of a never-signed-in,
-  single-workspace account. If retired, change the API too and update
-  `docs/security.md` with an integration test.
+- **Follow-up completed in November:** the API now requires a platform admin
+  to edit a global profile, including never-signed-in, single-workspace accounts.
 
 ## Permission summary
 
@@ -420,7 +422,7 @@ Carried over from the earlier draft; the new screens must not change them.
 | Open `/users` | All accounts | Members of their workspaces | No |
 | Add user / grant access | Any workspace | Their workspaces (invite for existing accounts) | No |
 | Role, supervisor, remove, restore | Any workspace | Their workspaces | No |
-| Edit profile, disable, platform admin, delete user | Yes | No (existing exception pending decision) | No |
+| Edit profile, disable, platform admin, delete user | Yes | No | No |
 | Workspaces list with management | Yes | Chooser + settings of their own | Chooser |
 | Rename, archive, reopen workspace | Yes | Their workspaces | No |
 | Delete workspace | Yes (archived only, typed name) | No | No |

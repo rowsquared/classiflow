@@ -88,7 +88,7 @@ Each topic lives in one place:
 | [COOLIFY_DEPLOYMENT.md](COOLIFY_DEPLOYMENT.md) | Coolify-specific setup, deploy triggers and releases |
 | [docs/security.md](docs/security.md) | Who can see and change what (access matrix) |
 | [AGENTS.md](AGENTS.md) | Architecture and conventions for contributors and coding agents |
-| [docs/open-items.md](docs/open-items.md) | Larger feature plans. Previous plans and reviews are in `docs/archive/` |
+| [docs/open-items.md](docs/open-items.md) | Feature backlog, engineering follow-ups and completed plans |
 | [docs/double-annotation.md](docs/double-annotation.md) | How double annotation works |
 
 ## License

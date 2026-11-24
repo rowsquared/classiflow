@@ -2,8 +2,9 @@
 
 How independent double annotation works today (v1 from 22 October, v2 from
 7-8 November 2026). The plans, review findings and mockups behind it are in
-[`archive/double-annotation/`](archive/double-annotation/); open follow-ups
-are in [open items](open-items.md).
+[`archive/double-annotation/`](archive/double-annotation/). See the
+[feature backlog](open-items.md#feature-backlog) for proposed workflows and the
+[release procedure](../COOLIFY_DEPLOYMENT.md#releases) for upgrade checks.
 
 Goal: supervisors pick two people, watch one state, and decide disagreements
 on the record screen, without training.

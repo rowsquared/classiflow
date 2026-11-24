@@ -1,9 +1,9 @@
 # Independent double annotation: implementation plan
 
-**Status:** v1 implemented and merged into `staging` (22 October 2026); what
-is left is the open part of the section 0 checklist, also listed in
-[open items](../../open-items.md) section 6. Section 0 is the simplified v1 contract and the
-handover checklist; where it differs from sections 1-15, section 0 wins.
+**Status:** v1 implemented and merged into `staging` (22 October 2026).
+[v2](plan-v2.md#handover-7-november-2026) superseded this plan and records the
+completed benchmark and browser suite. Section 0 records the v1 contract
+and its handover. See [open work](../../open-items.md) for current follow-ups.
 
 **Date:** 22 October 2026.
 

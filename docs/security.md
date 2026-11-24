@@ -262,8 +262,8 @@ admin) with a valid session who does not have to reset their password.
 
 ## Known gaps
 
-Proposed features are in [feature plans](open-items.md). Cross-site mutation
-checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
+Proposed features are in the [feature backlog](open-items.md#feature-backlog).
+Cross-site mutation checks, security headers and the audit trail (DEPLOYMENT.md "Audit log", which
 also records refused access) are in place. Still depending on the deployment:
 upload size limits, HSTS and login rate limiting at the reverse proxy.
 

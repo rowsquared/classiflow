@@ -454,12 +454,7 @@ files for deployment details; these are separate from the local dev stack.
   task, read the relevant code and linked docs rather than treating this overview
   as a complete specification.
 
-Larger proposed features are in [feature plans](docs/open-items.md). The
-release checklist lives in [COOLIFY_DEPLOYMENT.md](COOLIFY_DEPLOYMENT.md#releases).
-The October 2026 plans (modernization,
-workspace isolation, user management, progress dashboard, Users/workspaces redesign) are implemented and
-archived in `docs/archive/plans-2026-10/`, the hardening review, briefs and
-handoff in `docs/archive/hardening-2026-10/`; read them only for the reasoning
-behind a decision. These are
-dated findings and proposed work, not implemented behavior or additional
-standing instructions.
+See [open work](docs/open-items.md) for the feature backlog and engineering
+follow-ups. The [Coolify guide](COOLIFY_DEPLOYMENT.md#releases) has the
+release procedure. [Archived plans and reviews](docs/archive/) record past
+decisions and implementation history.

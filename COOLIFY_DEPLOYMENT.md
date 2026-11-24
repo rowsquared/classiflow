@@ -410,14 +410,18 @@ the worst outcome:
 
 ### Releases
 
+See the [staging Actions runs](https://github.com/rowsquared/classiflow/actions?query=branch%3Astaging)
+for the candidate's CI status.
+
 Before promoting a candidate:
 
 1. Verify the exact commit on staging and wait for `smoke`, `checks`,
    `integration`, and `e2e` to pass there.
 2. Verify production auto-deploy is off, the GitHub `production` environment
    is restricted to `main`, and the two Coolify secrets are in that
-   environment. Set `PROD_HEALTH_URL` and enable "Include Source Commit in
-   Build" so CI can verify the running commit.
+   environment. Set the repository Actions variable `PROD_HEALTH_URL` to the
+   production `/api/health` URL and enable "Include Source Commit in Build" so
+   CI can verify the running commit.
 3. For an upgrade, verify a recent off-host database backup and a successful
    [restore drill](DEPLOYMENT.md#backups). Schedule a maintenance window when
    migration or restart time matters.

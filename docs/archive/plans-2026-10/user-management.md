@@ -5,7 +5,8 @@ maintainer decisions, Taxomind) is in [open items](../../open-items.md).
 
 **Status:** implemented 21–22 October 2026. The implementation status below
 takes precedence over the original proposal and design revisions retained
-in this archive. Live mail verification remains in the open-items list above.
+in this archive. The [November review](../reviews/2026-11-15-pre-production-review.md#follow-up-on-16-november-2026)
+records the hosted mail verification.
 
 ## Revision for workspaces and Better Auth (21 October 2026)
 
