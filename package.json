@@ -80,6 +80,9 @@
     "unrs-resolver": true
   },
   "overrides": {
+    "@prisma/config@7.10.1": {
+      "effect": "3.22.1"
+    },
     "openapi-typescript": {
       "typescript": "$typescript"
     }
