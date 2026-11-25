@@ -2,10 +2,8 @@
 
 ## Feature backlog
 
-- [ ] **Bulk work from a queue filter.** Select all matching records across
-  pages. Show a count and preview, apply the queue's workspace and participant
-  rules, and process bounded batches. Replace the 10,000-row “All” view for
-  large bulk operations.
+- [ ] **More bulk actions from a queue filter.** Extend cross-page selection
+  to other queue actions, including bulk labels and double annotation.
 - [ ] **Double-annotation workflows.** Decide which workflow to add next.
   Candidates are repeat rounds, private reviewer notes, configurable blind
   review, learning snapshots, recording whether a labeller saw other labels,
@@ -68,6 +66,17 @@ for current CI status. Use the [Coolify release procedure](../COOLIFY_DEPLOYMENT
 when preparing a production release.
 
 ## Completed plans
+
+- **Send to AI.** Select every record matching a queue view, choose synced
+  taxonomies, and preview which records will be sent. The app skips active
+  jobs and double-annotation records, and skips existing suggestions by
+  default. Confirm to queue the batches in AI jobs.
+
+- **Distribute work.** Select all records matching a queue view and preview
+  an even random split or a split that balances existing workloads. The
+  preview shows each labeller's current and projected open assignments.
+  Open work includes pending ordinary records and unfinished parts in active
+  double-annotation rounds.
 
 Modernization, workspace isolation, user management, the Users and Workspaces
 redesign, the Progress dashboard, and double annotation v1 and v2 are implemented

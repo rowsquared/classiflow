@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import Link from 'next/link'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryStates } from 'nuqs'
 import { useWorkspacePaths } from '@/lib/workspace/urls'
@@ -12,6 +13,7 @@ import {
   countActiveFilters,
   pickQueueFilters,
   queueListParams,
+  queueMatchParams,
   queueParsers,
   queueStatsParams,
   serializeQueueUrlState,
@@ -28,9 +30,10 @@ import PaginationControls from '@/components/queue/PaginationControls'
 import BulkLabelPanel from '@/components/queue/BulkLabelPanel'
 import AssignmentModal from '@/components/queue/AssignmentModal'
 import { ToastContainer, type Toast } from '@/components/Toast'
-import { Loader2, Tag, Users } from 'lucide-react'
+import { Loader2, Sparkles, Tag, Users } from 'lucide-react'
 import { buttonClass } from '@/components/ui/styles'
 import { queuePreferenceCookie, queuePreferenceValue } from '@/lib/queue-preferences'
+import { useWorkspaceInfo } from '@/components/WorkspaceProvider'
 
 export type Sentence = {
   id: string
@@ -141,7 +144,8 @@ export default function QueuePageClient({
   initialCanAssign: canAssign,
   currentUser
 }: QueuePageClientProps) {
-  const { workspaceId, api } = useWorkspacePaths()
+  const { workspaceId, api, href } = useWorkspacePaths()
+  const workspace = useWorkspaceInfo()
   const queryClient = useQueryClient()
 
   // The view (tab, search, filters, page) is the URL: back/forward and shared
@@ -223,13 +227,22 @@ export default function QueuePageClient({
   const statsStale = statsQuery.isError
 
   // Selection belongs to one view (tab, search, filters; not the page).
-  const selectionScope = `${activeTab}|${statsParams}`
-  const [selection, setSelection] = useState<{ scope: string; ids: ReadonlySet<string> }>({
+  const selectionScope = queueMatchParams(url)
+  const [selection, setSelection] = useState<{ scope: string; ids: ReadonlySet<string>; allMatching: boolean }>({
     scope: selectionScope,
-    ids: NO_SELECTION
+    ids: NO_SELECTION,
+    allMatching: false
   })
+  if (selection.scope !== selectionScope) {
+    setSelection({ scope: selectionScope, ids: NO_SELECTION, allMatching: false })
+  }
   const selectedIds = selection.scope === selectionScope ? selection.ids : NO_SELECTION
-  const setSelectedIds = (ids: ReadonlySet<string>) => setSelection({ scope: selectionScope, ids })
+  const setSelectedIds = (ids: ReadonlySet<string>) => setSelection({ scope: selectionScope, ids, allMatching: false })
+  const allMatching = selection.scope === selectionScope && selection.allMatching
+  const queueReady = !queueQuery.isPlaceholderData && !queueQuery.isError
+  const matchCount = queueReady ? (queue?.pagination.total ?? 0) : 0
+  const canDistribute = canAssign && !workspace?.archived
+  const canSendMatchingToAI = currentUser?.role === 'admin' && !workspace?.archived
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -408,7 +421,7 @@ export default function QueuePageClient({
 
           {/* Tabs */}
           <div className="border-b border-gray-200 px-6">
-            <nav className="flex gap-6">
+            <nav className="flex flex-wrap items-center gap-x-6">
               {[
                 { key: 'all', label: 'All', count: stats.total },
                 { key: 'pending', label: 'Pending', count: stats.pending },
@@ -428,8 +441,42 @@ export default function QueuePageClient({
                   {tab.label} ({tab.count.toLocaleString()})
                 </button>
               ))}
+              {(canDistribute || canSendMatchingToAI) && matchCount > 0 && !allMatching && (
+                <button
+                  type="button"
+                  className={buttonClass('secondary', 'sm', 'my-2 md:ml-auto')}
+                  onClick={() => setSelection({ scope: selectionScope, ids: NO_SELECTION, allMatching: true })}
+                >
+                  Select all {matchCount.toLocaleString()} matching records
+                </button>
+              )}
             </nav>
           </div>
+
+          {allMatching && (
+            <div className="flex flex-wrap items-center gap-3 border-b border-indigo-200 bg-indigo-50 px-6 py-3">
+              <p role="status" className="mr-auto text-sm text-indigo-900">
+                {queueReady
+                  ? `All ${matchCount.toLocaleString()} matching records selected`
+                  : 'All matching records selected'}
+              </p>
+              <button type="button" onClick={() => setSelectedIds(NO_SELECTION)} className={buttonClass('ghost', 'sm')}>
+                Clear selection
+              </button>
+              {matchCount > 0 && canSendMatchingToAI && (
+                <Link href={href(`/queue/send-to-ai${rememberedSearch}`)} className={buttonClass('secondary', 'sm')}>
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  Send to AI
+                </Link>
+              )}
+              {matchCount > 0 && canDistribute && (
+                <Link href={href(`/queue/distribute${rememberedSearch}`)} className={buttonClass('primary', 'sm')}>
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  Distribute work
+                </Link>
+              )}
+            </div>
+          )}
 
           {/* Table */}
           <div className={`flex-1 overflow-auto ${someSelected ? 'pb-20' : ''}`}>
@@ -469,8 +516,8 @@ export default function QueuePageClient({
                       <th className="pl-4 pr-2 py-3 text-left w-12">
                         <input
                           type="checkbox"
-                          disabled={queueQuery.isPlaceholderData || queueQuery.isError}
-                          checked={allSelected}
+                          disabled={!queueReady || allMatching}
+                          checked={allSelected || allMatching}
                           onChange={e => handleSelectAll(e.target.checked)}
                           aria-label="Select all records on this page"
                           className="w-4 h-4 rounded border-gray-500 text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-0 cursor-pointer"
@@ -500,8 +547,8 @@ export default function QueuePageClient({
                       <SentenceRow
                         key={sentence.id}
                         sentence={sentence}
-                        selectionDisabled={queueQuery.isPlaceholderData || queueQuery.isError}
-                        selected={selectedIds.has(sentence.id)}
+                        selectionDisabled={!queueReady || allMatching}
+                        selected={allMatching || selectedIds.has(sentence.id)}
                         onSelect={checked => handleSelect(sentence.id, checked)}
                         showAssignedTo={currentUser?.role === 'admin' || currentUser?.role === 'supervisor'}
                         showDouble={showDoubleColumn}

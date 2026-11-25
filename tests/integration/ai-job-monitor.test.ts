@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { AIConnectionVersion, Taxonomy, User } from '@/lib/generated/prisma/client'
+import type { QueueAIPreview, QueueAIRequest } from '@/lib/contracts/ai-queue'
 import openapi from '@/lib/contracts/taxomind.openapi.json'
 import { logger } from '@/lib/logger'
 import { db } from '@/lib/workspace/db'
@@ -61,6 +62,7 @@ let monitor: typeof import('@/lib/ai-job-monitor')
 let ai: typeof import('@/lib/ai-labeling')
 let syncRoute: typeof import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
 let labelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+let queueAIRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/from-queue/route')
 let learnRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-labeling/learn/route')
 let annotationsRoute: typeof import('@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route')
 let cancelRoute: typeof import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
@@ -181,6 +183,7 @@ beforeAll(async () => {
   ai = await import('@/lib/ai-labeling')
   syncRoute = await import('@/app/api/workspaces/[workspaceId]/taxonomies/[key]/sync-ai/route')
   labelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/route')
+  queueAIRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/jobs/from-queue/route')
   learnRoute = await import('@/app/api/workspaces/[workspaceId]/ai-labeling/learn/route')
   annotationsRoute = await import('@/app/api/workspaces/[workspaceId]/sentences/[sentenceId]/annotations/route')
   cancelRoute = await import('@/app/api/workspaces/[workspaceId]/ai-jobs/[jobId]/cancel/route')
@@ -286,6 +289,97 @@ const storedSuggestions = async () =>
   ])
 
 describe('AI job monitor against a stub service', () => {
+  it('queues the previewed records from every page only once and saves their suggestions', async () => {
+    const [first, suggested, protectedRecord, last] = await createSentences(4)
+    await createSentences(1)
+    await prisma.aITaxonomySyncJob.create({
+      data: { workspaceId: wsId(), taxonomyId: taxonomy.id, connectionVersionId: connection.id, status: 'completed' }
+    })
+    await prisma.sentenceAISuggestion.create({
+      data: {
+        workspaceId: wsId(),
+        taxonomyId: taxonomy.id,
+        sentenceId: suggested.id,
+        level: 1,
+        nodeCode: '02',
+        confidenceScore: 0.6
+      }
+    })
+    await prisma.doubleRound.create({ data: { workspaceId: wsId(), sentenceId: protectedRecord.id, status: 'active' } })
+    const body: QueueAIRequest = {
+      queue: `?importId=${first.importId}&limit=1&page=2`,
+      taxonomyKeys: ['ISCO'],
+      skipExisting: true
+    }
+    const send = (input: QueueAIRequest) => queueAIRoute.POST(request('/x', { method: 'POST', body: input }), params())
+    signInAs(await createUser('supervisor'))
+    expect((await send(body)).status).toBe(403)
+    signInAs(admin)
+    const response = await send(body)
+    expect(response.status, await response.clone().text()).toBe(200)
+    const preview: QueueAIPreview = await response.json()
+    expect(preview).toMatchObject({
+      matched: 4,
+      protected: 1,
+      taxonomies: [{ key: 'ISCO', eligible: 2, alreadyQueued: 0, existing: 1, jobs: 1 }]
+    })
+    expect(started).toHaveLength(0)
+    expect((await send({ ...body, skipExisting: false, confirmation: preview.confirmation! })).status).toBe(409)
+
+    statusReply = completedWith(
+      [first.id, last.id].map(sentenceId => ({
+        sentenceId,
+        annotations: [{ level: 1, nodeCode: '02', confidence: 0.9 }]
+      }))
+    )
+    const confirm = { ...body, confirmation: preview.confirmation! }
+    const commits = await Promise.all([send(confirm), send(confirm)])
+    for (const commit of commits) {
+      expect(commit.status, await commit.clone().text()).toBe(200)
+      expect(await commit.json()).toEqual({ jobs: 1, taxonomies: [{ key: 'ISCO', jobs: 1, records: 2 }] })
+    }
+    const job = await prisma.aILabelingJob.findFirstOrThrow()
+    expect((await settle(job.id)).status).toBe('completed')
+    expect(started).toHaveLength(1)
+    expect(started[0]?.body.sentences).toMatchObject([{ sentence_id: first.id }, { sentence_id: last.id }])
+    expect((await storedSuggestions()).map(row => row[0]).sort()).toEqual([first.id, suggested.id, last.id].sort())
+    expect(await prisma.sentenceAnnotation.count()).toBe(0)
+  })
+
+  it('previews each taxonomy independently and notices records already queued', async () => {
+    const [first, second] = await createSentences(2)
+    const otherTaxonomy = await createTaxonomy('ISIC')
+    await prisma.aITaxonomySyncJob.createMany({
+      data: [taxonomy.id, otherTaxonomy.id].map(taxonomyId => ({
+        workspaceId: wsId(),
+        taxonomyId,
+        connectionVersionId: connection.id,
+        status: 'completed' as const
+      }))
+    })
+    await labelingJob([first.id])
+    signInAs(admin)
+    const response = await queueAIRoute.POST(
+      request('/x', {
+        method: 'POST',
+        body: {
+          queue: `?importId=${second.importId}`,
+          taxonomyKeys: ['ISCO', 'ISIC'],
+          skipExisting: true
+        }
+      }),
+      params()
+    )
+    expect(response.status, await response.clone().text()).toBe(200)
+    expect(await response.json()).toMatchObject({
+      taxonomies: [
+        { key: 'ISCO', eligible: 1, alreadyQueued: 1 },
+        { key: 'ISIC', eligible: 2, alreadyQueued: 0 }
+      ]
+    })
+    expect(started).toHaveLength(0)
+  })
+
   it('sends the records, polls to completion and stores only valid suggestions', async () => {
     const [a, b, outside] = await createSentences(3)
     statusReply = job =>

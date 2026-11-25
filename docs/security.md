@@ -242,6 +242,8 @@ admin) with a valid session who does not have to reset their password.
 | `/sentences/[id]/double-annotation` | POST (accept single, stop, hand over, reopen a decision) | admin, supervisor; record in scope, not one of its labellers, both labellers in the caller's team (admins: any) |
 | `/sentences/double-annotation/commands` | POST (bulk accept single, stop, hand over, release; `dryRun`) | admin, supervisor; every record in scope; per record the same checks as the single command (records that fail them are skipped and counted) |
 | `/sentences/assign` | GET, POST, DELETE | admin, supervisor; every record in scope and every target member in the caller's team |
+| `/sentences/assign/distribute` | POST | admin, supervisor; uses queue visibility and active labellers in scope for both preview and confirm, rechecks the plan before writing |
+| `/ai-labeling/jobs/from-queue` | POST | admin; preview and confirm use queue visibility and exclude active double rounds and unreleased parts |
 | `/sentences/import`, `/imports/[id]` DELETE | POST, DELETE | admin |
 | `/imports`, `/taxonomies`, `/taxonomies/active`, `/taxonomies/[key]/nodes` | GET | member |
 | `/taxonomies` and `/taxonomies/[key]/*` writes | POST, PUT, DELETE | admin |

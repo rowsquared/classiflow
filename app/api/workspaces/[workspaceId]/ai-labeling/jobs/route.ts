@@ -6,11 +6,14 @@ import { AI_UNAVAILABLE_MESSAGES, connectionForNewJobs, workspaceJobSettings } f
 import { currentRequestId } from '@/lib/request-id'
 import { z } from 'zod'
 import { audit } from '@/lib/audit'
-import { logError, requestLogger } from '@/lib/logger'
+import { logError } from '@/lib/logger'
 import type { Prisma } from '@/lib/generated/prisma/client'
-
-const MAX_RECORDS_PER_REQUEST = 50_000
-const MAX_JOBS_PER_REQUEST = 100
+import {
+  activeLabelingJob,
+  createLabelingJobs,
+  labelingRecordLimit,
+  lockLabelingTaxonomies
+} from '@/lib/server/ai-labeling-jobs'
 
 const startSchema = z.object({
   taxonomyKey: z.string(),
@@ -63,8 +66,8 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     // Resolve sentence IDs
     const sentenceWhere = buildSentenceFilter(input)
     const { labelingBatchSize: batchSize } = await workspaceJobSettings()
-    const maxRecords = Math.min(MAX_RECORDS_PER_REQUEST, MAX_JOBS_PER_REQUEST * batchSize)
-    await db().$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('classiflow.labeling.' || ${taxonomy.id}))`
+    const maxRecords = labelingRecordLimit(batchSize)
+    await lockLabelingTaxonomies([taxonomy.id])
     const sentences = await db().sentence.findMany({
       where: sentenceWhere,
       select: { id: true },
@@ -85,7 +88,7 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
     const overlap = await db().sentence.findFirst({
       where: {
         ...sentenceWhere,
-        labelingJobs: { some: { job: { taxonomyId: taxonomy.id, status: { in: ['pending', 'processing'] } } } }
+        labelingJobs: { some: activeLabelingJob(taxonomy.id) }
       },
       select: { id: true }
     })
@@ -96,59 +99,23 @@ export const POST = workspaceRoute(['admin'], async (req, { user }) => {
       )
     }
 
-    // Split into batches of the workspace's batch size
-    const requestId = await currentRequestId()
-    const batches: string[][] = []
-    for (let i = 0; i < allSentenceIds.length; i += batchSize) {
-      batches.push(allSentenceIds.slice(i, i + batchSize))
-    }
-
-    // Create one job per batch and launch monitors
-    const jobs = []
-    for (const batchIds of batches) {
-      const job = await db().aILabelingJob.create({
-        data: {
-          workspaceId: user.workspaceId,
-          createdById: user.id,
-          taxonomyId: taxonomy.id,
-          status: 'pending',
-          totalSentences: batchIds.length,
-          batchSize,
-          connectionVersionId: connection.id,
-          requestId,
-          // How the records were chosen; the records are the job's input rows.
-          filterCriteria: {
-            importIds: input.importIds ?? [],
-            selectedRecords: input.sentenceIds?.length ?? 0,
-            onlyUnsubmitted: input.onlyUnsubmitted ?? false
-          }
-        },
-        include: {
-          taxonomy: { select: { key: true } },
-          createdBy: { select: { id: true, name: true, email: true } }
-        }
-      })
-
-      for (let offset = 0; offset < batchIds.length; offset += 1000) {
-        await db().aILabelingJobInput.createMany({
-          data: batchIds.slice(offset, offset + 1000).map((sentenceId, position) => ({
-            workspaceId: user.workspaceId,
-            jobId: job.id,
-            sentenceId,
-            position: offset + position
-          }))
-        })
+    const jobs = await createLabelingJobs({
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      taxonomyId: taxonomy.id,
+      connectionVersionId: connection.id,
+      sentenceIds: allSentenceIds,
+      batchSize,
+      requestId: await currentRequestId(),
+      filterCriteria: {
+        importIds: input.importIds ?? [],
+        selectedRecords: input.sentenceIds?.length ?? 0,
+        onlyUnsubmitted: input.onlyUnsubmitted ?? false
       }
-      jobs.push(job)
-    }
+    })
 
     // Queued; admitted up to the job ceilings once committed (lib/ai-job-monitor.ts).
     afterCommit(scheduleAIJobs)
-
-    ;(await requestLogger()).info(
-      { jobs: jobs.length, taxonomy: taxonomy.key, records: allSentenceIds.length, batchSize },
-      'Created AI labeling jobs'
-    )
 
     await audit({
       actorId: user.id,

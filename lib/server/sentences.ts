@@ -274,6 +274,11 @@ function withDoubleFilter(user: CurrentUser, base: Prisma.SentenceWhereInput, se
   return filter ? { AND: [base, filter] } : base
 }
 
+/** Queue selection across all pages, with the same filters and visibility as the list. */
+export async function queueSelectionWhere(user: CurrentUser, searchParams: URLSearchParams) {
+  return withDoubleFilter(user, await queueWhere(user, searchParams, await holdsParts(user)), searchParams)
+}
+
 /**
  * Whether `user` holds a live double annotation part in any record of the
  * workspace. Most callers hold none (managers who only review, labellers

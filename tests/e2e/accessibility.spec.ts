@@ -79,6 +79,19 @@ test('progress', async ({ page }) => {
   await expectAccessible(page, 'progress')
 })
 
+test('distribute work', async ({ page }) => {
+  await page.goto(pagePath('/queue/distribute'))
+  await expect(page.getByRole('heading', { name: 'Distribute work' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: /E2E Labeller/ })).toBeVisible()
+  await expectAccessible(page, 'distribute work')
+})
+
+test('send to AI when the workspace has no connection', async ({ page }) => {
+  await page.goto(pagePath('/queue/send-to-ai'))
+  await expect(page.getByRole('heading', { name: 'AI suggestions are unavailable' })).toBeVisible()
+  await expectAccessible(page, 'send to AI setup')
+})
+
 test('team', async ({ page }) => {
   await page.goto(pagePath('/admin/team'))
   await expect(page.getByLabel('Search name or email')).toBeVisible()

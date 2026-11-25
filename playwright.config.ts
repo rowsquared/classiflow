@@ -42,9 +42,11 @@ export default defineConfig({
       // The journeys sign in more often than a person would.
       SIGN_IN_RATE_LIMIT: '1000',
       SIGN_IN_ACCOUNT_RATE_LIMIT: '1000',
-      // AI can be configured (tests/e2e/ai-settings.spec.ts); no service runs.
+      // The AI queue journey runs a Taxomind stand-in on loopback.
       AI_SOURCE_SLUG: 'ai',
       AI_CREDENTIALS_KEYS: 'e2e:MlYB0Tmfes0OCnkWHxv/4MwbwWkWUTFZAj7YUvaDDcg=',
+      AI_ALLOW_PRIVATE_ENDPOINTS: 'true',
+      AI_JOB_POLL_INTERVAL_MS: '100',
       // Mail on, sent to the journeys' local webhook.
       N8N_EMAIL_WEBHOOK_SECRET: 'e2e-only-mail-secret',
       N8N_EMAIL_WEBHOOK_URL: `http://127.0.0.1:${MAIL_PORT}/webhook/send-email`,

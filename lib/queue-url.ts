@@ -159,12 +159,22 @@ function appendFilters(params: URLSearchParams, f: QueueFilterValues) {
  * the filter panel's statuses only apply on the "All" tab. Deterministic, so
  * the string can be part of a query key.
  */
-export function queueListParams(state: QueueUrlState): string {
+function queueMatchSearchParams(state: QueueUrlState) {
   const params = new URLSearchParams()
   if (state.q) params.set('q', state.q)
   if (state.tab !== 'all') params.set('status', state.tab)
   else if (state.status.length > 0) params.set('status', state.status.join(','))
   appendFilters(params, state)
+  return params
+}
+
+/** Filters for selecting the whole queue view, independent of pagination. */
+export function queueMatchParams(state: QueueUrlState): string {
+  return queueMatchSearchParams(state).toString()
+}
+
+export function queueListParams(state: QueueUrlState): string {
+  const params = queueMatchSearchParams(state)
   params.set('page', String(Math.max(1, state.page)))
   params.set('limit', String(state.limit))
   params.set('sort', 'createdAt')

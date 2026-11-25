@@ -62,6 +62,7 @@ export type AuditAction =
   | 'records.imported'
   | 'import.deleted'
   | 'assignments.added'
+  | 'assignments.distributed'
   | 'assignments.removed'
   | 'labels.bulk_applied'
   | 'double.started'
